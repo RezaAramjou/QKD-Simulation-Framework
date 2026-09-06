@@ -1,0 +1,30 @@
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.nbc
+*.nbi
+.venv/
+venv/
+ENV/
+
+# Temporary & UI Run Logs
+qkd_ui_runs/
+*.tmp
+
+# LaTeX Build Outputs
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.lol
+*.lot
+*.fls
+*.fdb_latexmk
+
+# IDE & OS Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

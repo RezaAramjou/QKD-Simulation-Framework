@@ -1,4 +1,0 @@
---- Running QKD Simulations (SWEEP MODE) ---
-[WARNING] 19 workers may need ~9.3GB RAM. Risk of OOM!
-[INFO] CPU Count: 20
-[INFO] Using 19 worker processes
