@@ -1,0 +1,654 @@
+\sloppy
+\emergencystretch=5em
+\hbadness=10000
+\vbadness=10000
+\tolerance=2000
+\providecolor{codebg}{RGB}{248,248,248}
+\providecolor{codeframe}{RGB}{200,200,200}
+\providecolor{keyword}{RGB}{0,0,180}
+\providecolor{string}{RGB}{163,21,21}
+\providecolor{comment}{RGB}{0,128,0}
+\lstset{
+	basicstyle=\ttfamily\scriptsize,
+	breaklines=true,
+	breakatwhitespace=false,
+	columns=fullflexible,
+	keepspaces=true,
+	frame=single,
+	framesep=2pt,
+	showstringspaces=false,
+	backgroundcolor=\color{codebg},
+	rulecolor=\color{codeframe},
+	keywordstyle=\color{keyword}\bfseries,
+	stringstyle=\color{string},
+	commentstyle=\color{comment}\itshape,
+	numberstyle=\tiny\color{gray},
+	numbers=left,
+	numbersep=6pt,
+	xleftmargin=14pt,
+	framexleftmargin=14pt,
+	literate=
+	{ą}{{\v{a}}}1 {ę}{{\k{e}}}1 {ż}{{\.z}}1 {ś}{{\'s}}1
+	{ł}{{\l}}1 {ć}{{\'c}}1 {ń}{{\'n}}1 {ó}{{\'o}}1 {ź}{{\'z}}1
+	{→}{{$\rightarrow$}}1 {←}{{$\leftarrow$}}1 {≠}{{$\neq$}}1
+}
+
+\section{نمای کلی و هدف ماژول}
+
+فایل \lr{\texttt{qkd/proofs/tight.py}} پیاده‌سازی مرجع و تولید-آمادۀ (\lr{production-grade}) اثبات امنیتی کلید متناهی \lr{BB84-Tight} است که از چارچوب \lr{Lim et al. 2014} مشتق شده و به طور گسترده برای رفع استانداردهای تولید در زمینه‌های صحت‌سنجی، یکپارچگی \lr{API}، پایداری عددی، تشخیص‌گری (\lr{diagnostics}) و ردپایی (\lr{provenance}) بازطراحی شده است. این ماژول بر خلاف پیاده‌سازی‌های اولیه‌ی آکادمیک که صرفاً به دنبال بازتولید فرمول‌های مقاله بودند، با هدف قرار گرفتن در محیط‌های عملیاتی واقعی توسعه یافته است؛ محیط‌هایی که در آن‌ها خطاهای عددی، نوسانات ورودی و رفتار غیرعادی سیستم نباید منجر به فروپاشی خط لوله شبیه‌سازی شوند. نسخه‌ی فعلی با شناسه \lr{\texttt{3.7.6-fixed}} علامت‌گذاری شده است که نشان‌دهنده‌ی اصلاح یک باگ منطقی حیاتی در تخصیص بودجۀ امنیتی است؛ این باگ پیش از آن، در ریاضیات ممیز شناور ۶۴-بیت، می‌توانست منجر به نقض نامرئی نامساوی امنیتی $\varepsilon_{\text{sec}}$ شود.
+
+هدف اصلی این ماژول، تبدیل شمارش‌های آماری شبکۀ آشکارسازی (در قالب شیء \lr{\texttt{TallyCounts}}) و تخمین‌های \lr{Decoy-State} (در قالب شیء \lr{\texttt{DecoyEstimatesInput}} یا هر شیء دارای فیلدهای \lr{\texttt{yield\_1\_lower\_bound}} و \lr{\texttt{error\_rate\_1\_upper\_bound}}) به یک عدد صحیح مثبت به عنوان طول کلید امن نهایی است. این تبدیل با رعایت سخت‌گیرانۀ تمام محافظه‌کاری‌های ریاضی، آماری و فیزیکی انجام می‌شود تا هیچ طول کلیدی که از نظر تئوری قابل اثبات نیست، تولید نشود. فلسفۀ طراحی این ماژول بر پایۀ اصل \lr{``fail-safe, not fail-fast''} استوار است؛ به این معنا که در صورت بروز هرگونه ناسازگاری پیکربندی، آمار ناکافی، یا خطای عددی، خروجی به جای \lr{raise} کردن استثنا و متوقف کردن خط لوله، یک شیء \lr{\texttt{KeyCalculationResult}} با طول کلید صفر و کد خطای مناسب تولید می‌کند. این رفتار برای کاربردهای تولیدی که در آن‌ها قطع شبیه‌سازی هزینه‌بر است، حیاتی است و اجازه می‌دهد خط لوله ادامه یابد در حالی که علت شکست در گزارش تشخیصی ثبت می‌گردد.
+
+این ماژول از کلاس پایه \lr{\texttt{Lim2014Proof}} (که در فایل \lr{\texttt{qkd/proofs/lim2014.py}} تعریف شده) ارث می‌برد و متدهای \lr{\texttt{allocate\_epsilons}} و \lr{\texttt{calculate\_key\_length}} را بازنویسی می‌کند. ارث‌بری از \lr{\texttt{Lim2014Proof}} به این ماژول اجازه می‌دهد تا تمام زیرساخت‌های مشترک مانند محاسبۀ آنتروپی باینری، تخصیص \lr{$\varepsilon$} پایه، و ابزارهای \lr{clamp} عددی را بدون تکرار کد به کار گیرد و در عین حال، منطق محاسبۀ کلید را با رویکردی متفاوت و سخت‌گیرانه‌تر بازنویسی کند. تفاوت کلیدی میان \lr{\texttt{BB84TightProof}} و کلاس پایۀ \lr{\texttt{Lim2014Proof}} در این است که نسخۀ \lr{Tight} از یک رویکرد \lr{``entropy-budget''} استفاده می‌کند که در آن، آنتروپی موجود از پایۀ تولید‌کنندۀ کلید ($X$) محاسبه شده و سپس نشت تصحیح خطا و جریمه‌های تقویت حریم خصوصی از آن کم می‌شوند، در حالی که نسخۀ پایه از فرمول مستقیم نرخ کلید استفاده می‌کند. این رویکرد آنتروپی-محور، تطابق دقیق‌تری با ادبیات مدرن امنیتی ترکیبی (\lr{composable security}) دارد.
+
+یکی از ویژگی‌های متمایزکنندۀ این ماژول، پشتیبانی از هر دو حالت \lr{Decoy-State} و \lr{non-Decoy} است. در حالت \lr{Decoy-State}، ماژول تخمین‌های $Y_1$ و $e_1$ را از موتور تخمین \lr{Decoy} دریافت کرده و از آن‌ها برای محاسبۀ شمارش تک‌فوتونی در هر دو پایۀ $X$ و $Z$ استفاده می‌کند. در حالت \lr{non-Decoy}، ماژول به صورت محافظه‌کارانه فرض می‌کند که تمام بیت‌های \lr{sifted} از تک‌فوتون‌ها نشأت گرفته‌اند و از \lr{QBER} پایۀ $Z$ به عنوان تخمین خطای فاز استفاده می‌کند. این انعطاف‌پذیری اجازه می‌دهد ماژول هم برای شبیه‌سازی‌های پیشرفته با \lr{Decoy-State} و هم برای شبیه‌سازی‌های ساده \lr{BB84} پایه به کار رود. علاوه بر این، ماژول از یک طرح غنی گزارش‌گیری \lr{diagnostics} استفاده می‌کند که در آن تمام مقادیر میانی محاسبه (مانند $n_X$، $m_X$، $n_Z$، $m_Z$، $s_{X,1}^L$، $s_{Z,1}^L$، \lr{QBER}، نشت تصحیح خطا، خطای فاز، جریمه‌های \lr{PA} و آنتروپی موجود) در یک دیکشنری ساختاریافته ذخیره می‌شوند و برای تحلیل و بازبینی امنیتی توسط شخص ثالث قابل دسترس هستند.
+
+\section{مبانی تئوری و فیزیکی}
+
+\subsection{امنیت ترکیبی و بودجه‌ی $\varepsilon$}
+
+در چارچوب مدرن امنیت ترکیبی (\lr{composable security}) که توسط \lr{Canetti} (2001) و \lr{Ben-Or, Mayers} (2004) توسعه یافته، امنیت یک پروتکل \lr{QKD} به صورت یک پارامتر کوچک $\varepsilon_{\text{sec}}$ تعریف می‌شود که نشان‌دهندۀ حداکثر احتمال شکست امنیتی است. یک پروتکل $\varepsilon_{\text{sec}}$-امن است اگر خروجی آن از یک کلید ایده‌آل (توزیع یکنواخت و کاملاً مخفی) با فاصله‌ی $\varepsilon_{\text{sec}}$ در معیار \lr{trace distance} فاصله داشته باشد. این تعریف اجازه می‌دهد امنیت \lr{QKD} به صورت قابل ترکیب با سایر پروتکل‌های رمزنگاری تحلیل شود. کل بودجه‌ی $\varepsilon_{\text{sec}}$ باید میان چندین رویداد شکست مستقل تقسیم شود:
+\begin{equation}
+	\varepsilon_{\text{sec}} \;\ge\; \varepsilon_{\text{PE}} + 2\,\varepsilon_{\text{smooth}} + \varepsilon_{\text{PA}} + \varepsilon_{\text{cor}} + \varepsilon_{\text{phase\_est}}.
+\end{equation}
+در این نامساوی، $\varepsilon_{\text{PE}}$ بودجه‌ی تخمین پارامتر، $\varepsilon_{\text{smooth}}$ بودجه‌ی هموارسازی (\lr{smoothing}) که دو بار استفاده می‌شود (یک بار برای آنتروپی حداقل هموار و یک بار برای آنتروپی حداقل شرطی هموار)، $\varepsilon_{\text{PA}}$ بودجه‌ی تقویت حریم خصوصی (\lr{Privacy Amplification})، $\varepsilon_{\text{cor}}$ بودجه‌ی تصحیح خطا (\lr{Error Correction}) و $\varepsilon_{\text{phase\_est}}$ بودجه‌ی تخمین خطای فاز است. در کد ماژول \lr{\texttt{tight.py}}، این تقسیم در متد \lr{\texttt{allocate\_epsilons}} پیاده‌سازی شده و با فراخوانی \lr{\texttt{allocation.validate()}} اعتبارسنجی می‌شود. یک نکتۀ ظریف و حیاتی این است که در ریاضیات ممیز شناور ۶۴-بیت، مجموع \lr{$\varepsilon_{\text{cor}} + (\varepsilon_{\text{sec}} - \varepsilon_{\text{cor}})$} ممکن است به دلیل خطای گردکردن، کمی بزرگتر از $\varepsilon_{\text{sec}}$ شود و اعتبارسنجی شکست بخورد. برای رفع این مشکل، ماژول یک حاشیۀ امنیتی مطلق به اندازه‌ی $10^{-20}$ از بودجه‌ی باقی‌مانده کم می‌کند تا تضمین شود نامساوی به صورت عددی برقرار می‌ماند.
+
+\subsection{خطای فاز در مقابل خطای بیت}
+
+در پروتکل \lr{BB84}، دو نوع خطا تعریف می‌شود: خطای بیت (\lr{bit error}) و خطای فاز (\lr{phase error}). خطای بیت، خطایی است که در پایۀ اندازه‌گیری قابل مشاهده است و با مقایسۀ بیت‌های آلیس و باب در همان پایه اندازه‌گیری می‌شود. در مقابل، خطای فاز خطایی است که اگر آلیس و باب در پایۀ مزدوج (\lr{conjugate basis}) اندازه‌گیری می‌کردند، قابل مشاهده می‌بود. این دو خطا در یک کانال بدون نویز برابرند، اما در حضور حمله‌های کوانتومی مانند \lr{PNS} یا حمله‌های \lr{coherent} می‌توانند متفاوت باشند. رابطۀ ریاضی میان خطای فاز و خطای بیت با استفاده از نامساوی \lr{Hoeffding} یا \lr{Azuma} برقرار می‌شود. در این ماژول، خطای فاز از پایۀ $Z$ تخمین زده می‌شود و خطای بیت از پایۀ $X$ (که پایۀ تولیدکنندۀ کلید است).
+
+نامساوی \lr{Hoeffding} برای تخمین فاصلۀ میان خطای فاز و خطای بیت به صورت زیر اعمال می‌شود:
+\begin{equation}
+	e_{\text{phase}} \;\le\; e_{\text{bit}} + \sqrt{\frac{-\ln(\varepsilon_{\text{phase\_est}})}{2\,s_{Z,1}^L}},
+\end{equation}
+که در آن $e_{\text{bit}} = e_1^U$ کران بالای خطای بیت تک‌فوتونی، $\varepsilon_{\text{phase\_est}}$ بودجه‌ی تخمین خطای فاز و $s_{Z,1}^L$ کران پایین شمارش تک‌فوتونی در پایۀ $Z$ است. این نامساوی نشان می‌دهد که هرچه شمارش تک‌فوتونی در پایۀ $Z$ بیشتر باشد، عدم قطعیت در تخمین خطای فاز کمتر می‌شود. در کد، این فرمول در متد \lr{\texttt{\_compute\_phase\_error\_ub}} پیاده‌سازی شده و در صورت بزرگتر بودن کران نهایی از 0.5 (حداکثر آنتروپی باینری)، به 0.5 بریده می‌شود. علاوه بر این، اگر پرچم \lr{\texttt{assume\_phase\_equals\_bit\_error}} در پیکربندی فعال باشد، ماژول به جای محاسبۀ نامساوی \lr{Hoeffding}، فرض می‌کند $e_{\text{phase}} = e_{\text{bit}}$ که یک تقریب ساده‌تر اما محافظه‌کارانه‌تر در شرایطی است که شمارش پایۀ $Z$ ناکافی است.
+
+\subsection{آنتروپی باینری و برش عددی}
+
+آنتروپی باینری $H_2(p)$ یک تابع کلیدی در تمام محاسبات امنیتی \lr{QKD} است و به صورت زیر تعریف می‌شود:
+\begin{equation}
+	H_2(p) = -p\,\log_2(p) - (1 - p)\,\log_2(1 - p).
+\end{equation}
+این تابع در $p = 0.5$ به حداکثر مقدار ۱ می‌رسد و در $p = 0$ یا $p = 1$ به صفر میل می‌کند. در محاسبۀ طول کلید، آنتروپی باینری در دو جایگاه ظاهر می‌شود: نخست، در محاسبۀ نشت تصحیح خطا (\lr{EC leakage}) به صورت $f_{\text{EC}} \cdot H_2(E_{\text{bit}}) \cdot n_{\text{key}}$ که نشان‌دهندۀ تعداد بیت‌هایی است که در فرآیند تصحیح خطا به باب نشت می‌کنند و در نتیجه توسط مهاجم قابل دسترس هستند؛ دوم، در محاسبۀ آنتروپی تک‌فوتونی به صورت $s_{X,1}^L \cdot (1 - H_2(e_{\text{phase}}))$ که نشان‌دهندۀ آنتروپی قابل استخراج از تک‌فوتون‌های پایۀ تولیدکنندۀ کلید است.
+
+یک مشکل عددی ظریف این است که آنتروپی باینری در $p \to 0$ یا $p \to 1$ به سمت صفر میل می‌کند، اما عبارت $\log_2(p)$ به سمت $-\infty$ میل می‌کند. در ریاضیات ممیز شناور، این می‌تواند منجر به ضرب یک عدد بسیار کوچک در یک عدد بسیار بزرگ شود و نتیجه‌ی ناپایدار یا حتی \lr{NaN} تولید کند. برای رفع این مشکل، ماژول از یک تابع \lr{\texttt{\_binary\_entropy\_safe}} استفاده می‌کند که مقدار $p$ را با استفاده از ثابت \lr{\texttt{ENTROPY\_PROB\_CLAMP}} (که معمولاً $10^{-12}$ است) به بازۀ $[\varepsilon, 1 - \varepsilon]$ بریده می‌کند:
+\begin{equation}
+	p_{\text{clamped}} = \max(\varepsilon_{\text{clamp}}, \min(p, 1 - \varepsilon_{\text{clamp}})).
+\end{equation}
+این برش عددی، در حالی که به طور ظاهری کوچک است، تضمین می‌کند که تمام محاسبات آنتروپی پایدار و قابل بازتولید باشند. این برش همچنین از تقسیم بر صفر در عبارت $\log_2(p)$ جلوگیری می‌کند. در ادبیات امنیتی، این برش به عنوان یک ``بهای عددی'' شناخته می‌شود که در صورتی که $\varepsilon_{\text{clamp}} \ll \varepsilon_{\text{sec}}$ باشد، از نظر تئوری ناچیز است.
+
+\subsection{آنتروپی موجود و معادلۀ کلید نهایی}
+
+فرمول اصلی محاسبۀ طول کلید امن در چارچوب \lr{BB84-Tight} به صورت زیر است:
+\begin{equation}
+	\ell \;=\; \underbrace{s_{X,1}^L \cdot \left(1 - H_2(e_{\text{phase}})\right)}_{\text{available entropy}} - \underbrace{f_{\text{EC}} \cdot H_2(e_{\text{bit}}) \cdot n_{\text{key}}}_{\text{EC leakage}} - \underbrace{\left(\log_2\frac{1}{2\varepsilon_{\text{smooth}}} + \log_2\frac{1}{\varepsilon_{\text{PA}}} + \log_2\frac{2}{\varepsilon_{\text{cor}}}\right)}_{\text{PA \& correction penalties}}.
+\end{equation}
+در این معادله، $\ell$ طول کلید امن نهایی، $s_{X,1}^L$ کران پایین شمارش تک‌فوتونی در پایۀ $X$ (پایۀ تولیدکنندۀ کلید)، $e_{\text{phase}}$ کران بالای خطای فاز، $e_{\text{bit}}$ کران بالای خطای بیت، $n_{\text{key}}$ تعداد بیت‌های \lr{sifted} در پایۀ $X$، $f_{\text{EC}}$ بازدهی تصحیح خطا و $\varepsilon_{\text{smooth}}$، $\varepsilon_{\text{PA}}$ و $\varepsilon_{\text{cor}}$ بودجه‌های امنیتی مربوطه هستند. ترم آنتروپی موجود نشان‌دهندۀ حداکثر اطلاعات قابل استخراج از تک‌فوتون‌های امن است. ترم نشت تصحیح خطا نشان‌دهندۀ اطلاعاتی است که در فرآیند تصحیح خطا به باب نشت می‌کند و توسط مهاجم قابل رهگیری است. در نهایت، ترم جریمه‌های \lr{PA} و تصحیح، بیت‌های ثابتی هستند که در فرآیند تقویت حریم خصوصی و تأیید تصحیح خطا از دست می‌روند.
+
+این فرمول در متد \lr{\texttt{calculate\_key\_length}} پیاده‌سازی شده است. یک نکتۀ کلیدی این است که اگر $\ell < 0$ شود (یعنی نشت و جریمه‌ها از آنتروپی موجود بیشتر شوند)، طول کلید به صفر برده می‌شود. این رفتار با استفاده از متد \lr{\texttt{\_clamp\_key\_length}} از کلاس پایه تضمین می‌شود. علاوه بر این، هر مقدار میانی غیرمتناهی (\lr{NaN} یا \lr{Inf}) باعث ثبت کد خطای \lr{\texttt{NON\_FINITE\_VALUE}} می‌شود. این بررسی‌ها در متد \lr{\texttt{\_finite\_or\_error}} پیاده‌سازی شده‌اند.
+
+\subsection{تخمین شمارش تک‌فوتونی در دو پایه}
+
+یکی از چالش‌های کلیدی در محاسبۀ طول کلید، تخمین شمارش تک‌فوتونی در دو پایۀ $X$ و $Z$ است. در حالت \lr{Decoy-State}، این شمارش‌ها به صورت زیر تخمین زده می‌شوند:
+\begin{align}
+	s_{X,1}^L &= N_{\text{sent},X} \cdot P(1 \mid \mu) \cdot Y_1^L \cdot p_X^A \cdot p_X^B, \\
+	s_{Z,1}^L &= N_{\text{sent},Z} \cdot P(1 \mid \mu) \cdot Y_1^L \cdot p_Z^A \cdot p_Z^B,
+\end{align}
+که در آن $N_{\text{sent},X}$ و $N_{\text{sent},Z}$ تعداد پالس‌های ارسالی در پایۀ $X$ و $Z$، $P(1 \mid \mu) = \mu\,e^{-\mu}$ احتمال ارسال تک‌فوتون با شدت $\mu$، $Y_1^L$ کران پایین بازده تک‌فوتونی (که فرض می‌شود مستقل از پایه است)، $p_X^A$ و $p_X^B$ احتمال انتخاب پایۀ $X$ توسط آلیس و باب، و به طور متقابل $p_Z^A$ و $p_Z^B$ احتمال انتخاب پایۀ $Z$ است. این فرمول‌ها در متد \lr{\texttt{\_compute\_base\_counts\_decoy}} پیاده‌سازی شده‌اند. یک نکتۀ محافظه‌کارانه این است که اگر $s_{X,1}^L > n_X$ شود (که از نظر فیزیکی غیرممکن است زیرا تعداد تک‌فوتون‌ها نمی‌تواند از کل آشکارسازی‌ها بیشتر باشد)، مقدار به $n_X$ بریده می‌شود. این برش با استفاده از ثابت \lr{\texttt{NUMERIC\_ABS\_TOL}} انجام می‌شود تا خطاهای کوچک گردکردن نادیده گرفته شوند.
+
+در حالت \lr{non-Decoy}، ماژول به صورت محافظه‌کارانه فرض می‌کند که تمام بیت‌های \lr{sifted} از تک‌فوتون‌ها نشأت گرفته‌اند، یعنی $s_{X,1}^L = n_X$ و $s_{Z,1}^L = n_Z$. این فرض، در حالی که در حضور پالس‌های چندفوتونی ناامن است، برای شبیه‌سازی‌های \lr{BB84} ایده‌آل (با $\mu \to 0$) قابل قبول است. در این حالت، خطای فاز به طور مستقیم از \lr{QBER} پایۀ $Z$ تخمین زده می‌شود: $e_{\text{bit}} = m_Z / n_Z$.
+
+\subsection{جریمه‌های \lr{PA} و تصحیح}
+
+جریمه‌های \lr{PA} و تصحیح، بیت‌های ثابتی هستند که در فرآیند تقویت حریم خصوصی و تأیید تصحیح خطا از دست می‌روند. این جریمه‌ها به صورت زیر محاسبه می‌شوند:
+\begin{equation}
+	\text{PA penalty} = \log_2\!\left(\frac{1}{2\,\varepsilon_{\text{smooth}}}\right) + \log_2\!\left(\frac{1}{\varepsilon_{\text{PA}}}\right), \qquad \text{Correction penalty} = \log_2\!\left(\frac{2}{\varepsilon_{\text{cor}}}\right).
+\end{equation}
+این جریمه‌ها در متد \lr{\texttt{\_compute\_pa\_terms}} پیاده‌سازی شده‌اند. در این متد، ابتدا هر مقدار $\varepsilon$ با استفاده از متد \lr{\texttt{\_log\_inv\_clamp}} برش داده می‌شود تا از $\log_2(0)$ یا مقادیر بسیار ناپایدار جلوگیری شود. این متد، اگر مقدار ورودی کمتر از \lr{\texttt{\_TIGHT\_PROOF\_EPS\_MIN}} (که برابر $10^{-300}$ است) باشد، آن را به این حداقل برش می‌دهد. این برش اطمینان می‌دهد که حتی در صورت تنظیم $\varepsilon = 0$ به اشتباه، محاسبات منجر به \lr{$-\infty$} نشوند. در عمل، این جریمه‌ها معمولاً در حدود چند ده بیت هستند و در شبیه‌سازی‌های با کلیدهای طولانی (میلیون‌ها بیت) ناچیز هستند، اما در کلیدهای کوتاه می‌توانند تأثیر قابل توجهی بر طول کلید نهایی داشته باشند.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+
+\subsection{سلسلۀ کلاس‌ها و وارثت}
+
+ماژول \lr{\texttt{tight.py}} از یک طراحی سلسله‌مراتبی استفاده می‌کند که در آن کلاس اصلی \lr{\texttt{BB84TightProof}} از کلاس \lr{\texttt{Lim2014Proof}} (که خود از \lr{\texttt{FiniteKeyProof}} انتزاعی ارث می‌برد) ارث می‌برد. این طراحی چند لایه به ماژول اجازه می‌دهد تا از زیرساخت‌های مشترک مانند محاسبۀ آنتروپی باینری، تخصیص پایۀ \lr{$\varepsilon$} و ابزارهای \lr{clamp} عددی بهره ببرد و در عین حال، منطق محاسبۀ کلید را با رویکردی متفاوت بازنویسی کند. در ادامه، ساختار اصلی کلاس را به صورت خلاصه نمایش می‌دهیم:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class BB84TightProof(Lim2014ProofBase):
+		__implementation_version__ = "3.7.6-fixed"
+		
+		def __repr__(self) -> str:
+		return f"BB84TightProof(impl_version='{self.__implementation_version__}')"
+	\end{lstlisting}
+\end{LTR}
+
+استفاده از ویژگی کلاس \lr{\texttt{\_\_implementation\_version\_\_}} به عنوان یک شناسۀ نسخه، اجازه می‌دهد تا در زمان اجرا، نسخۀ دقیق پیاده‌سازی مورد استفاده را شناسایی کنیم. این ویژگی برای ردیابی پروونانس (\lr{provenance}) در شبیه‌سازی‌های تولیدی حیاتی است، زیرا به کاربر اجازه می‌دهد بداند کدام نسخۀ اثبات امنیتی نتایج یک شبیه‌سازی خاص را تولید کرده است. متد \lr{\texttt{\_\_repr\_\_}} نیز یک نمایش متنی خوانا از کلاس ارائه می‌دهد که در \lr{debugging} و گزارش‌گیری مفید است. عبارت \lr{``3.7.6-fixed''} نشان‌دهندۀ نسخۀ 3.7.6 با اصلاح یک باگ منطقی حیاتی است.
+
+\subsection{شمارۀ خطاهای ساختاریافته}
+
+ماژول یک \lr{enum} به نام \lr{\texttt{ErrorCode}} تعریف می‌کند که تمام کدهای خطای ممکن را شامل می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class ErrorCode(Enum):
+		INVALID_PARAMS = "INVALID_PARAMS"
+		INVALID_DECOY_ESTIMATES_TYPE = "INVALID_DECOY_ESTIMATES_TYPE"
+		MISSING_DECOY_FIELDS = "MISSING_DECOY_FIELDS"
+		INVALID_STATS_MAP = "INVALID_STATS_MAP"
+		MISSING_SIGNAL_CONFIG = "MISSING_SIGNAL_CONFIG"
+		INVALID_PULSE_CONFIG = "INVALID_PULSE_CONFIG"
+		NO_SIGNAL_PULSES_SENT = "NO_SIGNAL_PULSES_SENT"
+		INSUFFICIENT_STATISTICS = "INSUFFICIENT_STATISTICS"
+		INCONSISTENT_MEASUREMENT = "INCONSISTENT_MEASUREMENT"
+		NON_FINITE_VALUE = "NON_FINITE_VALUE"
+		PHASE_ERROR_CLAMPED = "PHASE_ERROR_CLAMPED"
+		INVALID_YIELD_BOUND = "INVALID_YIELD_BOUND"
+		INVALID_ERROR_RATE_BOUND = "INVALID_ERROR_RATE_BOUND"
+	\end{lstlisting}
+\end{LTR}
+
+استفاده از \lr{enum} به جای رشته‌های خام، چندین مزیت دارد: نخست، جلوگیری از خطاهای املایی در نام کدها؛ دوم، تکمیل خودکار در ویرایشگرهای کد؛ سوم، امکان جستجو و بازبینی سیستماتیک. هر کد خطا معنای مشخصی دارد. به عنوان مثال، \lr{\texttt{INVALID\_DECOY\_ESTIMATES\_TYPE}} نشان می‌دهد که شیء ورودی \lr{decoy\_estimates} نه از نوع \lr{\texttt{DecoyEstimatesInput}} است و نه دارای فیلدهای مورد نیاز است. \lr{\texttt{MISSING\_DECOY\_FIELDS}} نشان می‌دهد که فیلدهای \lr{\texttt{yield\_1\_lower\_bound}} یا \lr{\texttt{error\_rate\_1\_upper\_bound}} در شیء ورودی موجود نیستند. \lr{\texttt{NON\_FINITE\_VALUE}} نشان می‌دهد که یک مقدار میانی در محاسبات به \lr{NaN} یا \lr{Inf} تبدیل شده است. این کدها در شیء \lr{\texttt{KeyCalculationResult}} در فیلد \lr{\texttt{error\_codes}} ذخیره می‌شوند و در متد \lr{\texttt{\_finalize\_result}} به رشته تبدیل می‌شوند تا در خروجی \lr{JSON} قابل سریال‌سازی باشند.
+
+\subsection{ساختار \lr{dataclass} برای ورودی و خروجی}
+
+ماژول دو \lr{dataclass} اصلی تعریف می‌کند. نخست، \lr{\texttt{DecoyEstimatesInput}} که ورودی نرمال‌شدۀ تخمین‌های \lr{Decoy} را نگه می‌دارد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass
+		class DecoyEstimatesInput:
+		"""
+		Normalized decoy estimates required for the key calculation.
+		This proof expects the bit error rate (e1_bit_ub) from the Z-basis
+		and the yield (Y1_L_rate) which is assumed basis-independent.
+		"""
+		Y1_L_rate: float
+		e1_bit_ub: float  # This is e1_z_ub (error rate in Z-basis)
+	\end{lstlisting}
+\end{LTR}
+
+این \lr{dataclass} دو فیلد دارد: \lr{\texttt{Y1\_L\_rate}} که کران پایین بازده تک‌فوتونی است (به صورت یک نسبت، مستقل از پایه) و \lr{\texttt{e1\_bit\_ub}} که کران بالای خطای بیت تک‌فوتونی در پایۀ $Z$ است. در این طراحی، فرض می‌شود که $Y_1$ مستقل از پایه است (یعنی $Y_{1,X} = Y_{1,Z} = Y_1$) که یک فرض استاندارد در پروتکل‌های \lr{Decoy-State BB84} است. این \lr{dataclass} در متد \lr{\texttt{\_normalize\_decoy\_estimates}} از ورودی‌های مختلف (شیء \lr{\texttt{DecoyEstimates}} از \lr{base.py}، دیکشنری، یا خود \lr{\texttt{DecoyEstimatesInput}}) ساخته می‌شود تا یک رابط یکنواخت برای ادامه‌ی محاسبات فراهم شود.
+
+دوم، \lr{\texttt{KeyCalculationResult}} که خروجی نهایی ماژول است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass
+		class KeyCalculationResult:
+		secure_key_length: int = 0
+		diagnostics: Dict[str, Any] = field(default_factory=dict)
+		error_codes: List[str] = field(default_factory=list)
+		metadata: Dict[str, Any] = field(default_factory=dict)
+	\end{lstlisting}
+\end{LTR}
+
+این \lr{dataclass} چهار فیلد دارد: \lr{\texttt{secure\_key\_length}} که طول کلید امن نهایی به صورت یک عدد صحیح غیرمنفی است؛ \lr{\texttt{diagnostics}} که یک دیکشنری شامل تمام مقادیر میانی محاسبه (مانند $n_X$، $m_X$، $n_Z$، $m_Z$، \lr{QBER}، نشت تصحیح خطا، خطای فاز، جریمه‌های \lr{PA} و آنتروپی موجود) است؛ \lr{\texttt{error\_codes}} که لیستی از کدهای خطای رخ داده است؛ و \lr{\texttt{metadata}} که شامل اطلاعاتی مانند زمان‌شناسه (\lr{timestamp}) و مدت زمان محاسبه به میلی‌ثانیه است. استفاده از \lr{\texttt{field(default\_factory=dict)}} به جای مقدار پیش‌فرض \lr{\texttt{\{\}}} یک الگوی استاندارد \lr{Python} است که از اشتراک‌گذاری \lr{state} تصادفی میان نمونه‌ها جلوگیری می‌کند.
+
+\subsection{استثناهای سفارشی}
+
+ماژول دو استثنای سفارشی تعریف می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class ParameterValidationError(ValueError): pass
+		class QKDSimulationError(RuntimeError): pass
+	\end{lstlisting}
+\end{LTR}
+
+\lr{\texttt{ParameterValidationError}} از \lr{\texttt{ValueError}} ارث می‌برد و برای خطاهای مربوط به پیکربندی پارامترها (مانند $\varepsilon_{\text{sec}} \le \varepsilon_{\text{cor}}$) استفاده می‌شود. \lr{\texttt{QKDSimulationError}} از \lr{\texttt{RuntimeError}} ارث می‌برد و برای خطاهای زمان اجرا (مانند ناسازگاری اندازه‌گیری) استفاده می‌شود. این جداسازی استثناها به کاربر اجازه می‌دهد به صورت انتخابی آن‌ها را بگیرد (\lr{catch}) و رفتار متفاوتی برای هر نوع خطا نشان دهد. در متد \lr{\texttt{calculate\_key\_length}}، این استثناها در یک بلوک \lr{\texttt{try/except}} گرفته می‌شوند و به جای \lr{raise} مجدد، در فیلد \lr{\texttt{error\_codes}} ثبت می‌شوند تا رفتار \lr{fail-safe} حفظ شود.
+
+\subsection{ثابت‌های عددی و برش‌ها}
+
+ماژول چندین ثابت عددی برای پایداری محاسبات تعریف می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		_TIGHT_PROOF_EPS_MIN = 1e-300
+		DEFAULT_ENTROPY_PROB_CLAMP = 1e-12
+		DEFAULT_NUMERIC_TOL = 1e-9
+	\end{lstlisting}
+\end{LTR}
+
+\lr{\texttt{\_TIGHT\_PROOF\_EPS\_MIN}} کمترین مقدار مجاز برای $\varepsilon$ در محاسبات لگاریتمی است و از \lr{$\log_2(0) = -\infty$} جلوگیری می‌کند. \lr{\texttt{DEFAULT\_ENTROPY\_PROB\_CLAMP}} حد برش برای احتمالات در محاسبۀ آنتروپی باینری است و از \lr{$\log_2(0)$} در $p = 0$ یا $p = 1$ جلوگیری می‌کند. \lr{\texttt{DEFAULT\_NUMERIC\_TOL}} تلورانس عددی عمومی برای مقایسه‌ها و برش‌ها است. این ثابت‌ها از ماژول \lr{\texttt{qkd.constants}} نیز وارد می‌شوند (\lr{\texttt{NUMERIC\_ABS\_TOL}} و \lr{\texttt{ENTROPY\_PROB\_CLAMP}}) تا با سایر بخش‌های فریم‌ورک یکنواخت باشند. این طراحی، مقادیر برش را به صورت متمرکز قابل تنظیم می‌کند و از پراکندگی مقادیر در کد جلوگیری می‌کند.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+
+\subsection{تخصیص بودجۀ $\varepsilon$ با حاشیۀ عددی}
+
+متد \lr{\texttt{allocate\_epsilons}} یکی از حیاتی‌ترین بخش‌های ماژول است که بودجۀ امنیتی $\varepsilon_{\text{sec}}$ را میان اجزای مختلف تقسیم می‌کند. در ادامه، نسخۀ کامل این متد را با توضیح خط به خط ارائه می‌دهیم:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def allocate_epsilons(self) -> EpsilonAllocation:
+		eps_sec = self.p.eps_sec
+		eps_cor = self.p.eps_cor
+		remaining_eps = eps_sec - eps_cor
+		if remaining_eps <= 0:
+		raise ParameterValidationError(
+		f"eps_sec ({eps_sec:.2e}) must be greater than "
+		f"eps_cor ({eps_cor:.2e}).")
+		
+		# Use an absolute safety margin to handle 64-bit float rounding
+		absolute_margin = 1e-20
+		budget_to_alloc = remaining_eps - absolute_margin
+		
+		if budget_to_alloc <= 0:
+		raise ParameterValidationError(
+		f"Remaining epsilon budget ({remaining_eps:.2e}) "
+		f"is too small after applying margin.")
+		
+		# Allocate 4 parts: 1 for pe, 2 for smooth, 1 for pa
+		eps_pe = budget_to_alloc / 4.0
+		eps_smooth = budget_to_alloc / 4.0
+		eps_pa = budget_to_alloc - eps_pe - (2.0 * eps_smooth)
+		
+		num_pulse_configs = len(getattr(self.p.source, 'pulse_configs', []))
+		denominator = max(1, 4 * num_pulse_configs + 1)
+		eps_phase_est = eps_pe / denominator
+		
+		allocation = EpsilonAllocation(
+		eps_sec=eps_sec, eps_cor=eps_cor, eps_pe=eps_pe,
+		eps_smooth=eps_smooth, eps_pa=eps_pa, eps_phase_est=eps_phase_est
+		)
+		allocation.validate()
+		return allocation
+	\end{lstlisting}
+\end{LTR}
+
+در خطوط ابتدایی، $\varepsilon_{\text{sec}}$ و $\varepsilon_{\text{cor}}$ از پیکربندی خوانده می‌شوند و بودجۀ باقی‌مانده به صورت $\varepsilon_{\text{sec}} - \varepsilon_{\text{cor}}$ محاسبه می‌شود. اگر این مقدار غیرمثبت باشد (یعنی $\varepsilon_{\text{cor}} \ge \varepsilon_{\text{sec}}$)، استثنای \lr{\texttt{ParameterValidationError}} \lr{raise} می‌شود زیرا این حالت از نظر تئوری غیرممکن است. سپس یک حاشیۀ امنیتی مطلق به اندازۀ $10^{-20}$ از بودجۀ باقی‌مانده کم می‌شود. این حاشیه برای رفع یک باگ ظریف در ریاضیات ممیز شناور ۶۴-بیت ضروری است: در برخی حالت‌ها، مجموع $\varepsilon_{\text{cor}} + (\varepsilon_{\text{sec}} - \varepsilon_{\text{cor}})$ به دلیل خطای گردکردن، کمی بزرگتر از $\varepsilon_{\text{sec}}$ می‌شود و اعتبارسنجی \lr{\texttt{allocation.validate()}} شکست می‌خورد. با کم کردن این حاشیۀ کوچک، تضمین می‌شود که نامساوی به صورت عددی برقرار می‌ماند.
+
+سپس بودجه میان چهار جزء تقسیم می‌شود: $\varepsilon_{\text{PE}}$ یک چهارم، $\varepsilon_{\text{smooth}}$ یک چهارم (که در فرمول دو بار استفاده می‌شود، یعنی مجموع $2 \cdot \varepsilon_{\text{smooth}}$ نیمی از بودجه می‌شود) و $\varepsilon_{\text{PA}}$ به عنوان باقی‌مانده. این تقسیم متقارن تضمین می‌کند که نامساوی $\varepsilon_{\text{PE}} + 2\,\varepsilon_{\text{smooth}} + \varepsilon_{\text{PA}} \le \text{budget}$ به طور دقیق برقرار باشد. در نهایت، $\varepsilon_{\text{phase\_est}}$ به صورت $\varepsilon_{\text{PE}} / (4 N_{\text{configs}} + 1)$ محاسبه می‌شود که در آن $N_{\text{configs}}$ تعداد پیکربندی‌های پالس است. این فرمول، بودجۀ تخمین خطای فاز را به تعداد رویدادهای تخمین تقسیم می‌کند و هر رویداد یک سهم مساوی دریافت می‌کند. در پایان، اعتبارسنجی نهایی با \lr{\texttt{allocation.validate()}} انجام می‌شود که در صورت بروز هرگونه ناسازگاری، استثنا \lr{raise} می‌کند.
+
+\subsection{متد اصلی محاسبۀ طول کلید}
+
+متد \lr{\texttt{calculate\_key\_length}} هستۀ اصلی ماژول است که تمام مراحل محاسبۀ طول کلید را هماهنگ می‌کند. در ادامه، نسخۀ کامل این متد را با توضیح بخش‌به‌بخش ارائه می‌دهیم:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def calculate_key_length(
+		self,
+		stats_map: Dict[str, TallyCounts],
+		decoy_estimates: Optional[Union[Dict[str, Any], object]] = None
+		) -> KeyCalculationResult:
+		run_id = getattr(self.p, 'run_id', None)
+		self.logger.info("event=key_calc_start run_id=%s", run_id)
+		start_time = time.perf_counter()
+		result = KeyCalculationResult()
+		
+		try:
+		if decoy_estimates is None:
+		return super().calculate_key_length(stats_map)
+		
+		is_decoy_protocol = bool(decoy_estimates)
+		
+		if is_decoy_protocol:
+		signal_stats, p_sig_cfg = self._validate_stats_map_decoy(
+		stats_map, result)
+		if result.error_codes:
+		return self._finalize_result(result, start_time)
+		
+		decoy_norm = self._normalize_decoy_estimates(
+		decoy_estimates, result)
+		if result.error_codes:
+		return self._finalize_result(result, start_time)
+		
+		s_x_1_L_count, s_z_1_L_count, n_x, _, n_z = \
+		self._compute_base_counts_decoy(
+		signal_stats, p_sig_cfg, decoy_norm, result)
+		e1_bit_ub = decoy_norm.e1_bit_ub
+	\end{lstlisting}
+\end{LTR}
+
+در خطوط ابتدایی، یک شناسۀ اجرا (\lr{run\_id}) از پیکرببری خوانده می‌شود (اگر موجود باشد) و یک رویداد شروع در لاگ ثبت می‌شود. زمان شروع با \lr{\texttt{time.perf\_counter()}} (که دارای دقت میکروثانیه است) ثبت می‌شود تا در پایان، مدت زمان محاسبه گزارش شود. سپس یک شیء \lr{\texttt{KeyCalculationResult}} خالی ساخته می‌شود. اگر \lr{\texttt{decoy\_estimates}} برابر \lr{None} باشد، متد کلاس پایه فراخوانی می‌شود تا از فروپاشی جلوگیری شود. در غیر این صورت، بررسی می‌شود که آیا پروتکل از نوع \lr{Decoy} است یا خیر (با بررسی \lr{\texttt{bool(decoy\_estimates)}} که در صورت دیکشنری خالی یا شیء فاقد محتوا، \lr{False} برمی‌گرداند).
+
+در مسیر \lr{Decoy-State}، ابتدا \lr{\texttt{stats\_map}} با متد \lr{\texttt{\_validate\_stats\_map\_decoy}} اعتبارسنجی می‌شود. این متد بررسی می‌کند که کلید \lr{``signal''} در \lr{\texttt{stats\_map}} موجود باشد و مقدار آن از نوع \lr{\texttt{TallyCounts}} باشد. همچنین پیکرببری پالس سیگنال را از پیکرببری منبع استخراج می‌کند و بررسی می‌کند که فیلد \lr{\texttt{mean\_photon\_number}} موجود باشد. در صورت بروز هرگونه خطا، کد خطای مناسب ثبت می‌شود و متد با فراخوانی \lr{\texttt{\_finalize\_result}} به طور زودهنگام بازمی‌گردد. سپس تخمین‌های \lr{Decoy} با متد \lr{\texttt{\_normalize\_decoy\_estimates}} نرمال‌سازی می‌شوند. این متد، ورودی‌های مختلف (شیء \lr{\texttt{DecoyEstimates}} از \lr{base.py}، دیکشنری، یا خود \lr{\texttt{DecoyEstimatesInput}}) را به یک شیء یکنواخت \lr{\texttt{DecoyEstimatesInput}} تبدیل می‌کند. سپس شمارش‌های پایۀ \lr{Decoy} با متد \lr{\texttt{\_compute\_base\_counts\_decoy}} محاسبه می‌شوند که در ادامه به تفصیل توضیح داده خواهد شد.
+
+در مسیر \lr{non-Decoy}، کد به صورت متفاوت عمل می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		else:
+		result.diagnostics['info'] = (
+		"Running in non-decoy mode; using conservative estimates.")
+		signal_stats = self._get_total_stats_non_decoy(
+		stats_map, result)
+		if result.error_codes:
+		return self._finalize_result(result, start_time)
+		
+		# Assume key is from X-basis, phase error from Z-basis
+		n_x = float(signal_stats.sifted_x)
+		m_x = float(signal_stats.errors_sifted_x)
+		n_z = float(signal_stats.sifted_z)
+		m_z = float(signal_stats.errors_sifted_z)
+		
+		# Conservative: all sifted bits are single-photon
+		s_x_1_L_count = n_x
+		s_z_1_L_count = n_z
+		
+		e1_bit_ub = self._safe_divide(
+		m_z, n_z, name="qber_z",
+		error_codes=result.error_codes)
+		result.diagnostics['intermediate'] = {
+			"n_x": n_x, "m_x": m_x, "n_z": n_z, "m_z": m_z,
+			"qber_z": e1_bit_ub
+		}
+	\end{lstlisting}
+\end{LTR}
+
+در مسیر \lr{non-Decoy}، ابتدا یک پیام اطلاعاتی در \lr{diagnostics} ثبت می‌شود تا کاربر بداند سیستم در حالت \lr{non-Decoy} اجرا می‌شود. سپس تمام آمار از \lr{\texttt{stats\_map}} با متد \lr{\texttt{\_get\_total\_stats\_non\_decoy}} ادغام می‌شود. این متد تمام شیءهای \lr{\texttt{TallyCounts}} در \lr{\texttt{stats\_map}} را با متد \lr{\texttt{merged}} ترکیب می‌کند تا یک شیء \lr{\texttt{TallyCounts}} واحد به دست آید. سپس شمارش‌های پایۀ $X$ و $Z$ استخراج می‌شوند. در این حالت، فرض محافظه‌کارانه این است که تمام بیت‌های \lr{sifted} از تک‌فوتون‌ها نشأت گرفته‌اند، یعنی $s_{X,1}^L = n_X$ و $s_{Z,1}^L = n_Z$. این فرض در حضور پالس‌های چندفوتونی ناامن است، اما برای شبیه‌سازی‌های \lr{BB84} ایده‌آل قابل قبول است. خطای بیت به طور مستقیم از \lr{QBER} پایۀ $Z$ تخمین زده می‌شود: $e_{1,\text{bit}} = m_Z / n_Z$.
+
+سپس، در هر دو مسیر، مراحل نهایی محاسبه انجام می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		min_s_z_1_L = getattr(self.p, 'S_Z_1_L_MIN_FOR_PHASE_EST', 100)
+		
+		if n_z <= 0 or s_z_1_L_count < min_s_z_1_L:
+		result.error_codes.append(ErrorCode.INSUFFICIENT_STATISTICS)
+		return self._finalize_result(result, start_time)
+		
+		if is_decoy_protocol:
+		n_key, m_key = signal_stats.sifted_x, signal_stats.errors_sifted_x
+		else:
+		n_key, m_key = n_x, m_x
+		
+		leak_ec = self._compute_leak_ec(n_key, m_key, result)
+		e1_phase_ub = self._compute_phase_error_ub(
+		s_z_1_L_count, e1_bit_ub, result)
+		pa_corr_bits = self._compute_pa_terms(result)
+		
+		available_entropy = s_x_1_L_count * (
+		1.0 - self._binary_entropy_safe(e1_phase_ub))
+		
+		key_len_float = available_entropy - leak_ec - pa_corr_bits
+		
+		self._finite_or_error("final_key_length", key_len_float, result)
+		result.secure_key_length = self._clamp_key_length(key_len_float)
+		self._populate_final_diagnostics(
+		result, available_entropy, key_len_float, pa_corr_bits)
+		
+		except (ParameterValidationError, QKDSimulationError) as e:
+		self.logger.error(
+		"event=key_calc_error run_id=%s error='%s'", run_id, e)
+		result.error_codes.append(ErrorCode.INVALID_PARAMS)
+		
+		return self._finalize_result(result, start_time)
+	\end{lstlisting}
+\end{LTR}
+
+در این بخش، ابتدا حداقل شمارش تک‌فوتونی در پایۀ $Z$ برای تخمین خطای فاز از پیکرببری خوانده می‌شود (با مقدار پیش‌فرض ۱۰۰). اگر $n_Z \le 0$ یا $s_{Z,1}^L$ کمتر از این حداقل باشد، کد خطای \lr{\texttt{INSUFFICIENT\_STATISTICS}} ثبت می‌شود و متد به طور زودهنگام بازمی‌گردد. این بررسی تضمین می‌کند که تخمین خطای فاز به اندازۀ کافی قابل اعتماد است. سپس شمارش‌های پایۀ تولیدکنندۀ کلید ($X$) استخراج می‌شوند. نشت تصحیح خطا با متد \lr{\texttt{\_compute\_leak\_ec}}، کران بالای خطای فاز با متد \lr{\texttt{\_compute\_phase\_error\_ub}} و جریمه‌های \lr{PA} و تصحیح با متد \lr{\texttt{\_compute\_pa\_terms}} محاسبه می‌شوند. آنگاه آنتروپی موجود به صورت $s_{X,1}^L \cdot (1 - H_2(e_{\text{phase}}))$ محاسبه می‌شود و طول کلید به صورت $\ell = \text{entropy} - \text{leak} - \text{penalties}$ به دست می‌آید. در نهایت، بررسی \lr{\texttt{\_finite\_or\_error}} تضمین می‌کند که مقدار نهایی متناهی است و متد \lr{\texttt{\_clamp\_key\_length}} از کلاس پایه، مقدار را به یک عدد صحیح غیرمنفی تبدیل می‌کند. در صورت بروز هرگونه استثنای \lr{\texttt{ParameterValidationError}} یا \lr{\texttt{QKDSimulationError}}، استثنا گرفته می‌شود، در لاگ ثبت می‌گردد و کد خطای \lr{\texttt{INVALID\_PARAMS}} به \lr{result} اضافه می‌شود.
+
+\subsection{محاسبۀ شمارش تک‌فوتونی در حالت \lr{Decoy-State}}
+
+متد \lr{\texttt{\_compute\_base\_counts\_decoy}} شمارش‌های تک‌فوتونی را در هر دو پایۀ $X$ و $Z$ محاسبه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _compute_base_counts_decoy(self, signal_stats, p_sig_cfg,
+		decoy_norm, result):
+		mu_s = p_sig_cfg.mean_photon_number
+		p1_s = self._single_photon_prob(mu_s)
+		
+		# Key is from X-basis
+		alice_x_prob = 1.0 - getattr(
+		self.p.protocol, "alice_z_basis_prob", 0.5)
+		bob_x_prob = 1.0 - getattr(
+		self.p.protocol, "bob_z_basis_prob", 0.5)
+		s_x_1_L_count = float(signal_stats.sent_x) * p1_s * \
+		decoy_norm.Y1_L_rate * alice_x_prob * bob_x_prob
+		n_x = float(signal_stats.sifted_x)
+		m_x = float(signal_stats.errors_sifted_x)
+		if s_x_1_L_count > n_x + NUMERIC_ABS_TOL:
+		s_x_1_L_count = n_x
+		
+		# Phase error is from Z-basis
+		alice_z_prob = getattr(self.p.protocol, "alice_z_basis_prob", 0.5)
+		bob_z_prob = getattr(self.p.protocol, "bob_z_basis_prob", 0.5)
+		s_z_1_L_count = float(signal_stats.sent_z) * p1_s * \
+		decoy_norm.Y1_L_rate * alice_z_prob * bob_z_prob
+		n_z = float(signal_stats.sifted_z)
+		if s_z_1_L_count > n_z + NUMERIC_ABS_TOL:
+		s_z_1_L_count = n_z
+		
+		result.diagnostics['intermediate'] = {
+			"mu_s": mu_s, "p1_s": p1_s,
+			"s_x_1_L_count": s_x_1_L_count, "n_x": n_x, "m_x": m_x,
+			"s_z_1_L_count": s_z_1_L_count, "n_z": n_z
+		}
+		return s_x_1_L_count, s_z_1_L_count, n_x, m_x, n_z
+	\end{lstlisting}
+\end{LTR}
+
+در این متد، ابتدا شدت سیگنال $\mu_s$ از پیکرببری خوانده می‌شود و احتمال ارسال تک‌فوتون $P(1 \mid \mu_s) = \mu_s \cdot e^{-\mu_s}$ با متد \lr{\texttt{\_single\_photon\_prob}} محاسبه می‌شود. سپس احتمال انتخاب پایۀ $X$ توسط آلیس و باب از پیکرببری خوانده می‌شود (با مقدار پیش‌فرض ۰.۵ در صورت عدم تنظیم). شمارش تک‌فوتونی در پایۀ $X$ به صورت $N_{\text{sent},X} \cdot P(1 \mid \mu_s) \cdot Y_1^L \cdot p_X^A \cdot p_X^B$ محاسبه می‌شود. سپس شمارش‌های \lr{sifted} و خطاهای پایۀ $X$ استخراج می‌شوند. یک بررسی محافظه‌کارانه این است که اگر $s_{X,1}^L > n_X$ شود (که از نظر فیزیکی غیرممکن است)، مقدار به $n_X$ بریده می‌شود. این برش با تلورانس \lr{\texttt{NUMERIC\_ABS\_TOL}} انجام می‌شود تا خطاهای کوچک گردکردن نادیده گرفته شوند. به طور متقابل، شمارش تک‌فوتونی در پایۀ $Z$ به صورت مشابه محاسبه می‌شود. در پایان، تمام مقادیر میانی در \lr{diagnostics} ذخیره می‌شوند تا برای تحلیل و \lr{debugging} قابل دسترس باشند.
+
+\subsection{محاسبۀ نشت تصحیح خطا}
+
+متد \lr{\texttt{\_compute\_leak\_ec}} نشت تصحیح خطا را محاسبه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _compute_leak_ec(self, n_key_basis: float, m_key_basis: float,
+		result: KeyCalculationResult) -> float:
+		qber_key_basis = self._safe_divide(
+		m_key_basis, n_key_basis, name="qber_key_basis",
+		error_codes=result.error_codes)
+		f_ec = getattr(self.p, 'f_error_correction', 1.1)
+		leak_ec = f_ec * self._binary_entropy_safe(qber_key_basis) * n_key_basis
+		
+		di = result.diagnostics.setdefault('intermediate', {})
+		di['qber_key_basis'] = qber_key_basis
+		di['leak_ec_bits'] = leak_ec
+		return leak_ec
+	\end{lstlisting}
+\end{LTR}
+
+در این متد، ابتدا \lr{QBER} پایۀ تولیدکنندۀ کلید به صورت $E_{\text{bit}} = m_{\text{key}} / n_{\text{key}}$ محاسبه می‌شود. تابع \lr{\texttt{\_safe\_divide}} (از کلاس پایه) در صورت تقسیم بر صفر، مقدار ۰.۵ (بدترین حالت) را برمی‌گرداند و کد خطای مناسب را ثبت می‌کند. سپس بازدهی تصحیح خطا $f_{\text{EC}}$ از پیکرببری خوانده می‌شود (با مقدار پیش‌فرض ۱.۱). نشت تصحیح خطا به صورت $f_{\text{EC}} \cdot H_2(E_{\text{bit}}) \cdot n_{\text{key}}$ محاسبه می‌شود که در آن $H_2$ آنتروپی باینری است. این فرمول نشان می‌دهد که نشت متناسب با تعداد بیت‌های \lr{sifted} و آنتروپی خطا است. در پایان، مقادیر میانی در \lr{diagnostics} ذخیره می‌شوند. یک نکتۀ مهم این است که نام متغیرها در این متد به صورت \lr{\texttt{n\_key\_basis}} و \lr{\texttt{m\_key\_basis}} انتخاب شده تا به وضوح نشان دهد که این مقادیر مربوط به پایۀ تولیدکنندۀ کلید (نه لزوماً $Z$) هستند. این تغییر نام، یک اصلاح \lr{semantic} نسبت به نسخه‌های قبلی است که به اشتباه از \lr{\texttt{n\_z}} و \lr{\texttt{m\_z}} استفاده می‌کردند.
+
+\subsection{محاسبۀ کران بالای خطای فاز}
+
+متد \lr{\texttt{\_compute\_phase\_error\_ub}} کران بالای خطای فاز را با استفاده از نامساوی \lr{Hoeffding} محاسبه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _compute_phase_error_ub(self, s_z_1_L_count: float,
+		e1_bit_ub: float,
+		result: KeyCalculationResult) -> float:
+		di = result.diagnostics.setdefault('intermediate', {})
+		if self.p.assume_phase_equals_bit_error:
+		di['e1_phase_ub'] = e1_bit_ub
+		return e1_bit_ub
+		
+		eps_ph_est_safe, _ = self._log_inv_clamp(self.eps_alloc.eps_phase_est)
+		log_term = -math.log(eps_ph_est_safe)
+		
+		if s_z_1_L_count <= 0:
+		di['e1_phase_ub'] = 0.5
+		return 0.5
+		
+		delta = self._safe_sqrt(log_term / (2 * s_z_1_L_count))
+		e1_phase_ub = e1_bit_ub + delta
+		
+		if e1_phase_ub > 0.5:
+		e1_phase_ub = 0.5
+		
+		di['e1_phase_ub'] = e1_phase_ub
+		di['phase_error_delta'] = delta
+		return e1_phase_ub
+	\end{lstlisting}
+\end{LTR}
+
+در این متد، ابتدا بررسی می‌شود که آیا پرچم \lr{\texttt{assume\_phase\_equals\_bit\_error}} در پیکرببری فعال است یا خیر. اگر فعال باشد، فرض می‌شود $e_{\text{phase}} = e_{\text{bit}}$ که یک تقریب ساده اما محافظه‌کارانه در شرایطی است که شمارش پایۀ $Z$ ناکافی است. در غیر این صورت، نامساوی \lr{Hoeffding} اعمال می‌شود. ابتدا $\varepsilon_{\text{phase\_est}}$ با متد \lr{\texttt{\_log\_inv\_clamp}} برش داده می‌شود تا از $\log(0)$ جلوگیری شود. سپس $\delta = \sqrt{-\ln(\varepsilon_{\text{phase\_est}}) / (2 \cdot s_{Z,1}^L)}$ محاسبه می‌شود. تابع \lr{\texttt{\_safe\_sqrt}} در صورت ورودی منفی، صفر برمی‌گرداند. کران بالای خطای فاز به صورت $e_{\text{phase}} = e_{\text{bit}} + \delta$ محاسبه می‌شود. اگر این مقدار از ۰.۵ بیشتر شود، به ۰.۵ بریده می‌شود زیرا آنتروپی باینری در ۰.۵ بیشینه است و مقدار بیشتر از ۰.۵ از نظر فیزیکی معنایی ندارد. در پایان، مقادیر میانی در \lr{diagnostics} ذخیره می‌شوند. این متد به طور ویژه از شمارش پایۀ $Z$ (یعنی \lr{\texttt{s\_z\_1\_L\_count}}) استفاده می‌کند زیرا خطای فاز از پایۀ $Z$ تخمین زده می‌شود؛ این یک اصلاح حیاتی نسبت به نسخه‌های قبلی است که به اشتباه از شمارش پایۀ $X$ استفاده می‌کردند.
+
+\subsection{محاسبۀ جریمه‌های \lr{PA} و تصحیح}
+
+متد \lr{\texttt{\_compute\_pa\_terms}} جریمه‌های تقویت حریم خصوصی و تصحیح را محاسبه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _compute_pa_terms(self, result):
+		eps_smooth_safe, _ = self._log_inv_clamp(self.eps_alloc.eps_smooth)
+		eps_pa_safe, _ = self._log_inv_clamp(self.eps_alloc.eps_pa)
+		eps_cor_safe, _ = self._log_inv_clamp(self.eps_alloc.eps_cor)
+		pa_term_bits = _safe_log2(1.0 / (2.0 * eps_smooth_safe)) + \
+		_safe_log2(1.0 / eps_pa_safe)
+		corr_term_bits = _safe_log2(2.0 / eps_cor_safe)
+		
+		di = result.diagnostics.setdefault('intermediate', {})
+		di['pa_corr_bits'] = pa_term_bits + corr_term_bits
+		di['pa_bits'] = pa_term_bits
+		di['corr_bits'] = corr_term_bits
+		
+		return pa_term_bits + corr_term_bits
+	\end{lstlisting}
+\end{LTR}
+
+در این متد، ابتدا هر یک از $\varepsilon_{\text{smooth}}$، $\varepsilon_{\text{PA}}$ و $\varepsilon_{\text{cor}}$ با متد \lr{\texttt{\_log\_inv\_clamp}} برش داده می‌شوند. این برش تضمین می‌کند که در صورت تنظیم صفر به اشتباه، محاسبات منجر به \lr{$-\infty$} نشوند. سپس جریمۀ \lr{PA} به صورت $\log_2(1 / (2 \varepsilon_{\text{smooth}})) + \log_2(1 / \varepsilon_{\text{PA}})$ محاسبه می‌شود و جریمۀ تصحیح به صورت $\log_2(2 / \varepsilon_{\text{cor}})$. تابع \lr{\texttt{\_safe\_log2}} (در سطح ماژول) در صورت ورودی غیرمثبت، صفر برمی‌گرداند. در پایان، مجموع جریمه‌ها برگردانده می‌شود و مقادیر میانی در \lr{diagnostics} ذخیره می‌شوند. این جریمه‌ها معمولاً در حدود چند ده بیت هستند و در شبیه‌سازی‌های با کلیدهای طولانی ناچیز هستند، اما در کلیدهای کوتاه می‌توانند تأثیر قابل توجهی بر طول کلید نهایی داشته باشند.
+
+\subsection{توابع کمکی پایداری عددی}
+
+چندین تابع کمکی برای پایداری عددی در ماژول تعریف شده‌اند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _log_inv_clamp(self, val):
+		return (_TIGHT_PROOF_EPS_MIN, True) if val < _TIGHT_PROOF_EPS_MIN \
+		else (val, False)
+		
+		def _finite_or_error(self, name, val, result, non_negative=False):
+		if not math.isfinite(val) or (non_negative and val < 0):
+		result.error_codes.append(ErrorCode.NON_FINITE_VALUE)
+		
+		def _binary_entropy_safe(self, p: float) -> float:
+		p_clamped = max(ENTROPY_PROB_CLAMP, min(p, 1 - ENTROPY_PROB_CLAMP))
+		if p_clamped <= 0 or p_clamped >= 1: return 0.0
+		return -p_clamped * math.log2(p_clamped) - \
+		(1 - p_clamped) * math.log2(1 - p_clamped)
+		
+		def _single_photon_prob(self, mu: float) -> float:
+		if mu < 0: raise ParameterValidationError(f"mu cannot be negative: {mu}")
+		if mu == 0: return 0.0
+		return mu * math.exp(-mu)
+		
+		def _safe_sqrt(self, x: float) -> float:
+		if x < 0: return 0.0
+		return math.sqrt(x)
+		
+		def _safe_log2(val: float) -> float:
+		return 0.0 if val <= 0 else math.log2(val)
+	\end{lstlisting}
+\end{LTR}
+
+متد \lr{\texttt{\_log\_inv\_clamp}} مقدار ورودی را به حداقل \lr{\texttt{\_TIGHT\_PROOF\_EPS\_MIN}} برش می‌دهد و یک تاپل شامل مقدار برش‌داده‌شده و یک پرچم (که نشان می‌دهد آیا برش انجام شده یا خیر) برمی‌گرداند. متد \lr{\texttt{\_finite\_or\_error}} بررسی می‌کند که آیا مقدار ورودی متناهی است (نه \lr{NaN} یا \lr{Inf}) و در صورت عدم تناهی، کد خطای \lr{\texttt{NON\_FINITE\_VALUE}} ثبت می‌کند. متد \lr{\texttt{\_binary\_entropy\_safe}} آنتروپی باینری را با برش $p$ به بازۀ $[\varepsilon, 1 - \varepsilon]$ محاسبه می‌کند تا از \lr{$\log_2(0)$} جلوگیری شود. متد \lr{\texttt{\_single\_photon\_prob}} احتمال ارسال تک‌فوتون $P(1 \mid \mu) = \mu \cdot e^{-\mu}$ را محاسبه می‌کند و در صورت $\mu < 0$، استثنا \lr{raise} می‌کند. متد \lr{\texttt{\_safe\_sqrt}} در صورت ورودی منفی، صفر برمی‌گرداند تا از خطای \lr{math domain} جلوگیری شود. تابع سطح ماژول \lr{\texttt{\_safe\_log2}} نیز در صورت ورودی غیرمثبت، صفر برمی‌گرداند. این توابع کمکی در سراسر ماژول برای تضمین پایداری عددی استفاده می‌شوند و از رفتار غیرقابل پیش‌بینی در شرایط مرزی جلوگیری می‌کنند.
+
+\subsection{نرمال‌سازی تخمین‌های \lr{Decoy}}
+
+متد \lr{\texttt{\_normalize\_decoy\_estimates}} ورودی‌های مختلف تخمین \lr{Decoy} را به یک شیء یکنواخت تبدیل می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _normalize_decoy_estimates(self, decoy_estimates, result):
+		# If the input is already the correct type, return it immediately
+		if isinstance(decoy_estimates, DecoyEstimatesInput):
+		return decoy_estimates
+		
+		# Attempt to get attributes from the DecoyEstimates object (from base.py)
+		Y1_L = getattr(decoy_estimates, 'yield_1_lower_bound', None)
+		e1_U = getattr(decoy_estimates, 'error_rate_1_upper_bound', None)
+		
+		if Y1_L is None or e1_U is None:
+		# Fallback for dictionary inputs
+		if isinstance(decoy_estimates, dict):
+		Y1_L = decoy_estimates.get('Y1_L')
+		e1_U = decoy_estimates.get('e1_U')
+		
+		if Y1_L is None or e1_U is None:
+		result.error_codes.append(ErrorCode.MISSING_DECOY_FIELDS)
+		return None
+		
+		return DecoyEstimatesInput(float(Y1_L), float(e1_U))
+	\end{lstlisting}
+\end{LTR}
+
+این متد یک طراحی انعطاف‌پذیر برای پذیرش ورودی‌های مختلف دارد. نخست، اگر ورودی از قبل از نوع \lr{\texttt{DecoyEstimatesInput}} باشد، مستقیماً برگردانده می‌شود. در غیر این صورت، تلاش می‌شود فیلدهای \lr{\texttt{yield\_1\_lower\_bound}} و \lr{\texttt{error\_rate\_1\_upper\_bound}} با \lr{\texttt{getattr}} استخراج شوند (این فیلدها در شیء \lr{\texttt{DecoyEstimates}} از \lr{base.py} موجود هستند). اگر این فیلدها موجود نباشند و ورودی یک دیکشنری باشد، تلاش می‌شود کلیدهای \lr{``Y1\_L''} و \lr{``e1\_U''} استخراج شوند (این کلیدها در برخی پیاده‌سازی‌های قدیمی استفاده می‌شدند). اگر هیچ‌کدام موجود نباشند، کد خطای \lr{\texttt{MISSING\_DECOY\_FIELDS}} ثبت می‌شود و \lr{None} برگردانده می‌شود. در غیر این صورت، یک شیء جدید \lr{\texttt{DecoyEstimatesInput}} با مقادیر تبدیل‌شده به \lr{float} ساخته می‌شود. این طراحی، ماژول را در برابر تغییرات در ساختار ورودی مقاوم می‌کند و اجازه می‌دهد با انواع مختلف شیءهای تخمین \lr{Decoy} از بخش‌های مختلف فریم‌ورک کار کند.
+
+\subsection{نهایی‌سازی نتیجه و ثبت پروونانس}
+
+متد \lr{\texttt{\_finalize\_result}} نتیجه نهایی را نهایی می‌کند و پروونانس را ثبت می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _finalize_result(self, result, start_time):
+		end_time = time.perf_counter()
+		result.metadata['timestamp_utc'] = datetime.now(timezone.utc).isoformat()
+		result.metadata['calculation_time_ms'] = (end_time - start_time) * 1000
+		result.error_codes = [
+		code.value if isinstance(code, Enum) else code
+		for code in result.error_codes
+		]
+		run_id = getattr(self.p, 'run_id', None)
+		if result.error_codes:
+		self.logger.warning(
+		"event=key_calc_abort run_id=%s errors=%s",
+		run_id, result.error_codes)
+		else:
+		self.logger.info(
+		"event=key_calc_finish run_id=%s key_length=%d",
+		run_id, result.secure_key_length)
+		return result
+	\end{lstlisting}
+\end{LTR}
+
+در این متد، زمان پایان با \lr{\texttt{time.perf\_counter()}} ثبت می‌شود و مدت زمان محاسبه به میلی‌ثانیه محاسبه می‌شود. یک زمان‌شناسه‌ی \lr{UTC} با فرمت \lr{ISO 8601} در \lr{metadata} ذخیره می‌شود تا برای ردیابی پروونانس قابل استفاده باشد. سپس کدهای خطا از \lr{enum} به رشته تبدیل می‌شوند تا در خروجی \lr{JSON} قابل سریال‌سازی باشند. در پایان، بر اساس وجود یا عدم وجود خطا، یک رویداد لاگ مناسب ثبت می‌شود: \lr{``key\_calc\_abort''} در صورت خطا و \lr{``key\_calc\_finish''} در صورت موفقیت. این لاگ‌ها برای مانیتورینگ و \lr{debugging} در محیط‌های تولیدی حیاتی هستند. طراحی این متد به گونه‌ای است که همیشه یک شیء \lr{\texttt{KeyCalculationResult}} کامل با پروونانس و \lr{diagnostics} برمی‌گرداند، حتی در صورت بروز خطا.
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+
+\subsection{ورودی‌های ماژول}
+
+ماژول \lr{\texttt{tight.py}} برای انجام محاسبات خود به چندین ورودی از سایر ماژول‌های فریم‌ورک نیاز دارد. این ورودی‌ها به دو دستۀ \lr{پیکرببری} و \lr{آمار زمان اجرا} تقسیم می‌شوند. ورودی‌های پیکرببری در زمان ساخت شیء اثبات امنیتی خوانده می‌شوند و در طول اجرا ثابت می‌مانند، در حالی که ورودی‌های آمار در هر فراخوانی \lr{\texttt{calculate\_key\_length}} به‌روز می‌شوند.
+
+\begin{itemize}
+	\item \lr{\texttt{QKDParams}}: این شیء از ماژول \lr{\texttt{qkd.params}} وارد می‌شود و شامل تمام پارامترهای پیکرببری سیستم است. زیرشئه‌های کلیدی که این ماژول استفاده می‌کند عبارتند از: \lr{\texttt{p.eps\_sec}}، \lr{\texttt{p.eps\_cor}}، \lr{\texttt{p.f\_error\_correction}}، \lr{\texttt{p.assume\_phase\_equals\_bit\_error}}، \lr{\texttt{p.S\_Z\_1\_L\_MIN\_FOR\_PHASE\_EST}} (حداقل شمارش تک‌فوتونی پایۀ $Z$ برای تخمین خطای فاز، با مقدار پیش‌فرض ۱۰۰)، \lr{\texttt{p.run\_id}} (شناسۀ اجرا برای ردیابی پروونانس)، \lr{\texttt{p.source.pulse\_configs}} (لیست پیکرببری‌های پالس) و \lr{\texttt{p.protocol.alice\_z\_basis\_prob}} و \lr{\texttt{p.protocol.bob\_z\_basis\_prob}} (احتمال انتخاب پایۀ $Z$ توسط آلیس و باب).
+	\item \lr{\texttt{stats\_map}}: این یک دیکشنری از \lr{\texttt{str}} به \lr{\texttt{TallyCounts}} است که از لایۀ شبیه‌ساز آشکارساز به اثبات امنیتی داده می‌شود. کلید \lr{``signal''} باید موجود باشد و مقدار آن یک شیء \lr{\texttt{TallyCounts}} با فیلدهای \lr{\texttt{sent\_x}}، \lr{\texttt{sent\_z}}، \lr{\texttt{sifted\_x}}، \lr{\texttt{sifted\_z}}، \lr{\texttt{errors\_sifted\_x}} و \lr{\texttt{errors\_sifted\_z}} باشد. در حالت \lr{non-Decoy}، تمام شیءهای \lr{\texttt{TallyCounts}} در \lr{\texttt{stats\_map}} با متد \lr{\texttt{merged}} ادغام می‌شوند.
+	\item \lr{\texttt{decoy\_estimates}}: این پارامتر اختیاری است و می‌تواند یکی از موارد زیر باشد: یک شیء \lr{\texttt{DecoyEstimatesInput}} (با فیلدهای \lr{\texttt{Y1\_L\_rate}} و \lr{\texttt{e1\_bit\_ub}})، یک شیء \lr{\texttt{DecoyEstimates}} از \lr{base.py} (با فیلدهای \lr{\texttt{yield\_1\_lower\_bound}} و \lr{\texttt{error\_rate\_1\_upper\_bound}})، یا یک دیکشنری با کلیدهای \lr{``Y1\_L''} و \lr{``e1\_U''}. این طراحی انعطاف‌پذیر اجازه می‌دهد ماژول با انواع مختلف شیءهای تخمین \lr{Decoy} از بخش‌های مختلف فریم‌ورک کار کند. اگر این پارامتر \lr{None} باشد، متد کلاس پایه فراخوانی می‌شود.
+	\item \lr{\texttt{EpsilonAllocation}}: این شیء از متد \lr{\texttt{allocate\_epsilons}} تولید می‌شود و شامل فیلدهای $\varepsilon_{\text{sec}}$، $\varepsilon_{\text{cor}}$، $\varepsilon_{\text{pe}}$، $\varepsilon_{\text{smooth}}$، $\varepsilon_{\text{pa}}$ و $\varepsilon_{\text{phase\_est}}$ است. این شیء در محاسبۀ جریمه‌های \lr{PA} و خطای فاز استفاده می‌شود.
+\end{itemize}
+
+\subsection{خروجی‌های ماژول}
+
+خروجی اصلی ماژول یک شیء \lr{\texttt{KeyCalculationResult}} است که شامل چهار فیلد است:
+
+\begin{enumerate}
+	\item \lr{\texttt{secure\_key\_length}}: طول کلید امن به صورت یک عدد صحیح غیرمنفی. این فیلد خروجی نهایی محاسبه است و توسط لایۀ بالایی برای تولید کلید واقعی استفاده می‌شود. در صورت بروز هرگونه خطا، این مقدار صفر است.
+	\item \lr{\texttt{diagnostics}}: یک دیکشنری شامل تمام مقادیر میانی محاسبه. این دیکشنری شامل یک کلید \lr{``intermediate''} است که خود یک دیکشنری با مقادیری مانند $\mu_s$، $P(1 \mid \mu_s)$، $s_{X,1}^L$، $n_X$، $m_X$، $s_{Z,1}^L$، $n_Z$، \lr{QBER}، نشت تصحیح خطا، خطای فاز، $\delta$ خطای فاز، جریمه‌های \lr{PA} و تصحیح، آنتروپی موجود و طول کلید اعشاری است. این فیلد برای تحلیل و بازبینی امنیتی ضروری است.
+	\item \lr{\texttt{error\_codes}}: لیستی از کدهای خطا (به صورت رشته) که در صورت بروز مشکل، علت آن را نشان می‌دهند. اگر این لیست خالی باشد، محاسبه با موفقیت انجام شده است.
+	\item \lr{\texttt{metadata}}: یک دیکشنری شامل اطلاعاتی مانند زمان‌شناسه‌ی \lr{UTC} (با فرمت \lr{ISO 8601}) و مدت زمان محاسبه به میلی‌ثانیه. این فیلد برای ردیابی پروونانس و مانیتورینگ عملکرد استفاده می‌شود.
+\end{enumerate}
+
+\subsection{وابستگی‌های داخلی و خارجی}
+
+ماژول وابستگی‌های داخلی و خارجی متعددی دارد. وابستگی‌های داخلی شامل موارد زیر است:
+
+\begin{itemize}
+	\item \lr{\texttt{qkd.proofs.lim2014.Lim2014Proof}}: کلاس پایه که \lr{\texttt{BB84TightProof}} از آن ارث می‌برد. این کلاس زیرساخت‌های مشترک مانند محاسبۀ آنتروپی باینری، تخصیص پایۀ \lr{$\varepsilon$}، ابزارهای \lr{clamp} عددی و متد \lr{\texttt{\_safe\_divide}} را فراهم می‌سازد.
+	\item \lr{\texttt{qkd.datatypes.TallyCounts}} و \lr{\texttt{qkd.datatypes.EpsilonAllocation}}: این دو \lr{dataclass} به ترتیب برای شمارش‌های آماری و تخصیص بودجۀ \lr{$\varepsilon$} استفاده می‌شوند. \lr{\texttt{TallyCounts}} شامل فیلدهای \lr{\texttt{sent\_x}}، \lr{\texttt{sent\_z}}، \lr{\texttt{sifted\_x}}، \lr{\texttt{sifted\_z}}، \lr{\texttt{errors\_sifted\_x}} و \lr{\texttt{errors\_sifted\_z}} است و متد \lr{\texttt{merged}} برای ادغام چندین شیء \lr{\texttt{TallyCounts}} را فراهم می‌سازد.
+	\item \lr{\texttt{qkd.constants.NUMERIC\_ABS\_TOL}} و \lr{\texttt{qkd.constants.ENTROPY\_PROB\_CLAMP}}: این دو ثابت برای تلورانس عددی و برش احتمال در محاسبۀ آنتروپی باینری استفاده می‌شوند.
+\end{itemize}
+
+وابستگی‌های خارجی شامل \lr{\texttt{math}} برای توابع ریاضی پایه (مانند \lr{\texttt{log}}، \lr{\texttt{log2}}، \lr{\texttt{exp}}، \lr{\texttt{sqrt}}، \lr{\texttt{isfinite}})، \lr{\texttt{logging}} برای ثبت رویدادها، \lr{\texttt{time}} برای اندازه‌گیری مدت محاسبه، و \lr{\texttt{datetime}} برای تولید زمان‌شناسه‌ی \lr{UTC} هستند. همچنین از ماژول‌های استاندارد \lr{Python} مانند \lr{\texttt{typing}}، \lr{\texttt{dataclasses}} و \lr{\texttt{enum}} برای ساختاردهی کد استفاده می‌شود.
+
+\subsection{جریان داده در سراسر فریم‌ورک}
+
+جریان داده کلی به این شکل است:
+\begin{enumerate}
+	\item لایۀ شبیه‌ساز پالس‌های نوری را با شدت‌های $\mu$ (سیگنال)، $\nu$ (\lr{decoy} ضعیف) و 0 (خلأ) تولید و از کانال کوانتومی عبور می‌دهد.
+	\item آشکارسازها در سمت باب، آشکارسازی‌ها و خطاها را در دو پایۀ $X$ و $Z$ و برای هر شدت ثبت کرده و در \lr{\texttt{TallyCounts}} ذخیره می‌کنند.
+	\item موتور تخمین \lr{Decoy} (مانند \lr{\texttt{Ma2005VacuumWeakProof}} یا \lr{\texttt{Lim2014Proof}}) با دریافت این شمارش‌ها، تخمین‌های $Y_1$ و $e_1$ را به صورت یک شیء \lr{\texttt{DecoyEstimates}} تولید می‌کند.
+	\item متد \lr{\texttt{calculate\_key\_length}} با دریافت \lr{\texttt{stats\_map}} و \lr{\texttt{decoy\_estimates}} فراخوانی می‌شود. این متد ابتدا \lr{\texttt{stats\_map}} را اعتبارسنجی می‌کند و سپس تخمین‌های \lr{Decoy} را با متد \lr{\texttt{\_normalize\_decoy\_estimates}} نرمال‌سازی می‌کند.
+	\item سپس شمارش‌های تک‌فوتونی در هر دو پایه با متد \lr{\texttt{\_compute\_base\_counts\_decoy}} محاسبه می‌شوند.
+	\item نشت تصحیح خطا با متد \lr{\texttt{\_compute\_leak\_ec}}، کران بالای خطای فاز با متد \lr{\texttt{\_compute\_phase\_error\_ub}} و جریمه‌های \lr{PA} و تصحیح با متد \lr{\texttt{\_compute\_pa\_terms}} محاسبه می‌شوند.
+	\item آنتروپی موجود به صورت $s_{X,1}^L \cdot (1 - H_2(e_{\text{phase}}))$ محاسبه می‌شود و طول کلید به صورت $\ell = \text{entropy} - \text{leak} - \text{penalties}$ به دست می‌آید.
+	\item در نهایت، متد \lr{\texttt{\_finalize\_result}} نتیجه را نهایی می‌کند و پروونانس (زمان‌شناسه و مدت محاسبه) را ثبت می‌کند.
+	\item لایۀ بالایی می‌تواند با بررسی \lr{\texttt{error\_codes}} وضعیت موفقیت یا شکست را تشخیص دهد و در صورت موفقیت، از \lr{\texttt{secure\_key\_length}} برای تولید کلید واقعی استفاده کند.
+\end{enumerate}
+
+این جداسازی مراحل به گونه‌ای طراحی شده که هر مرحله قابل آزمایش و بازبینی مستقل باشد. به عنوان مثال، می‌توان \lr{\texttt{DecoyEstimatesInput}} را به صورت دستی ساخت و رفتار مرحلۀ نهایی محاسبۀ کلید را در شرایط خاص بررسی کرد. این ماژول‌بندی از اصل \lr{Single Responsibility} پیروی می‌کند و قابلیت نگهداری و توسعه کد را به طور قابل توجهی افزایش می‌دهد. علاوه بر این، شفافیت کامل در \lr{diagnostics} به کاربر اجازه می‌دهد هر مرحله از محاسبه را ردیابی کرده و در صورت نیاز، فرضیات تئوریک را برای کاربرد خاص خود بازبینی کند. طراحی \lr{fail-safe} این ماژول، آن را به انتخابی ایده‌آل برای محیط‌های تولیدی تبدیل می‌کند که در آن‌ها پایداری و قابل اعتمادبودن سیستم حیاتی است.

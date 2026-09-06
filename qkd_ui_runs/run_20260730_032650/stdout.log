@@ -1,0 +1,32 @@
+qkd package metadata not found; using version 'dev'.
+ERROR [__main__] Unexpected failure while running main_optimized.py.
+Traceback (most recent call last):
+  File "/home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/main_optimized.py", line 2614, in <module>
+    run_and_save_csv(active_config, num_workers=args.workers, sweeps=current_sweeps)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/main_optimized.py", line 2348, in run_and_save_csv
+    protocol_name = build_protocol(config, source_tmp).protocol_name
+                    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/main_optimized.py", line 1080, in build_protocol
+    return B92Protocol(
+        bob_z_basis_prob=float(pcfg["bob_z_basis_prob"]),
+        source=source, double_click_policy=pcfg["double_click_policy"],
+    )
+TypeError: B92Protocol.__init__() got an unexpected keyword argument 'double_click_policy'
+
+The above exception was the direct cause of the following exception:
+
+qkd.exceptions.ConfigurationError: ConfigurationError (ERR_CONFIG): Unexpected failure while running main_optimized.py.
+[INFO] Loaded custom sweeps from CLI.
+--- Running QKD Simulations (SWEEP MODE) ---
+[INFO] CPU Count: 20
+[INFO] Using 8 worker processes
+
+============================================================
+FATAL ERROR OCCURRED:
+============================================================
+============================================================
+Starting simulation in: /home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/qkd_ui_runs/run_20260730_032650
+Distance range: 0.0 km to 150.0 km (16 points)
+Command: /home/reza-aramjou/miniconda3/envs/QC/bin/python3.13 /home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/main_optimized.py --protocol-class B92Protocol --fiber-loss 0.2 --det-eff-d0 0.15 --det-eff-d1 0.15 --dark-rate 1e-06 --qber-intrinsic 0.01 --misalignment 0.005 --detector-type SPD --min-pulses-log 7 --max-pulses-log 7 --rng-seed 12345 --distance-start-km 0.0 --distance-stop-km 150.0 --distance-points 16 --workers 8 --sweep-json {"detector.det_eff_d0": [0.1, 0.15, 0.2]}
+

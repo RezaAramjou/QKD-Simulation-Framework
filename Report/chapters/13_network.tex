@@ -1,0 +1,1190 @@
+\sloppy
+\emergencystretch=5em
+\hbadness=10000
+\vbadness=10000
+\tolerance=2000
+
+\providecolor{codebg}{RGB}{248,248,248}
+\providecolor{codeframe}{RGB}{200,200,200}
+\providecolor{keyword}{RGB}{0,0,180}
+\providecolor{string}{RGB}{163,21,21}
+\providecolor{comment}{RGB}{0,128,0}
+
+\lstset{
+	backgroundcolor=\color{codebg},
+	frame=single,
+	rulecolor=\color{codeframe},
+	language=Python,
+	basicstyle=\ttfamily\scriptsize,
+	keywordstyle=\color{keyword}\bfseries,
+	stringstyle=\color{string},
+	commentstyle=\color{comment}\itshape,
+	showstringspaces=false,
+	breaklines=true,
+	breakatwhitespace=true,
+	numbers=left,
+	numberstyle=\tiny\color{gray},
+	numbersep=8pt,
+	tabsize=4,
+	literate=
+	{ف}{{{\bfseries\itshape ف}}}1
+	{ی}{{{\bfseries\itshape ی}}}1
+}
+
+\section{نمای کلی و هدف ماژول}
+
+ماژول \lr{\texttt{qkd\_network\_7nodes.py}} پیاده‌سازی کامل یک شبکه توزیع کلید کوانتومی (\lr{Quantum Key Distribution}) با هفت گره است که در آن چهار گره ارسال‌کننده \lr{D}، \lr{E}، \lr{F} و \lr{G} می‌توانند از طریق دو گره میانی \lr{B} و \lr{C} که نقش \lr{Trusted Relay} را ایفا می‌کنند، با گره گیرنده مرکزی \lr{A} کلید مشترک تولید کنند. این ماژول به‌عنوان بالاترین لایه انتزاعی در فریم‌ورک شبیه‌سازی \lr{QKD} عمل می‌کند؛ یعنی به جای آنکه صرفاً یک نشست منفرد توزیع کلید را روی یک لینک نقطه‌به‌نقطه اجرا کند، یک \textbf{شبکه کامل} متشکل از ده لینک، بیست استخر کلید و سه سوییچ نوری را مدیریت می‌کند و نشست‌های متعدد \lr{QKD} را به‌صورت هماهنگ اجرا، انبار و توزیع می‌نماید. هدف اصلی این ماژول، ارائه یک محیط مرجع برای مطالعه مسائل مربوط به مدیریت کلید در سطح شبکه است؛ مسائلی نظیر انتخاب مسیر بهینه، \lr{\texttt{failover}}، \lr{replenishment} استخر کلید، و هماهنگ‌سازی نشست‌ها میان گره‌های مختلف.
+
+ساختار توپولوژی شبکه به‌صورت یک درخت دوبخشی است که در رأس آن گره \lr{A} به‌عنوان \lr{Receiver} قرار دارد و از طریق دو لینک مستقیم \lr{A-B} و \lr{A-C} به دو رله قابل‌اعتماد متصل می‌شود. هر رله سپس از طریق چهار لینک جداگانه به ارسال‌کننده‌های \lr{D}، \lr{E}، \lr{F} و \lr{G} متصل است؛ بنابراین مجموع لینک‌ها برابر با $2 + 2 \times 4 = 10$ لینک خواهد بود. برای هر لینک، دو استخر کلید جداگانه در نظر گرفته می‌شود — یکی در هر انتهای لینک — که در مجموع $10 \times 2 = 20$ استخر کلید را تشکیل می‌دهد. دلیل این طراحی آن است که هر لینک \lr{QKD} کلید را به‌صورت دوطرفه تولید می‌کند ولی هر جهت نیازمند استخر مستقل است تا مصرف کلید در یک جهت، فشار استخر جهت مقابل را تحت تأثیر قرار ندهد. این جداسازی همچنین امکان \lr{back-pressure} مستقل را در الگوریتم \lr{SPF+} فراهم می‌آورد.
+
+یکی از ویژگی‌های برجستهٔ این ماژول، پشتیبانی از دو لایهٔ شبیه‌سازیِ متمایز است که انتخاب آن‌ها به‌صورت شفاف و در زمان اجرا انجام می‌شود. لایهٔ نخست، \lr{\texttt{PipelineQKDLinkSimulator}}، موتور فیزیکیِ کاملِ \lr{\texttt{main\_optimized.run\_single\_simulation()}} را از طریق بارگذاری پویای ماژول \lr{\texttt{main\_optimized.py}} به کار می‌گیرد؛ این موتور، خط لولهٔ کاملِ \lr{\texttt{Proof}} $\to$ \lr{\texttt{Sifting}} $\to$ \lr{\texttt{Detector}} $\to$ \lr{\texttt{Protocol}} $\to$ \lr{\texttt{Channel}} $\to$ \lr{\texttt{Source}} را به‌همراه همهٔ اصلاحات \lr{\texttt{F-01}} تا \lr{\texttt{F-22}} اجرا می‌کند. لایهٔ دوم، \lr{\texttt{StatisticalQKDLinkSimulator}}، یک مدل تحلیلیِ فاصله‌محور است که در صورت عدم دسترسی به موتور فیزیکی، به‌عنوان \lr{\texttt{fallback}} به کار می‌رود. این معماریِ دولایه تضمین می‌کند که ماژول شبکه حتی در محیط‌هایی که بستهٔ \lr{\texttt{qkd}} در آن‌ها نصب نشده است نیز قابل اجرا باشد؛ در عین حال، در محیط توسعهٔ اصلی، بیشترین دقت فیزیکیِ در دسترس را فراهم می‌کند.
+
+
+
+علاوه بر خود شبیه‌سازی لینک، این ماژول چهار مؤلفه الگوریتمی کلیدی را پیاده‌سازی می‌کند: \lr{Key Management System (KMS)} که به‌عنوان ارکستراتور مرکزی عمل می‌کند، الگوریتم \lr{SPF+} که نسخه توسعه‌یافته‌ای از الگوریتم \lr{Dijkstra} برای انتخاب مسیر است و علاوه بر فاصله، پارامترهای فیزیکی نظیر \lr{QBER}، تلفات نوری، نرخ کلید و فشار استخر را در نظر می‌گیرد، مکانیزم \lr{Trusted Relay} مبتنی بر \lr{XOR} که امکان انتقال کلید از سراسر شبکه را بدون نیاز به رمزگشایی در نقاط میانی فراهم می‌سازد، و سامانه مدیریت استخر کلید با مدل \lr{watermark} که به‌صورت پویا استخرها را پر و تخلیه می‌کند. این چهار مؤلفه در هم تنیده شده‌اند تا یک سیستم توزیع کلید واقع‌گرایانه را شبیه‌سازی کنند که در آن محدودیت‌های فیزیکی و عملیاتی همگی در انتخاب مسیر نهایی تأثیرگذارند.
+
+در سطح کاربردی، ماژول با فراخوانی تابع \lr{\texttt{demo()}} در انتهای فایل اجرا می‌شود. این تابع ابتدا شبکه را مقداردهی اولیه می‌کند، سپس با اجرای نشست‌های متعدد \lr{QKD} روی هر لینک، استخرهای کلید را تا سطح \lr{high watermark} پر می‌کند (\lr{priming})، پس از آن چهار درخواست کلید خدمت (\lr{service key}) از طرف ارسال‌کننده‌ها به گیرنده \lr{A} را پردازش می‌کند، یک خرابی لینک را شبیه‌سازی می‌کند و در نهایت فرآیند \lr{replenishment} را برای استخرهای تخلیه‌شده اجرا می‌نماید. خروجی این \lr{demo} یک گزارش متنی کامل از وضعیت توپولوژی، معیارهای هر لینک، سطح هر استخر، گام‌های رمزگذاری/رمزگشایی \lr{XOR}، و مسیرهای جایگزین پس از خرابی است که برای مستندسازی و اعتبارسنجی رفتار شبکه بسیار ارزشمند است.
+
+\section{مبانی تئوری و فیزیکی}
+
+\subsection{مدل کانال فیبر نوری و انتقال}
+
+در شبیه‌سازی لینک‌های \lr{QKD} در این ماژول، پایه‌ای‌ترین کمیت فیزیکی، ضریب انتقال کانال (\lr{channel transmittance}) است که نسبت تعداد فوتون‌های دریافتی به فوتون‌های ارسالی را نشان می‌دهد. برای یک فیبر نوری با طول $d$ کیلومتر و ضریب تلفت $\alpha$ دسی‌بل بر کیلومتر، تلفات کلی کانال برابر با $\alpha \cdot d$ دسی‌بل است. چون مقیاس دسی‌بل لگاریتمی است، تبدیل آن به ضریب انتقال خطی از رابطه زیر پیروی می‌کند:
+
+\begin{equation}
+	\eta_{\text{channel}}(d) = 10^{-\frac{\alpha \cdot d}{10}}
+\end{equation}
+
+در این رابطه، $d$ بر حسب کیلومتر و $\alpha$ بر حسب \lr{dB/km} است. به‌طور معمول، فیبر تک‌حالت استاندارد در طول‌موج $1550$ نانومتر ضریب تلفت $\alpha \approx 0.2$ \lr{dB/km} دارد که در این ماژول به‌عنوان مقدار پیش‌فرض به کار رفته است. ضریب انتقال کلی کانال شامل بازده آشکارساز $\eta$ نیز می‌شود؛ یعنی:
+
+\begin{equation}
+	\eta_{\text{total}}(d) = \eta_{\text{det}} \cdot \eta_{\text{channel}}(d) = \eta_{\text{det}} \cdot 10^{-\frac{\alpha \cdot d}{10}}
+\end{equation}
+
+این کمیت نقشی محوری در محاسبه نرخ کلید دارد چرا که احتمال شناسایی هر تک‌فوتون ارسالی مستقیماً با $\eta_{\text{total}}$ متناسب است. در فواصل کوتاه متروپولیتن ($30$ تا $75$ کیلومتر)، $\eta_{\text{channel}}$ از $10^{-0.6} \approx 0.25$ تا $10^{-1.5} \approx 0.032$ متغیر است که نشان‌دهنده افت شدید در فواصل دورتر است.
+
+\subsection{مدل خطای کوانتومی (\lr{QBER})}
+
+نرخ خطای کوانتومی بیت (\lr{Quantum Bit Error Rate}) که با نماد $Q$ نشان داده می‌شود، کسری از بیت‌های \lr{sifted} است که بین دو طرف ناهماهنگ هستند. این کمیت معیار اصلی کیفیت لینک \lr{QKD} است و اگر از یک آستانه بحرانی عبور کند، تولید کلید امن از نظر تئوری غیرممکن می‌شود. در پروتکل \lr{BB84} با منبع تک‌فوتونی آرمانی، این آستانه بحرانی برابر با تقریباً $11\%$ است که در ماژول به‌صورت ثابت \lr{\texttt{QBER\_THRESHOLD = 0.11}} تعریف شده است. مدل \lr{QBER} به‌کار رفته در \lr{StatisticalQKDLinkSimulator} چهار مؤلفه مستقل را با هم جمع می‌کند:
+
+\begin{equation}
+	Q = Q_{\text{intrinsic}} + Q_{\text{polarization}}(d) + Q_{\text{dark}}(d) + Q_{\text{afterpulse}}
+\end{equation}
+
+که در آن هر جزء به شرح زیر تعریف می‌شود. $Q_{\text{intrinsic}}$ خطای پایه ناشی از نقص‌های اپتیکی نظیر \lr{misalignment} تداخل‌سنج است که در ماژول برابر با $0.015$ در نظر گرفته شده است؛ این مقدار شامل $1\%$ خطای ذاتی و $0.5\%$ \lr{misalignment} است که با مقادیر پیش‌فرض \lr{DEFAULT\_CONFIG} در \lr{main\_optimized.py} هم‌خوانی دارد. $Q_{\text{polarization}}(d)$ رشد خطی خطای ناشی از رانش قطبش به دلیل پدیده \lr{Polarization Mode Dispersion} و دوپسیسم بیرفرینژانس فیبر است:
+
+\begin{equation}
+	Q_{\text{polarization}}(d) = \kappa_{\text{pol}} \cdot d, \quad \kappa_{\text{pol}} = 10^{-4} \,\text{km}^{-1}
+\end{equation}
+
+ضریب $\kappa_{\text{pol}} = 10^{-4}$ به‌ازای هر کیلومتر، متناظر با یک سیستم \lr{QKD} متروپولیتن با تثبیت فعال قطبش است؛ مقدار قبلی $5 \times 10^{-4}$ به‌ازای هر کیلومتر به‌شدت تهاجمی بود و برای لینک‌های $30$ تا $40$ کیلومتری، \lr{QBER} نهایی را در محدوده $2$ تا $2.5\%$ تولید می‌کرد که ناتوان از اشتباه‌شدنی بودن از مقادیر گزارش‌شده در ادبیات تجربی است. مؤلفه $Q_{\text{dark}}$ ناشی از آشکارسازی‌های کاذب (\lr{dark counts}) است و به‌صورت نسبت نرخ دارک به \lr{gain} کلی محاسبه می‌شود:
+
+\begin{equation}
+	Q_{\text{dark}}(d) = \frac{R_{\text{dark}}}{g(d)}, \quad g(d) = \max\left(\mu \cdot \eta_{\text{total}}(d) + R_{\text{dark}},\; 10^{-30}\right)
+\end{equation}
+
+این تعریف نشان می‌دهد که با افزایش فاصله و کاهش $\eta_{\text{total}}(d)$، سهم دارک کانت در کل شناسایی‌ها رشد می‌کند و در نهایت \lr{QBER} را به سمت آستانه بحرانی هل می‌دهد. مقدار پیش‌فرض $R_{\text{dark}} = 10^{-6}$ به‌ازای هر پالس، متناظر با آشکارسازهای \lr{InGaAs SPAD} با نرخ دارک $10$ هرتز و نرخ پالس $10$ مگاهرتز است. در نهایت، $Q_{\text{afterpulse}} = 0.001$ سهم ثابت پالس‌های پسینی (\lr{afterpulses}) است که از به دام افتادن حامل‌ها در آشکارساز ناشی می‌شود.
+
+\subsection{آنتروپی باینری و کسر امن کلید}
+
+نرخ کلید امن در پروتکل \lr{decoy-state BB84} به‌صورت مجانبی از رابطه بنیادین زیر پیروی می‌کند که آنتروپی باینری \lr{Shannon} را به کسر اطلاعات مشترک امن تبدیل می‌کند:
+
+\begin{equation}
+	R = q \cdot \eta_{\text{total}}(d) \cdot \mu \cdot f_{\text{secret}}(Q)
+\end{equation}
+
+\begin{equation}
+	f_{\text{secret}}(Q) = \max\left(0,\; 1 - 2 \, h_2(Q)\right)
+\end{equation}
+
+در این رابطه، $q = 0.5$ ضریب \lr{sifting} است که نشان می‌دهد در \lr{BB84} تنها نیمی از پالس‌ها پس از مقایسه پایه‌ها \lr{sifted} می‌شوند. $\mu$ میانگین تعداد فوتون در پالس سیگنال است که مقدار پیش‌فرض $\mu = 0.5$ دارد؛ این مقدار بهینه تقریبی برای \lr{decoy-state} در رژیم مجانبی است. تابع $h_2(Q)$ آنتروپی باینری است:
+
+\begin{equation}
+	h_2(x) = -x \log_2(x) - (1-x) \log_2(1-x)
+\end{equation}
+
+این تابع در $x = 0.5$ به بیشینه مقدار $1$ می‌رسد و در $x = 0$ و $x = 1$ به صفر میل می‌کند. عامل $1 - 2 h_2(Q)$ نشان‌دهنده کسر امن کلید پس از کسر اطلاعات لو رفته به حامل به دلیل وجود \lr{QBER} است؛ ضریب $2$ به این دلیل است که در \lr{BB84}، هر خطای بیت هم به نشت اطلاعات به ایو و هم به نیاز تصحیح خطا مربوط می‌شود. وقتی $Q = 0.11$، مقدار $h_2(0.11) \approx 0.5$ می‌شود و در نتیجه $f_{\text{secret}} = 0$؛ این همان آستانه‌ای است که در آن تولید کلید امن متوقف می‌گردد.
+
+\subsection{مدل استخر کلید و فشار (\lr{Pool Pressure})}
+
+یکی از نوآوری‌های کلیدی ماژول، معرفی مدل \lr{piecewise-linear} برای محاسبه فشار استخر کلید است. این مدل امکان تمایز میان سطوح مختلف کمبود کلید را فراهم می‌کند و به الگوریتم \lr{SPF+} اجازه می‌دهد مسیرهایی را برگزیند که استخر کلید سالم‌تری دارند. تعریف ریاضی فشار استخر به‌صورت زیر است:
+
+\begin{equation}
+	p_{\text{pool}}(a) = \begin{cases} 0 & \text{if } a \geq h \\ 0.5 \left(1 - \dfrac{a - \ell}{h - \ell}\right) & \text{if } \ell \leq a < h \\ 0.5 + 0.5 \left(1 - \dfrac{a}{\ell}\right) & \text{if } 0 \leq a < \ell \end{cases}
+\end{equation}
+
+در این رابطه، $a$ تعداد بیت‌های موجود در استخر است، $\ell$ (\lr{low watermark}) آستانه پایین و $h$ (\lr{high watermark}) آستانه بالای استخر است. مدل به سه رژیم تقسیم می‌شود: رژیم سالم ($a \geq h$) با فشار صفر، رژیم هشدار ($\ell \leq a < h$) که فشار به‌صورت خطی از صفر تا $0.5$ رشد می‌کند، و رژیم بحرانی ($a < \ell$) که فشار از $0.5$ تا $1$ افزایش می‌یابد. این طراحی دو-بخشی باعث می‌شود که الگوریتم مسیریابی حساسیت متفاوتی نسبت به استخرهای نزدیک به آستانه بحرانی در مقایسه با استخرهای نزدیک به سالم داشته باشد. ارزش عملی این مدل در آن است که اگر دو مسیر هم‌ارز از نظر فیزیکی وجود داشته باشند، مسیری که استخر کلید سالم‌تری دارد به‌طور خودکار انتخاب می‌شود.
+
+\subsection{تابع هزینه \lr{SPF+} و الگوریتم \lr{Dijkstra}}
+
+الگوریتم \lr{SPF+} (\lr{Shortest Path First Plus}) توسعه‌ای از الگوریتم کلاسیک \lr{Dijkstra} است که به جای استفاده از یک معیار منفرد (مانند فاصله یا تعداد جهش)، یک تابع هزینه ترکیبی استفاده می‌کند که پنج مؤلفه مختلف را با هم وزن‌دهی می‌کند. تابع هزینه برای هر یال در گراف شبکه به‌صورت زیر تعریف می‌شود:
+
+\begin{equation}
+	C_{\text{link}} = \alpha \cdot \frac{L}{L_{\max}} + \beta \cdot \frac{Q}{Q_{\text{th}}} + \gamma \cdot \frac{d}{d_{\max}} + \delta \cdot p_{\text{pool}} - \epsilon \cdot \frac{R}{R_{\max}}
+\end{equation}
+
+در این رابطه، $L$ تلفات نوری لینک بر حسب دسی‌بل، $Q$ مقدار \lr{QBER} فعلی، $d$ فاصله فیزیکی، $p_{\text{pool}}$ فشار استخر کلید، و $R$ نرخ تولید کلید امن است. هر یک از این کمیت‌ها به مقدار بیشینه خود نرمال‌سازی می‌شود تا در محدوده $[0, 1]$ قرار گیرند و سپس با ضرایب وزن $\alpha$، $\beta$، $\gamma$، $\delta$ و $\epsilon$ ترکیب می‌شوند. مقادیر پیش‌فرض این ضرایب در ماژول به‌صورت $\alpha = 1.0$، $\beta = 5.0$، $\gamma = 0.5$، $\delta = 2.0$ و $\epsilon = 5.0$ تعریف شده‌اند.
+
+یک ویژگی مهم تابع هزینه بالا، عبارت منفی $-\epsilon \cdot (R/R_{\max})$ است که به‌عنوان یک \lr{bonus} عمل می‌کند؛ یعنی لینک‌هایی که نرخ کلید بالاتری دارند، هزینه کمتری خواهند داشت و در نتیجه به احتمال بیشتری انتخاب می‌شوند. این طراحی با این واقعیت فیزیکی هم‌خوان است که لینک‌های پربازده‌تر معمولاً استخر کلید پرتری دارند و می‌توانند در آینده نیز بهتر پاسخگو باشند. اما اگر \lr{QBER} از آستانه بحرانی $Q_{\text{th}}$ عبور کند، یک جریمه سنگین اما متناهی به هزینه اضافه می‌شود:
+
+\begin{equation}
+	C_{\text{link}} \mathrel{+}= H_{\text{penalty}} \cdot \frac{Q}{Q_{\text{th}}}, \quad \text{if } Q > Q_{\text{th}}
+\end{equation}
+
+که در آن $H_{\text{penalty}} = 10^6$ است. دلیل استفاده از جریمه متناهی به جای هزینه بی‌نهایت آن است که اگر همه لینک‌ها به دلیل پیکربندی نامناسب \lr{QBER} بالا داشته باشند، الگوریتم همچنان قادر به یافتن مسیر \emph{کم‌ترین ضرر} باشد. این رفتار به‌صورت عملی در حین توسعه مشاهده شد که در آن پیکربندی نامناسب موتور فیزیکی باعث \lr{QBER} بالا در همه لینک‌ها شد و الگوریتم با هزینه بی‌نهایت قادر به یافتن هیچ مسیری نبود.
+
+الگوریتم \lr{Dijkstra} با این تابع هزینه از طریق صف اولویت \lr{min-heap} پیاده‌سازی می‌شود. پیچیدگی زمانی آن با استفاده از \lr{heapq} برابر با $\mathcal{O}((V + E) \log V)$ است که در آن $V$ تعداد گره‌ها و $E$ تعداد یال‌هاست. در شبکه هفت‌گره‌ای با ده یال، این پیچیدگی ناچیز است و امکان اجرای مکرر \lr{SPF+} در هر درخواست کلید خدمت را بدون تأثیر قابل توجه بر کارایی فراهم می‌کند.
+
+\subsection{پروتکل \lr{Trusted Relay} مبتنی بر \lr{XOR}}
+
+یکی از مفاهیم بنیادین در شبکه‌های \lr{QKD}، انتقال کلید به سراسر شبکه از طریق رله‌های قابل‌اعتماد است. در این ماژول، این انتقال با استفاده از \lr{One-Time Pad} مبتنی بر \lr{XOR} انجام می‌شود که از نظر تئوری امنیت اطلاعات کامل را به شرط آنکه کلیدهای هر جهش کاملاً مخفی و یک‌بار مصرف باشند، فراهم می‌سازد. برای یک مسیر سه‌گرهی مانند $D \to B \to A$، فرآیند انتقال به‌صورت زیر است:
+
+\begin{equation}
+	C_1 = K_{\text{service}} \oplus K_{DB}
+\end{equation}
+
+\begin{equation}
+	C_2 = C_1 \oplus K_{DB} \oplus K_{BA} = K_{\text{service}} \oplus K_{BA}
+\end{equation}
+
+\begin{equation}
+	K_{\text{service}} = C_2 \oplus K_{BA}
+\end{equation}
+
+در معادله اول، فرستنده $D$ کلید خدمت را با کلید جهش $K_{DB}$ (که با رله $B$ مشترک است) \lr{XOR} می‌کند و رمزنگاشت $C_1$ را می‌سازد. در گام دوم، رله $B$ ابتدا $C_1$ را با $K_{DB}$ رمزگشایی می‌کند تا به کلید خدمت برسد، سپس آن را با $K_{BA}$ (کلید مشترک با گیرنده $A$) رمزگذاری می‌کند و $C_2$ را تولید می‌نماید. معادله دوم نشان می‌دهد که از نظر ریاضی، $C_2 = K_{\text{service}} \oplus K_{BA}$ چون دو \lr{XOR} با $K_{DB}$ یکدیگر را خنثی می‌کنند. در گام سوم، گیرنده $A$ با \lr{XOR} کردن $C_2$ با $K_{BA}$ به کلید خدمت اصلی می‌رسد. این پروتکل از نظر تئوری امن است زیرا هر ناظر می‌تواند تنها $C_1$ یا $C_2$ را ببیند، ولی بدون دانستن $K_{DB}$ یا $K_{BA}$ نمی‌تواند اطلاعات کمی از $K_{\text{service}}$ به دست آورد.
+
+شرط حیاتی این پروتکل آن است که رله‌ها \emph{قابل‌اعتماد} باشند؛ یعنی کلید جهش را فاش نکنند. به همین دلیل، این رله‌ها در ماژول به‌صورت کلاس \lr{TrustedRelayNode} تعریف شده‌اند که نقش آن‌ها به‌صورت صریح از گره‌های ارسال‌کننده و گیرنده متمایز است. در شبکه‌های عملیاتی، این رله‌ها معمولاً در سایت‌های قابل‌اعتماد مانند دیتاسنترهای امن قرار دارند و کنترل فیزیکی و منطقی روی آن‌ها اعمال می‌شود. در صورتی که رله قابل‌اعتماد نباشد، باید از پروتکل‌های \lr{Measurement-Device-Independent QKD} یا \lr{Entanglement-Based QKD} استفاده کرد که در آن‌ها اعتماد به رله حذف می‌شود.
+
+\subsection{سوییچ‌های نوری و پیکربندی پویا}
+
+در این ماژول، سه سوییچ نوری مدل شده‌اند که امکان پیکربندی پویای توپولوژی شبکه را فراهم می‌سازند. سوییچ \lr{1x2} در گره \lr{A} به این گره اجازه می‌دهد به‌صورت انتخابی به یکی از دو رله \lr{B} یا \lr{C} متصل شود؛ این سوییچ از نوع \lr{MEMS} یا \lr{electro-optic} است که زمان سوییچ در محدوده میکروثانیه تا میلی‌ثانیه دارد. دو سوییچ \lr{2x4} در گره‌های \lr{B} و \lr{C} امکان اتصال هر رله به یکی از چهار ارسال‌کننده \lr{D}، \lr{E}، \lr{F} یا \lr{G} را فراهم می‌سازند. در عمل، این سوییچ‌ها در زمان اجرای \lr{demo} به‌صورت خودکار پیش از اجرای هر درخواست کلید خدمت پیکربندی می‌شوند تا مسیر انتخاب‌شده توسط \lr{SPF+} در دسترس باشد.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+
+\subsection{شمارش‌ها (\lr{Enums}) و ثابت‌های سراسری}
+
+ماژول با تعریف چهار \lr{Enum} پایه آغاز می‌شود که وضعیت‌های ممکن برای مؤلفه‌های مختلف شبکه را مشخص می‌کنند. این شمارش‌ها به‌جای استفاده از رشته‌های خام، نوع‌داده ایمن و قابل اعتبارسنجی فراهم می‌سازند و از خطاهای املایی جلوگیری می‌کنند.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class KeyBlockState(Enum):
+		READY = "READY"
+		RESERVED = "RESERVED"
+		USED = "USED"
+		EXPIRED = "EXPIRED"
+		REVOKED = "REVOKED"
+		
+		class KeyPoolStatus(Enum):
+		ACTIVE = "ACTIVE"
+		LOW = "LOW"
+		EMPTY = "EMPTY"
+		DISABLED = "DISABLED"
+		ERROR = "ERROR"
+		REPLENISHING = "REPLENISHING"
+		
+		class LinkStatus(Enum):
+		UP = "UP"
+		DOWN = "DOWN"
+		DEGRADED = "DEGRADED"
+		
+		class NodeRole(Enum):
+		RECEIVER = "RECEIVER"
+		RELAY = "RELAY"
+		SENDER = "SENDER"
+	\end{lstlisting}
+\end{LTR}
+
+شمارش \lr{KeyBlockState} چرخه حیات یک بلوک کلید را مشخص می‌کند: \lr{READY} به معنای آماده برای مصرف، \lr{RESERVED} به معنای رزرو شده برای یک درخواست در حال انجام، \lr{USED} به معنای مصرف‌شده، \lr{EXPIRED} به معنای منقضی‌شده پس از یک ساعت، و \lr{REVOKED} به معنای ابطال‌شده به دلیل خرابی. شمارش \lr{KeyPoolStatus} وضعیت سلامت استخر را نشان می‌دهد و شش حالت را پشتیبانی می‌کند؛ دو حالت \lr{DISABLED} و \lr{ERROR} به‌صورت \emph{چسبناک} (\lr{sticky}) عمل می‌کنند به این معنا که تنها مداخله خارجی می‌تواند آن‌ها را تغییر دهد. شمارش \lr{LinkStatus} وضعیت فیزیکی لینک را نشان می‌دهد و شامل حالت \lr{DEGRADED} نیز می‌شود که برای لینک‌هایی با کیفیت پایین اما قابل استفاده به کار می‌رود. شمارش \lr{NodeRole} نقش هر گره را در توپولوژی شبکه مشخص می‌کند و در الگوریتم‌های مسیریابی و رله استفاده می‌شود.
+
+در بخش ثابت‌های سراسری، مهم‌ترین کمیت‌ها عبارت‌اند از: \lr{\texttt{INFINITY\_COST = 1e18}} که به‌عنوان هزینه بی‌نهایت در الگوریتم \lr{Dijkstra} به کار می‌رود و از مقدار عددی بزرگ اما قابل نمایش در \lr{float64} استفاده می‌کند؛ \lr{\texttt{QBER\_THRESHOLD = 0.11}} که آستانه بحرانی پروتکل \lr{BB84} است؛ و \lr{\texttt{HIGH\_PENALTY = 1e6}} که جریمه‌ای متناهی اما سنگین برای لینک‌های با \lr{QBER} بالای آستانه است. علاوه بر این، دو مجموعه ثابت \lr{watermark} برای دو نوع شبیه‌ساز تعریف شده است: مجموعه \lr{STAT} برای شبیه‌ساز آماری با مقادیر $1$ مگابیت، $10$ مگابیت و $20$ مگابیت، و مجموعه \lr{PIPELINE} برای شبیه‌ساز خط لوله با مقادیر $10$ کیلوبیت، $100$ کیلوبیت و $200$ کیلوبیت. این تفکیک لازم است چرا که خروجی دو شبیه‌ساز در مقیاس‌های متفاوتی قرار دارد؛ شبیه‌ساز آماری در حدود $0.01$ تا $0.04$ بیت بر پالس تولید می‌کند در حالی که خط لوله واقعی در حدود $10^{-4}$ تا $3 \times 10^{-4}$ بیت بر پالس تولید می‌نماید.
+
+\subsection{داده‌کلاس \lr{KeyBlock}}
+
+کلاس \lr{KeyBlock} با استفاده از \lr{\texttt{@dataclass}} پیاده‌سازی شده و واحد بنیادی ذخیره کلید در استخر را تشکیل می‌دهد. هر بلوک شامل یک شناسه یکتا، شناسه لینک تولیدکننده، گره محلی، گره همتا، ماده کلید به‌صورت بایت‌های خام، طول به بیت، وضعیت، زمان ایجاد، زمان انقضا، شناسه نشست \lr{QKD} تولیدکننده، \lr{QBER} حین تولید و نرخ کلید امن است. استفاده از \lr{dataclass} مزایای متعددی دارد: تولید خودکار سازنده، \lr{\_\_repr\_\_} و \lr{\_\_eq\_\_}، پشتیبانی از \lr{type hint}، و امکان \lr{frozen=True} برای نسخه‌های تغییرناپذیر.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass
+		class KeyBlock:
+		key_id: str
+		link_id: str
+		local_node: str
+		peer_node: str
+		key_material: bytes
+		length_bits: int
+		state: KeyBlockState
+		created_at: float
+		expires_at: Optional[float]
+		qkd_session_id: str
+		qber: float
+		secret_key_rate: float
+	\end{lstlisting}
+\end{LTR}
+
+طراحی این داده‌کلاس بر اساس اصل \lr{provenance tracking} است؛ یعنی هر بلوک کلید حامل تمام متادیتای لازم برای ردیابی تاریخچه تولید خود است. این متادیتا در موارد زیر کاربرد دارد: در زمان انتخاب مسیر \lr{SPF+}، اگر \lr{QBER} حین تولید بالاتر از حد باشد، بلوک می‌تواند اولویت پایین‌تری داشته باشد؛ در گزارش‌گیری و حسابرسی، شناسه نشست \lr{QKD} امکان پیگیری کلید تا نشست اصلی را فراهم می‌سازد؛ و در زمان انقضا، زمان ایجاد به‌عنوان مبنا استفاده می‌شود. طول پیش‌فرض هر بلوک $256$ بیت است که برای کلیدهای \lr{AES-256} یا \lr{HMAC-256} مناسب است؛ این مقدار به‌صورت ثابت در تابع \lr{run\_qkd\_session} تعریف شده است.
+
+\subsection{کلاس \lr{KeyPool} و مدیریت چرخه حیات}
+
+کلاس \lr{KeyPool} مسئول مدیریت مجموعه‌ای از بلوک‌های کلید برای یک جهت مشخص از یک لینک \lr{QKD} است. این کلاس به‌جای ذخیره ساده بلوک‌ها، شمارش‌گرهای جداگانه برای بیت‌های موجود (\lr{available})، رزروشده (\lr{reserved}) و مصرف‌شده (\lr{used}) را نگه می‌دارد و یک ماشین وضعیت (\lr{state machine}) برای انتقال میان وضعیت‌های استخر را پیاده‌سازی می‌کند. این طراحی باعث می‌شود که پرس‌وجوهای متداول مانند \lr{available\_key\_bits} در زمان $\mathcal{O}(1)$ اجرا شوند، در حالی که عملیات پیچیده‌تر مانند \lr{reserve\_keys} به $\mathcal{O}(n \log n)$ نیاز دارد که در آن $n$ تعداد بلوک‌ها است.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class KeyPool:
+		def __init__(
+		self,
+		pool_id: str,
+		local_node: str,
+		peer_node: str,
+		link_id: str,
+		max_capacity_bits: int = DEFAULT_MAX_CAPACITY_BITS,
+		low_watermark_bits: int = DEFAULT_LOW_WATERMARK_BITS,
+		high_watermark_bits: int = DEFAULT_HIGH_WATERMARK_BITS,
+		) -> None:
+		self.pool_id: str = pool_id
+		self.local_node: str = local_node
+		self.peer_node: str = peer_node
+		self.link_id: str = link_id
+		self.key_blocks: Dict[str, KeyBlock] = {}
+		self.available_key_bits: int = 0
+		self.reserved_key_bits: int = 0
+		self.used_key_bits: int = 0
+		self.max_capacity_bits: int = max_capacity_bits
+		self.low_watermark_bits: int = low_watermark_bits
+		self.high_watermark_bits: int = high_watermark_bits
+		self.status: KeyPoolStatus = KeyPoolStatus.EMPTY
+		self.last_updated: float = time.time()
+	\end{lstlisting}
+\end{LTR}
+
+روش \lr{add\_key\_block} دارای یک محافظ دفاعی (\lr{defensive cap}) است که از سرریز استخر جلوگیری می‌کند. اگر افزودن یک بلوک جدید باعث شود مجموع بیت‌های موجود و رزرو شده از ظرفیت بیشینه تجاوز کند، بلوک به‌صورت خاموش رد می‌شود. این محافظ در زمان توسعه به‌دلیل یک باگ مشاهده شد که در آن شبیه‌ساز آماری با بازده آشکارساز $\eta = 0.65$ در برابر استخرهای با مقیاس خط لوله $200$ کیلوبیتی اجرا می‌شد و میلیون‌ها بیت در هر نشست تولید می‌کرد که استخر را به‌سرعت پر می‌کرد و حافظه را تخلیه می‌نمود.
+
+یکی از پیچیده‌ترین روش‌های این کلاس، \lr{reserve\_keys} است که بلوک‌ها را به‌صورت نزولی بر اساس اندازه مرتب می‌کند تا تعداد بلوک‌های مصرف‌شده کمینه شود و قطعه‌بندی (\lr{fragmentation}) کاهش یابد. اگر بلوکی بزرگ‌تر از مقدار مورد نیاز باشد، روش \lr{\_split\_block\_for\_reservation} آن را به دو بخش تقسیم می‌کند: یک بلوک رزروشده با اندازه دقیق مورد نیاز و یک بلوک آماده با باقی‌مانده. این رفتار تضمین می‌کند که \lr{available\_key\_bits} دقیقاً به اندازه \lr{length\_bits} کاهش یابد.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		ready_blocks = sorted(
+		[b for b in self.key_blocks.values() if b.state == KeyBlockState.READY],
+		key=lambda b: -b.length_bits,
+		)
+		
+		for block in ready_blocks:
+		if accumulated >= length_bits:
+		break
+		needed = length_bits - accumulated
+		if block.length_bits <= needed:
+		block.state = KeyBlockState.RESERVED
+		self.available_key_bits -= block.length_bits
+		self.reserved_key_bits += block.length_bits
+		accumulated += block.length_bits
+		reserved.append(block)
+		else:
+		self._split_block_for_reservation(block, needed, reserved)
+		accumulated += needed
+	\end{lstlisting}
+\end{LTR}
+
+دلیل اهمیت مرتب‌سازی نزولی در این روش آن است که \lr{dict} در پایتون به ترتیب درج را حفظ می‌کند. اگر دو نشست آماده‌سازی هر کدام یک بلوک کوچک \lr{remaining\_bits} (مثلاً $32$ بیت) باقی بگذارند و این بلوک کوچک قبل از بلوک $256$ بیتی بعدی درج شود، الگوریتم اصلی (با ترتیب درج) ابتدا بلوک $32$ بیتی را برمی‌داشت (انباشته $= 32$)، سپس بلوک $256$ بیتی بعدی را (انباشته $= 288$)؛ این یعنی برای یک درخواست $256$ بیتی، $32$ بیت اضافه رزرو می‌شد. در چهار درخواست کلید خدمت، این رفتار به $1062$ بیت مصرف به جای $1024$ بیت مورد انتظار منجر می‌شد. با مرتب‌سازی نزولی، الگوریتم ترجیحاً یک بلوک $256$ بیتی منفرد را برمی‌دارد (تطبیق دقیق) به جای ترکیب بلوک کوچک با بلوک بزرگ.
+
+روش \lr{\_split\_block\_for\_reservation} پیاده‌سازی دقیق تقسیم را با \lr{byte alignment} انجام می‌دهد. \lr{needed\_bits} به نزدیک‌ترین مضرب $8$ گرد می‌شود تا برش بایت‌ها دقیق باشد؛ این کار ممکن است در موارد نادر تا $7$ بیت \lr{over-reservation} ایجاد کند. در موارد لبه‌ای که گرد کردن از اندازه بلوک تجاوز کند، مقدار به اندازه بلوک محدود می‌شود.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		needed_aligned = (needed_bits + 7) // 8 * 8
+		if needed_aligned > block.length_bits:
+		needed_aligned = block.length_bits
+		remainder_bits = block.length_bits - needed_aligned
+		needed_bytes = needed_aligned // 8
+		
+		del self.key_blocks[block.key_id]
+		
+		taken_id = f"{block.key_id}#R-{uuid.uuid4().hex[:6]}"
+		taken_block = KeyBlock(
+		key_id=taken_id,
+		link_id=block.link_id,
+		local_node=block.local_node,
+		peer_node=block.peer_node,
+		key_material=block.key_material[:needed_bytes],
+		length_bits=needed_aligned,
+		state=KeyBlockState.RESERVED,
+		...
+		)
+	\end{lstlisting}
+\end{LTR}
+
+روش \lr{calculate\_pressure} مدل \lr{piecewise-linear} توضیح‌داده‌شده در بخش مبانی تئوری را پیاده‌سازی می‌کند. این روش در هر بار فراخوانی \lr{SPF+} برای هر دو استخر هر یال اجرا می‌شود و حداکثر آن دو به‌عنوان فشار یال در نظر گرفته می‌شود. این به این معناست که اگر یک استخر کاملاً پر و دیگری خالی باشد، فشار کل برابر $1$ خواهد بود — رفتاری منطقی چرا که جهت برگشت نیز به کلید نیاز دارد.
+
+روش \lr{check\_status} ماشین وضعیت استخر را مدیریت می‌کند. قواعد انتقال آن به‌صورت زیر است: وضعیت‌های \lr{DISABLED} و \lr{ERROR} چسبناک هستند و تنها مداخله خارجی می‌تواند آن‌ها را تغییر دهد؛ \lr{REPLENISHING} به \lr{ACTIVE} تبدیل می‌شود وقتی استخر به \lr{low watermark} برسد (بدون نیاز به \lr{high watermark}، چرا که در حالت خط لوله یک نشست ممکن است تا \lr{high watermark} پر نکند)؛ \lr{EMPTY} به \lr{LOW} تبدیل می‌شود با افزودن هر بیت؛ و \lr{LOW} به \lr{ACTIVE} با رسیدن به \lr{low watermark}.
+
+\subsection{کلاس \lr{QKDLink} و تابع هزینه}
+
+کلاس \lr{QKDLink} یک لینک فیزیکی بین دو گره را مدل می‌کند و شامل پارامترهای فیزیکی (فاصله، تلفات فیبر) و معیارهای عملیاتی (\lr{QBER}، نرخ کلید، تلفات کلی) است. تابع \lr{get\_cost} این کلاس تابع هزینه \lr{SPF+} را پیاده‌سازی می‌کند که در بخش تئوری به‌صورت کامل توضیح داده شد.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class QKDLink:
+		def __init__(
+		self,
+		link_id: str,
+		node_a: str,
+		node_b: str,
+		distance_km: float,
+		fiber_loss_db_km: float = 0.2,
+		) -> None:
+		self.link_id: str = link_id
+		self.node_a: str = node_a
+		self.node_b: str = node_b
+		self.distance_km: float = distance_km
+		self.fiber_loss_db_km: float = fiber_loss_db_km
+		self.status: LinkStatus = LinkStatus.UP
+		self.qber: float = 0.0
+		self.secret_key_rate: float = 0.0
+		self.optical_loss_db: float = fiber_loss_db_km * distance_km
+		self.last_qkd_session_id: str = ""
+	\end{lstlisting}
+\end{LTR}
+
+در سازنده این کلاس، تلفات کلی لینک به‌صورت $L = \alpha \cdot d$ محاسبه و در ویژگی \lr{optical\_loss\_db} ذخیره می‌شود. این مقدار در تابع \lr{get\_cost} به‌عنوان یکی از پنج مؤلفه هزینه استفاده می‌شود. تابع \lr{get\_cost} ابتدا بررسی می‌کند که آیا لینک از نظر فیزیکی قطع است؛ اگر چنین باشد، هزینه \lr{INFINITY\_COST} برمی‌گرداند که در الگوریتم \lr{Dijkstra} به‌معنای عدم استفاده از این یال است. در غیر این صورت، پنج مؤلفه هزینه به‌صورت نرمال‌شده محاسبه و با ضرایب وزن ترکیب می‌شوند.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def get_cost(self, spf_params: Dict[str, float]) -> float:
+		if self.status == LinkStatus.DOWN:
+		return INFINITY_COST
+		
+		alpha = spf_params.get("alpha", DEFAULT_ALPHA)
+		beta = spf_params.get("beta", DEFAULT_BETA)
+		gamma = spf_params.get("gamma", DEFAULT_GAMMA)
+		delta = spf_params.get("delta", DEFAULT_DELTA)
+		epsilon = spf_params.get("epsilon", DEFAULT_EPSILON)
+		pool_pressure = spf_params.get("pool_pressure", 0.0)
+		key_rate = spf_params.get("key_rate", 0.0)
+		
+		norm_loss = self.optical_loss_db / SPF_MAX_LOSS_DB
+		norm_qber = self.qber / QBER_THRESHOLD
+		norm_distance = self.distance_km / SPF_MAX_DISTANCE_KM
+		norm_key_rate = key_rate / SPF_MAX_KEY_RATE
+		
+		cost = (
+		alpha * norm_loss
+		+ beta * norm_qber
+		+ gamma * norm_distance
+		+ delta * pool_pressure
+		- epsilon * norm_key_rate
+		)
+		
+		if self.qber > QBER_THRESHOLD:
+		qber_excess_ratio = self.qber / QBER_THRESHOLD
+		cost += HIGH_PENALTY * qber_excess_ratio
+		
+		return max(cost, 0.01)
+	\end{lstlisting}
+\end{LTR}
+
+خط نهایی \lr{return max(cost, 0.01)} یک کف مثبت برای هزینه تعیین می‌کند تا از بروز هزینه صفر یا منفی جلوگیری شود. این کف ضروری است چرا که عبارت منفی $-\epsilon \cdot (R/R_{\max})$ ممکن است در لینک‌های با نرخ کلید بالا، هزینه کل را منفی کند که در الگوریتم \lr{Dijkstra} باعث رفتار غیرتعریف‌شده می‌شود.
+
+\subsection{کلاس \lr{OpticalSwitch}}
+
+کلاس \lr{OpticalSwitch} یک سوییچ نوری را مدل می‌کند که امکان پیکربندی پویای توپولوژی شبکه را فراهم می‌سازد. این کلاس بسیار ساده است و تنها شامل یک نگاشت از پورت ورودی به پورت خروجی و یک پرچم \lr{available} است.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class OpticalSwitch:
+		def __init__(self, switch_id: str, switch_type: str) -> None:
+		self.switch_id: str = switch_id
+		self.switch_type: str = switch_type
+		self.configuration: Dict[str, str] = {}
+		self.available: bool = True
+		
+		def configure(self, mapping: Dict[str, str]) -> None:
+		self.configuration = dict(mapping)
+		
+		def get_connection(self, input_port: str) -> str:
+		return self.configuration.get(input_port, "")
+	\end{lstlisting}
+\end{LTR}
+
+در پیاده‌سازی واقعی، سه سوییچ ایجاد می‌شود: \lr{SW-A-1x2} در گره \lr{A} با نوع \lr{1x2} که به این گره اجازه می‌دهد به یکی از دو رله \lr{B} یا \lr{C} متصل شود، \lr{SW-B-2x4} در گره \lr{B} با نوع \lr{2x4} برای اتصال به چهار ارسال‌کننده، و \lr{SW-C-2x4} در گره \lr{C} با همان نوع. این سوییچ‌ها در زمان اجرای هر درخواست کلید خدمت توسط روش \lr{configure\_switches\_for\_path} در \lr{KMS} پیکربندی می‌شوند تا مسیر انتخاب‌شده توسط \lr{SPF+} در دسترس باشد.
+
+\subsection{سلسله‌مراتب کلاس‌های گره}
+
+گروه کلاس‌های گره از یک کلاس پایه \lr{QKDNode} مشتق می‌شوند که سه زیرکلاس تخصصی دارد: \lr{ReceiverNode}، \lr{TrustedRelayNode} و \lr{SenderNode}. این طراحی از الگوی \lr{Template Method} و \lr{Role-Based Specialization} پیروی می‌کند که در آن هر نقش رفتار خاص خود را دارد ولی زیرساخت مشترک (مانند مدیریت استخر کلید و فهرست همسایه‌ها) در کلاس پایه قرار می‌گیرد.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class QKDNode:
+		def __init__(self, node_id: str, role: NodeRole) -> None:
+		self.node_id: str = node_id
+		self.role: NodeRole = role
+		self.key_pools: Dict[str, KeyPool] = {}
+		self.neighbors: List[str] = []
+		
+		def get_key_pool(self, peer_id: str) -> Optional[KeyPool]:
+		return self.key_pools.get(f"{self.node_id}-{peer_id}")
+		
+		def add_neighbor(self, peer_id: str) -> None:
+		if peer_id not in self.neighbors:
+		self.neighbors.append(peer_id)
+		
+		
+		class TrustedRelayNode(QKDNode):
+		def __init__(self, node_id: str) -> None:
+		super().__init__(node_id, NodeRole.RELAY)
+		
+		def relay_key(
+		self,
+		incoming_key_material: bytes,
+		from_node: str,
+		to_node: str,
+		hop_keys: Dict[str, bytes],
+		) -> bytes:
+		key_from = hop_keys[f"{from_node}-{self.node_id}"]
+		decrypted = bytes(a ^ b for a, b in zip(incoming_key_material, key_from))
+		
+		key_to = hop_keys[f"{self.node_id}-{to_node}"]
+		encrypted = bytes(a ^ b for a, b in zip(decrypted, key_to))
+		
+		return encrypted
+	\end{lstlisting}
+\end{LTR}
+
+روش \lr{relay\_key} در \lr{TrustedRelayNode} پیاده‌سازی پروتکل \lr{XOR} را به‌صورت دو مرحله‌ای انجام می‌دهد: ابتدا رمزگشایی با کلید جهش ورودی، سپس رمزگذاری با کلید جهش خروجی. استفاده از \lr{\texttt{zip}} با \lr{generator expression} به‌صورت \lr{\texttt{bytes(a \^{} b for a, b in zip(...))}} بسیار کارآمد است و از لیست میانی اجتناب می‌کند. در مواردی که طول کلیدها نابرابر باشد، \lr{zip} در کوتاه‌ترین طول متوقف می‌شود که یک رفتار امن است (هرگز سرریز نمی‌کند).
+
+\subsection{شبیه‌سازهای \lr{QKD}}
+
+دو کلاس شبیه‌ساز در این ماژول پیاده‌سازی شده‌اند که هر دو رابط یکسانی (\lr{simulate\_link}) را ارائه می‌دهند اما با پیاده‌سازی متفاوت. \lr{StatisticalQKDLinkSimulator} یک مدل تحلیلی فاصله‌محور است که فرمول‌های استاندارد \lr{decoy-state BB84} را در رژیم مجانبی استفاده می‌کند. \lr{PipelineQKDLinkSimulator} به موتور فیزیکی کامل \lr{main\_optimized.py} وابسته است و خط لوله کامل را با تمام اصلاحات \lr{F-01} تا \lr{F-22} اجرا می‌کند.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class StatisticalQKDLinkSimulator:
+		def __init__(
+		self,
+		det_eff: float = 0.15,
+		dark_rate: float = 1e-6,
+		fiber_loss: float = 0.2,
+		intrinsic_qber: float = 0.015,
+		mu_signal: float = 0.5,
+		) -> None:
+		self.det_eff = det_eff
+		self.dark_rate = dark_rate
+		self.fiber_loss = fiber_loss
+		self.intrinsic_qber = intrinsic_qber
+		self.mu_signal = mu_signal
+		
+		@staticmethod
+		def _binary_entropy(x: float) -> float:
+		if x <= 0.0 or x >= 1.0:
+		return 0.0
+		return -x * math.log2(x) - (1.0 - x) * math.log2(1.0 - x)
+	\end{lstlisting}
+\end{LTR}
+
+مقادیر پیش‌فرض سازنده \lr{StatisticalQKDLinkSimulator} به‌دقت با \lr{DEFAULT\_CONFIG} در \lr{main\_optimized.py} هم‌خوان است: \lr{det\_eff=0.15} متناظر با بازده آشکارساز \lr{D0} و \lr{D1} در خط لوله، \lr{dark\_rate=1e-6} متناظر با نرخ دارک کانت، \lr{intrinsic\_qber=0.015} شامل $1\%$ خطای ذاتی و $0.5\%$ خطای \lr{misalignment}، و \lr{mu\_signal=0.5} متناظر با شدت پالس سیگنال. این هم‌خوانی تضمین می‌کند که در صورت استفاده از \lr{fallback} آماری، نرخ کلید تولیدشده در همان مرتبه بزرگی با خروجی خط لوله باشد.
+
+روش \lr{\_binary\_entropy} یک متد \lr{static} است که به‌صورت مستقل از نمونه کلاس عمل می‌کند. این روش برای محاسبه آنتروپی باینری استفاده می‌شود و دو شرط مرزی برای جلوگیری از \lr{log(0)} دارد: اگر $x \leq 0$ یا $x \geq 1$، مقدار $0$ برمی‌گردد. این رفتار با تعریف حد آنتروپی باینری هم‌خوان است: $\lim_{x \to 0} x \log_2(x) = 0$.
+
+کلاس \lr{PipelineQKDLinkSimulator} بسیار پیچیده‌تر است و شامل منطق بارگذاری پویای ماژول، پیکربندی موتور فیزیکی، و اعتبارسنجی خروجی است. در سازنده آن، ابتدا یک شبیه‌ساز آماری به‌عنوان \lr{fallback} ایجاد می‌شود با همان بازده آشکارساز خط لوله؛ این تضمین می‌کند که اگر خط لوله در یک لینک به‌خصوص شکست بخورد، \lr{fallback} نرخ کلیدی در همان مرتبه بزرگی تولید کند (در غیر این صورت، \lr{fallback} با \lr{det\_eff=0.65} نرخ‌هایی $20$ برابر بزرگ‌تر از خط لوله تولید می‌کرد).
+
+\subsection{ارکستراتور \lr{KMS} و کلاس \lr{QKDNetwork7Nodes}}
+
+کلاس \lr{KMS} (\lr{Key Management System}) ارکستراتور مرکزی ماژول است و مسئول ساخت توپولوژی، اجرای نشست‌های \lr{QKD}، انتخاب مسیر \lr{SPF+}، اجرای رله قابل‌اعتماد، و مدیریت چرخه حیات استخرها است. این کلاس وضعیت کلی شبکه را در سه دیکشنری \lr{nodes}، \lr{links} و \lr{switches} نگه می‌دارد و شامل روش‌هایی برای هر عملیات کلیدی است. کلاس \lr{QKDNetwork7Nodes} یک لایه بالاتر است که چرخه حیات کامل \lr{demo} را مدیریت می‌کند و خروجی قالب‌بندی‌شده برای کاربر تولید می‌نماید.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+
+\subsection{بارگذاری پویای موتور فیزیکی}
+
+یکی از جنبه‌های مهم پیاده‌سازی، بارگذاری پویای ماژول \lr{main\_optimized.py} است که با استفاده از \lr{importlib.util.spec\_from\_file\_location} انجام می‌شود. این روش به ماژول شبکه اجازه می‌دهد بدون توجه به مسیر کاری فعلی، نسخه محلی موتور فیزیکی را بارگذاری کند. این طراحی در برابر تغییر مسیر کاری (\lr{cwd}) مقاوم است و از بارگذاری اشتباه نسخه‌ای از ماژول از مسیر \lr{site-packages} یا دایرکتوری والد جلوگیری می‌کند.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		_PIPELINE_MODULE_NAME = "_qkd_network_main_optimized"
+		
+		
+		def _load_local_pipeline_module():
+		framework_dir = Path(__file__).resolve().parent
+		module_path = framework_dir / "main_optimized.py"
+		if not module_path.is_file():
+		raise ImportError(f"Pipeline engine not found at {module_path}")
+		
+		framework_dir_str = str(framework_dir)
+		if not sys.path or sys.path[0] != framework_dir_str:
+		sys.path.insert(0, framework_dir_str)
+		
+		cached_module = sys.modules.get(_PIPELINE_MODULE_NAME)
+		if cached_module is not None:
+		cached_path = getattr(cached_module, "__file__", None)
+		if cached_path and Path(cached_path).resolve() == module_path:
+		return cached_module
+		sys.modules.pop(_PIPELINE_MODULE_NAME, None)
+		
+		spec = importlib.util.spec_from_file_location(_PIPELINE_MODULE_NAME, module_path)
+		if spec is None or spec.loader is None:
+		raise ImportError(f"Could not create an import spec for {module_path}")
+		
+		module = importlib.util.module_from_spec(spec)
+		sys.modules[_PIPELINE_MODULE_NAME] = module
+		try:
+		spec.loader.exec_module(module)
+		except Exception:
+		sys.modules.pop(_PIPELINE_MODULE_NAME, None)
+		raise
+		
+		loaded_path = Path(module.__file__).resolve()
+		if loaded_path != module_path:
+		raise ImportError(
+		f"Loaded pipeline engine from {loaded_path}, expected {module_path}"
+		)
+		return module
+	\end{lstlisting}
+\end{LTR}
+
+این تابع از چندین تکنیک دفاعی استفاده می‌کند: ابتدا مسیر ماژول را از \lr{\_\_file\_\_} استخراج می‌کند که به مسیر کاری فعلی وابسته نیست؛ سپس مسیر دایرکتوری را به ابتدای \lr{sys.path} اضافه می‌کند تا وابستگی‌های موتور فیزیکی (مانند بسته \lr{qkd}) نیز قابل بارگذاری باشند؛ در ادامه، اگر ماژول قبلاً بارگذاری شده باشد و مسیر آن تغییر نکرده باشد، از نسخه \lr{cached} استفاده می‌کند؛ در غیر این صورت، نسخه قبلی را از \lr{sys.modules} حذف و نسخه جدید را بارگذاری می‌نماید. در نهایت، یک بررسی امنیتی انجام می‌شود که مطمئن می‌شود ماژول بارگذاری‌شده واقعاً از مسیر مورد انتظار است؛ این بررسی از حملات \lr{path traversal} و بارگذاری اشتباه جلوگیری می‌کند.
+
+\subsection{محاسبه نرخ کلید در شبیه‌ساز آماری}
+
+روش \lr{simulate\_link} در \lr{StatisticalQKDLinkSimulator} مدل کامل \lr{QBER} و نرخ کلید را برای یک لینک پیاده‌سازی می‌کند. این روش با دریافت شیء \lr{QKDLink} و تعداد پالس‌ها، سه خروجی تولید می‌کند: تعداد بیت‌های کلید امن، مقدار \lr{QBER} و نرخ کلید بر پالس.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def simulate_link(
+		self, link: QKDLink, num_pulses: int = 10 ** 7
+		) -> Tuple[int, float, float]:
+		d = link.distance_km
+		alpha = self.fiber_loss
+		eta = self.det_eff
+		mu = self.mu_signal
+		q = 0.5  # sifting factor
+		
+		# Channel transmittance
+		transmittance = eta * 10.0 ** (-alpha * d / 10.0)
+		
+		# Gain (detection probability per pulse) -- linear approximation
+		gain_approx = mu * transmittance + self.dark_rate
+		gain = max(gain_approx, 1e-30)
+		
+		# Distance-dependent QBER model
+		qber_intrinsic = self.intrinsic_qber
+		qber_polarization = 0.0001 * d
+		qber_dark = self.dark_rate / gain
+		qber_afterpulse = 0.001
+		
+		qber = qber_intrinsic + qber_polarization + qber_dark + qber_afterpulse
+		qber = min(qber, 1.0)
+		
+		# If QBER exceeds threshold, no secure key is possible
+		if qber > QBER_THRESHOLD:
+		return 0, qber, 0.0
+		
+		# Secret fraction (using asymptotic decoy-state analysis)
+		h2_qber = self._binary_entropy(qber)
+		secret_fraction = max(0.0, 1.0 - 2.0 * h2_qber)
+		
+		# Key rate per pulse
+		key_rate = q * transmittance * mu * secret_fraction
+		
+		# Total secure key bits
+		secure_key_bits = int(key_rate * num_pulses)
+		
+		return secure_key_bits, qber, key_rate
+	\end{lstlisting}
+\end{LTR}
+
+تحلیل خط‌به‌خط این روش به شرح زیر است: ابتدا متغیرهای فیزیکی از شیء لینک و پیکربندی شبیه‌ساز استخراج می‌شوند. سپس ضریب انتقال کلی $\eta_{\text{total}} = \eta \cdot 10^{-\alpha d/10}$ محاسبه می‌شود. در گام بعدی، \lr{gain} (احتمال شناسایی به ازای هر پالس) با تقریب خطی $g \approx \mu \cdot \eta_{\text{total}} + R_{\text{dark}}$ محاسبه می‌شود؛ این تقریب برای $\mu \ll 1$ و $\eta_{\text{total}} \ll 1$ بسیار دقیق است. برای جلوگیری از تقسیم بر صفر، \lr{gain} با کف $10^{-30}$ محدود می‌شود.
+
+چهار مؤلفه \lr{QBER} سپس محاسبه و جمع می‌شوند. اگر \lr{QBER} کل از آستانه $0.11$ تجاوز کند، روش به‌سرعت با خروجی صفر برمی‌گردد چرا که تولید کلید امن از نظر تئوری غیرممکن است. در غیر این صورت، آنتروپی باینری $h_2(Q)$ محاسبه و کسر امن $f_{\text{secret}} = \max(0, 1 - 2 h_2(Q))$ به دست می‌آید. نرخ کلید بر پالس از $R = q \cdot \eta_{\text{total}} \cdot \mu \cdot f_{\text{secret}}$ محاسبه و تعداد کل بیت‌های امن با ضرب در تعداد پالس‌ها به دست می‌آید.
+
+\subsection{اجراهای موتور خط لوله}
+
+روش \lr{\_run\_pipeline} در \lr{PipelineQKDLinkSimulator} موتور فیزیکی کامل را فراخوانی می‌کند. این روش با ساخت پیکربندی، مقداردهی اولیه کارگر، تولید بذر تصادفی، و فراخوانی \lr{run\_single\_simulation} کار می‌کند.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _run_pipeline(
+		self, link: QKDLink, num_pulses: int
+		) -> Tuple[int, float, float]:
+		m = self._pipeline_modules
+		np = m["np"]
+		dist = link.distance_km
+		
+		if type(num_pulses) is not int or num_pulses <= 0:
+		raise ValueError("num_pulses must be a positive integer")
+		
+		cfg = self._make_pipeline_config()
+		
+		# Initialise the worker state for this config.
+		# combo_map {0: {}} means no sweep overrides.
+		m["init_worker"](cfg, {0: {}})
+		
+		# Derive a high-entropy seed for this session.
+		# run_single_simulation uses SeedSequence.spawn(5) internally (F-05).
+		rng_seed = int(np.random.default_rng().integers(0, 2**63))
+		
+		# Run the complete pipeline via main_optimized.
+		# args_tuple: (distance_km, total_pulses, apply_noise, seed, combo_idx)
+		result = m["run_single_simulation"](
+		(dist, num_pulses, self.apply_noise, rng_seed, 0)
+		)
+		
+		secure_key = result["secure_key_bits"]
+		qber = result["qber"]
+		key_rate = result["secure_key_rate"]
+		
+		# Store full result for callers that want richer diagnostics
+		self._last_result = result
+		
+		return secure_key, qber, key_rate
+	\end{lstlisting}
+\end{LTR}
+
+در این روش، ابتدا پیکربندی با استفاده از \lr{\_make\_pipeline\_config} ساخته می‌شود که یک کپی عمیق از \lr{DEFAULT\_CONFIG} گرفته و بازده آشکارساز \lr{D0} و \lr{D1} را با مقدار نمونه تنظیم می‌کند. سپس \lr{init\_worker} با یک \lr{combo\_map} خالی فراخوانی می‌شود که به‌معنای عدم اعمال \lr{sweep} است. بذر تصادفی با استفاده از \lr{numpy.random.default\_rng().integers(0, 2**63)} تولید می‌شود که یک بذر $63$ بیتی با آنتروپی بالا فراهم می‌سازد؛ این بذر سپس به \lr{run\_single\_simulation} ارجاع داده می‌شود که در داخل خود از \lr{SeedSequence.spawn(5)} (اصلاح \lr{F-05}) برای تولید جریان‌های مستقل \lr{RNG} استفاده می‌کند. خروجی شامل سه مقدار کلیدی است که از دیکشنری نتیجه استخراج می‌شوند؛ همچنین کل دیکشنری برای اهداف تشخیصی در \lr{\_last\_result} ذخیره می‌شود.
+
+روش \lr{simulate\_link} در \lr{PipelineQKDLinkSimulator} دارای منطق اعتبارسنجی و \lr{fallback} پیچیده‌ای است. اگر موتور خط لوله \lr{QBER} بالاتر از آستانه یا نرخ کلید صفر برگرداند، به‌صورت خودکار به شبیه‌ساز آماری \lr{fallback} می‌کند. این رفتار به این دلیل ضروری است که گاهی موتور فیزیکی به دلیل پیکربندی نامناسب یا شرایط لبه‌ای عددی، نتایج غیرواقعی تولید می‌کند که در آن صورت، مدل آماری اعتبارسنجی‌شده نتایج قابل اتکاتر ارائه می‌دهد.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if qber > QBER_THRESHOLD or (key_rate == 0.0 and secure_bits == 0):
+		if not hasattr(self, '_fallback_warned'):
+		self._fallback_warned: set = set()
+		if link.link_id not in self._fallback_warned:
+		self._fallback_warned.add(link.link_id)
+		import logging
+		logging.getLogger(__name__).warning(
+		"Pipeline returned unrealistic QBER=%.4f / key_rate=%.2e for "
+		"link %s (%.0f km). Falling back to statistical model.",
+		qber, key_rate, link.link_id, link.distance_km,
+		)
+		return self.fallback.simulate_link(link, num_pulses)
+	\end{lstlisting}
+\end{LTR}
+
+برای جلوگیری از هجوم هشدارهای تکراری، یک مجموعه \lr{\_fallback\_warned} نگه داشته می‌شود که شناسه لینک‌های قبلاً هشدار داده‌شده را در خود ذخیره می‌کند. این الگو (\lr{lazy attribute}) به این صورت کار می‌کند که ویژگی تنها در اولین فراخوانی ایجاد می‌شود و در فراخوانی‌های بعدی مجدداً استفاده می‌گردد.
+
+\subsection{الگوریتم \lr{SPF+} و پیاده‌سازی \lr{Dijkstra}}
+
+روش \lr{spf\_plus} در \lr{KMS} الگوریتم \lr{Dijkstra} را با تابع هزینه ترکیبی \lr{SPF+} پیاده‌سازی می‌کند. این روش از \lr{heapq} به‌عنوان صف اولویت استفاده می‌کند و در هر تکرار، گره با کمترین هزینه را از صف خارج و همسایه‌های آن را بررسی می‌کند.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def spf_plus(self, source: str, destination: str) -> List[str]:
+		dist: Dict[str, float] = {nid: INFINITY_COST for nid in self.nodes}
+		prev: Dict[str, Optional[str]] = {nid: None for nid in self.nodes}
+		dist[source] = 0.0
+		visited: set = set()
+		heap: List[Tuple[float, str]] = [(0.0, source)]
+		
+		while heap:
+		current_dist, u = heapq.heappop(heap)
+		if u in visited:
+		continue
+		visited.add(u)
+		if u == destination:
+		break
+		
+		for v in self.nodes[u].neighbors:
+		if v in visited:
+		continue
+		
+		link_id = self._get_link_id(u, v)
+		link = self.links.get(link_id)
+		if link is None:
+		continue
+		
+		pool_u_v = self.nodes[u].key_pools.get(f"{u}-{v}")
+		pool_v_u = self.nodes[v].key_pools.get(f"{v}-{u}")
+		
+		pressures = []
+		for pool in (pool_u_v, pool_v_u):
+		if pool is not None:
+		pressures.append(pool.calculate_pressure())
+		else:
+		pressures.append(1.0)
+		pool_pressure = max(pressures)
+		
+		if (pool_u_v and pool_u_v.status in (KeyPoolStatus.ERROR, KeyPoolStatus.DISABLED)) or \
+		(pool_v_u and pool_v_u.status in (KeyPoolStatus.ERROR, KeyPoolStatus.DISABLED)):
+		edge_cost = INFINITY_COST
+		else:
+		cost_params = {
+			"alpha": self.spf_weights["alpha"],
+			"beta": self.spf_weights["beta"],
+			"gamma": self.spf_weights["gamma"],
+			"delta": self.spf_weights["delta"],
+			"epsilon": self.spf_weights["epsilon"],
+			"pool_pressure": pool_pressure,
+			"key_rate": link.secret_key_rate,
+		}
+		edge_cost = link.get_cost(cost_params)
+		new_dist = current_dist + edge_cost
+		
+		if new_dist < dist[v]:
+		dist[v] = new_dist
+		prev[v] = u
+		heapq.heappush(heap, (new_dist, v))
+		
+		if dist[destination] >= INFINITY_COST:
+		return []
+		
+		path: List[str] = []
+		current: Optional[str] = destination
+		while current is not None:
+		path.append(current)
+		current = prev[current]
+		path.reverse()
+		return path
+	\end{lstlisting}
+\end{LTR}
+
+تحلیل این الگوریتم به شرح زیر است: ابتدا دو دیکشنری \lr{dist} و \lr{prev} با مقادیر اولیه $\infty$ و \lr{None} مقداردهی می‌شوند؛ تنها فاصله گره مبدأ به صفر تنظیم می‌گردد. در حلقه اصلی، گره با کمترین فاصله از \lr{heap} خارج می‌شود؛ اگر قبلاً بازدید شده باشد، نادیده گرفته می‌شود (این ممکن است رخ دهد چون \lr{heap} ممکن است چندین ورودی برای یک گره داشته باشد). پس از بازدید، اگر گره مقصد باشد، حلقه پایان می‌یابد. برای هر همسایه $v$ از گره فعلی $u$، استخر کلید هر دو جهت بررسی می‌شود و فشار کل به‌عنوان حداکثر فشار دو استخر محاسبه می‌شود. اگر هر یک از دو استخر در وضعیت \lr{ERROR} یا \lr{DISABLED} باشد، هزینه یال به $\infty$ تنظیم می‌شود که در عمل معادل حذف آن یال است. در غیر این صورت، تابع \lr{get\_cost} با پارامترهای هزینه فراخوانی می‌شود. اگر فاصله جدید کمتر از فاصله ثبت‌شده باشد، به‌روزرسانی انجام و ورودی جدید به \lr{heap} افزوده می‌شود.
+
+در پایان، بازسازی مسیر از گره مقصد به مبدأ با پیروی از زنجیره \lr{prev} انجام می‌شود و سپس مسیر معکوس می‌گردد تا از مبدأ به مقصد باشد. اگر فاصله نهایی مقصد همچنان $\infty$ باشد، یعنی هیچ مسیری وجود ندارد و لیست خالی برگردانده می‌شود.
+
+\subsection{درخواست کلید خدمت و رله قابل‌اعتماد}
+
+روش \lr{request\_service\_key} در \lr{KMS} فرآیند کامل تولید و توزیع کلید خدمت را مدیریت می‌کند. این روش شامل شش گام است: یافتن مسیر با \lr{SPF+}، رزرو کلیدهای جهش در هر هاپ، تولید ماده کلید خدمت، اجرای رله قابل‌اعتماد، علامت‌گذاری کلیدهای مصرف‌شده، و ثبت کلید خدمت در رجیستری.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def request_service_key(
+		self, sender: str, receiver: str, key_length_bits: int = 256
+		) -> dict:
+		# Step 1: Find path
+		path = self.spf_plus(sender, receiver)
+		if not path:
+		return {
+			"status": "error",
+			"message": f"No available path from {sender} to {receiver}",
+			...
+		}
+		
+		# Step 2: Reserve hop keys
+		hop_reservations: List[Dict[str, Any]] = []
+		key_bytes = key_length_bits // 8
+		
+		for i in range(len(path) - 1):
+		u, v = path[i], path[i + 1]
+		pool_u = self.nodes[u].key_pools.get(f"{u}-{v}")
+		pool_v = self.nodes[v].key_pools.get(f"{v}-{u}")
+		
+		if pool_u is None or pool_v is None:
+		self._rollback_reservations(hop_reservations)
+		return {
+			"status": "error",
+			"message": f"Missing key pool for hop {u}-{v}",
+			...
+		}
+		
+		blocks_u = pool_u.reserve_keys(key_length_bits)
+		blocks_v = pool_v.reserve_keys(key_length_bits)
+		
+		if not blocks_u or not blocks_v:
+		self._rollback_reservations(hop_reservations)
+		for b in blocks_u:
+		b.state = KeyBlockState.READY
+		pool_u.available_key_bits += b.length_bits
+		pool_u.reserved_key_bits -= b.length_bits
+		for b in blocks_v:
+		b.state = KeyBlockState.READY
+		pool_v.available_key_bits += b.length_bits
+		pool_v.reserved_key_bits -= b.length_bits
+		return {
+			"status": "error",
+			"message": f"Insufficient key material in pool for hop {u}-{v}",
+			...
+		}
+		
+		hop_reservations.append({
+			"u": u, "v": v,
+			"blocks_u": blocks_u, "blocks_v": blocks_v,
+			"pool_u": pool_u, "pool_v": pool_v,
+		})
+		
+		# Step 3: Generate service key material
+		service_key_material = os.urandom(key_bytes)
+		
+		# Step 4: Perform trusted relay
+		relay_success = self.perform_trusted_relay(path, service_key_material)
+		
+		# Step 5: Mark hop keys as USED
+		all_used_key_ids: List[str] = []
+		for hop in hop_reservations:
+		ids_u = [b.key_id for b in hop["blocks_u"]]
+		ids_v = [b.key_id for b in hop["blocks_v"]]
+		hop["pool_u"].mark_used(ids_u)
+		hop["pool_v"].mark_used(ids_v)
+		all_used_key_ids.extend(ids_u)
+		all_used_key_ids.extend(ids_v)
+		
+		# Step 6: Register service key
+		self._svc_key_counter += 1
+		service_key_id = f"SVC-{sender}{receiver}-{self._svc_key_counter:06d}"
+		self.service_key_registry[service_key_id] = {
+			"service_key_id": service_key_id,
+			"sender": sender,
+			"receiver": receiver,
+			"key_length_bits": key_length_bits,
+			"path": path,
+			"hop_keys_used": all_used_key_ids,
+			"created_at": time.time(),
+			"relay_success": relay_success,
+		}
+		return {"status": "ok", ...}
+	\end{lstlisting}
+\end{LTR}
+
+نکته کلیدی در این روش، پیاده‌سازی صحیح \lr{rollback} در صورت شکست است. اگر در هر مرحله از رزرو، یک هاپ به اندازه کافی کلید نداشته باشد، تمام رزروهای قبلی باید به حالت \lr{READY} بازگردانده شوند تا استخرها در وضعیت سازگار باقی بمانند. این الگو به‌عنوان \lr{compensating transaction} در سیستم‌های توزیع‌شده شناخته می‌شود و تضمین می‌کند که حتی در صورت شکست، سیستم در وضعیت سازگار باقی بماند.
+
+روش \lr{perform\_trusted\_relay} پروتکل \lr{XOR} را در طول مسیر اجرا می‌کند. این روش با رمزگذاری اولیه در فرستنده آغاز می‌شود، سپس در هر رله میانی، رمزگشایی و رمزگذاری مجدد انجام می‌شود، و در نهایت در گیرنده، رمزگشایی نهایی انجام می‌گردد. یک ویژگی جالب این روش آن است که در پایان، صحت رله را با مقایسه ماده نهایی با ماده اولیه اعتبارسنجی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def perform_trusted_relay(
+		self, path: List[str], service_key_material: bytes
+		) -> bool:
+		if len(path) < 2:
+		return False
+		
+		current_material = service_key_material
+		
+		# Sender encrypts with first hop key
+		first_hop_u, first_hop_v = path[0], path[1]
+		pool_u = self.nodes[first_hop_u].key_pools.get(f"{first_hop_u}-{first_hop_v}")
+		if pool_u is None:
+		return False
+		
+		hop_key_send = self._get_reserved_key_material(pool_u)
+		if hop_key_send is None:
+		return False
+		
+		# Step 1: Sender encrypts
+		current_material = bytes(a ^ b for a, b in zip(current_material, hop_key_send))
+		
+		# Intermediate relay nodes
+		for i in range(1, len(path) - 1):
+		relay_node = self.nodes[path[i]]
+		from_node = path[i - 1]
+		to_node = path[i + 1]
+		
+		if not isinstance(relay_node, TrustedRelayNode):
+		return False
+		
+		pool_in = relay_node.key_pools.get(f"{relay_node.node_id}-{from_node}")
+		if pool_in is None:
+		pool_in = relay_node.key_pools.get(f"{from_node}-{relay_node.node_id}")
+		pool_out = relay_node.key_pools.get(f"{relay_node.node_id}-{to_node}")
+		
+		if pool_in is None or pool_out is None:
+		return False
+		
+		key_in = self._get_reserved_key_material(pool_in)
+		key_out = self._get_reserved_key_material(pool_out)
+		
+		if key_in is None or key_out is None:
+		return False
+		
+		hop_keys = {
+			f"{from_node}-{relay_node.node_id}": key_in,
+			f"{relay_node.node_id}-{to_node}": key_out,
+		}
+		
+		current_material = relay_node.relay_key(
+		current_material, from_node, to_node, hop_keys
+		)
+		
+		# Final receiver decrypts with last hop key
+		last_hop_u, last_hop_v = path[-2], path[-1]
+		pool_recv = self.nodes[last_hop_v].key_pools.get(f"{last_hop_v}-{last_hop_u}")
+		if pool_recv is None:
+		return False
+		
+		hop_key_recv = self._get_reserved_key_material(pool_recv)
+		if hop_key_recv is None:
+		return False
+		
+		final_material = bytes(a ^ b for a, b in zip(current_material, hop_key_recv))
+		
+		# Verify relay correctness (final material should match original)
+		return final_material == service_key_material
+	\end{lstlisting}
+\end{LTR}
+
+اعتبارسنجی نهایی \lr{return final\_material == service\_key\_material} یک تضمین سلامت (\lr{integrity check}) است؛ اگر به هر دلیلی (مثلاً عدم تطابق طول کلیدها یا خطای منطقی در رله) ماده نهایی با ماده اولیه تطابق نداشته باشد، روش مقدار \lr{False} برمی‌گرداند و در نتیجه در رجیستری کلید خدمت، \lr{relay\_success=False} ثبت می‌شود. این رفتار به کاربر اجازه می‌دهد شکست‌ها را تشخیص دهد.
+
+\subsection{مدیریت نشست \lr{QKD} و پر کردن استخر}
+
+روش \lr{run\_qkd\_session} در \lr{KMS} یک نشست \lr{QKD} را روی یک لینک اجرا می‌کند و کلیدهای تولیدشده را در استخرهای هر دو گره انتهای لینک توزیع می‌کند. این روش با تقسیم کلید تولیدشده به بلوک‌های $256$ بیتی، بلوک‌های متناظر در هر دو گره با \emph{ماده کلیدی یکسان} می‌سازد.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def run_qkd_session(
+		self, link_id: str, num_pulses: int = 10 ** 7
+		) -> Tuple[int, float, float]:
+		link = self.links.get(link_id)
+		if link is None:
+		raise ValueError(f"Unknown link: {link_id}")
+		if link.status == LinkStatus.DOWN:
+		raise RuntimeError(f"Link {link_id} is DOWN")
+		
+		secure_bits, qber, key_rate = self.simulator.simulate_link(link, num_pulses)
+		
+		link.qber = qber
+		link.secret_key_rate = key_rate
+		session_id = f"QKD-{link_id}-{uuid.uuid4().hex[:8]}"
+		link.last_qkd_session_id = session_id
+		
+		if secure_bits <= 0:
+		return secure_bits, qber, key_rate
+		
+		block_size_bits = 256
+		num_blocks = secure_bits // block_size_bits
+		remaining_bits = secure_bits % block_size_bits
+		
+		node_a, node_b = link.node_a, link.node_b
+		
+		for i in range(num_blocks):
+		self._key_counter += 1
+		kid = f"{node_a}{node_b}-{self._key_counter:06d}"
+		
+		block_a = KeyBlock(
+		key_id=kid,
+		link_id=link_id,
+		local_node=node_a,
+		peer_node=node_b,
+		key_material=os.urandom(block_size_bits // 8),
+		length_bits=block_size_bits,
+		state=KeyBlockState.READY,
+		created_at=time.time(),
+		expires_at=time.time() + 3600.0,
+		qkd_session_id=session_id,
+		qber=qber,
+		secret_key_rate=key_rate,
+		)
+		
+		self._key_counter += 1
+		kid_b = f"{node_b}{node_a}-{self._key_counter:06d}"
+		
+		block_b = KeyBlock(
+		key_id=kid_b,
+		...
+		key_material=block_a.key_material,  # Same key at both ends
+		...
+		)
+		
+		pool_a = self.nodes[node_a].key_pools.get(f"{node_a}-{node_b}")
+		pool_b = self.nodes[node_b].key_pools.get(f"{node_b}-{node_a}")
+		if pool_a:
+		pool_a.add_key_block(block_a)
+		if pool_b:
+		pool_b.add_key_block(block_b)
+		
+		return secure_bits, qber, key_rate
+	\end{lstlisting}
+\end{LTR}
+
+نکته مهم در این پیاده‌سازی آن است که ماده کلیدی بلوک \lr{block\_b} با \lr{block\_a.key\_material} مقداردهی می‌شود، نه با یک فراخوانی جدید \lr{os.urandom}. این تضمین می‌کند که کلید در هر دو گره یکسان است که برای رمزنگاری \lr{XOR} ضروری است. در عمل، در یک سیستم \lr{QKD} واقعی، این کلید از طریق پروتکل \lr{QKD} به‌صورت مستقل در هر دو گره تولید و سپس از طریق کانال احراز هویت عمومی تطبیق داده می‌شود؛ در این شبیه‌سازی، به‌جای شبیه‌سازی کامل پروتکل تطبیق، مستقیماً کلید یکسان در هر دو گره قرار داده می‌شود.
+
+روش \lr{replenish\_key\_pools} استخرها را اسکن می‌کند و برای استخرهای در وضعیت \lr{LOW} یا \lr{EMPTY}، نشست \lr{QKD} جدیدی اجرا می‌کند. نکته طراحی مهم در این روش آن است که هر دو استخر متناظر در یک لینک به‌صورت همزمان به وضعیت \lr{REPLENISHING} تغییر می‌یابند تا وضعیت همگام حفظ شود.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def replenish_key_pools(self) -> List[str]:
+		replenished: List[str] = []
+		visited_links: set = set()
+		
+		for node_id, node in self.nodes.items():
+		for pool_key, pool in node.key_pools.items():
+		if pool.status in (KeyPoolStatus.LOW, KeyPoolStatus.EMPTY):
+		link_id = pool.link_id
+		
+		if link_id in visited_links:
+		continue
+		visited_links.add(link_id)
+		
+		link = self.links.get(link_id)
+		if link is None:
+		continue
+		pool_a = self.nodes[link.node_a].key_pools.get(
+		f"{link.node_a}-{link.node_b}"
+		)
+		pool_b = self.nodes[link.node_b].key_pools.get(
+		f"{link.node_b}-{link.node_a}"
+		)
+		if pool_a:
+		pool_a.status = KeyPoolStatus.REPLENISHING
+		if pool_b:
+		pool_b.status = KeyPoolStatus.REPLENISHING
+		
+		try:
+		replenish_pulses = 10 ** 7
+		self.run_qkd_session(link_id, num_pulses=replenish_pulses)
+		replenished.append(link_id)
+		except Exception as e:
+		if pool_a:
+		pool_a.status = KeyPoolStatus.ERROR
+		if pool_b:
+		pool_b.status = KeyPoolStatus.ERROR
+		print(f"  [ERROR] Replenishment failed for {link_id}: {e}")
+		
+		return replenished
+	\end{lstlisting}
+\end{LTR}
+
+استفاده از \lr{visited\_links} برای جلوگیری از \lr{double-replenishment} همان لینک است؛ چون هر لینک دو استخر دارد، اسکن بدون این محافظ، همان لینک را دو بار شناسایی و پردازش می‌کرد. در صورت شکست نشست \lr{QKD}، هر دو استخر به وضعیت \lr{ERROR} تغییر می‌یابند که چسبناک است و تنها با مداخله خارجی قابل پاک‌سازی است.
+
+\subsection{کالیبراسیون برای نوع شبیه‌ساز}
+
+روش \lr{calibrate\_for\_simulator} در \lr{KMS} یکی از مهم‌ترین روش‌های تنظیم پویا است. این روش با دریافت یک پرچم بولی \lr{is\_pipeline}، \lr{watermark} استخرها و ثابت نرمال‌سازی \lr{SPF+} را برای نوع شبیه‌ساز تنظیم می‌کند. این کالیبراسیون ضروری است چرا که خروجی دو شبیه‌ساز در مقیاس‌های کاملاً متفاوتی قرار دارد.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def calibrate_for_simulator(self, is_pipeline: bool) -> None:
+		self._is_pipeline_mode = is_pipeline
+		
+		if is_pipeline:
+		new_low = PIPELINE_LOW_WATERMARK_BITS
+		new_high = PIPELINE_HIGH_WATERMARK_BITS
+		new_max = PIPELINE_MAX_CAPACITY_BITS
+		new_max_rate = PIPELINE_SPF_MAX_KEY_RATE
+		else:
+		new_low = STAT_LOW_WATERMARK_BITS
+		new_high = STAT_HIGH_WATERMARK_BITS
+		new_max = STAT_MAX_CAPACITY_BITS
+		new_max_rate = STAT_SPF_MAX_KEY_RATE
+		
+		# Update all pools
+		for node_id, node in self.nodes.items():
+		for pool_key, pool in node.key_pools.items():
+		pool.low_watermark_bits = new_low
+		pool.high_watermark_bits = new_high
+		pool.max_capacity_bits = new_max
+		pool.status = pool.check_status()
+		
+		# Update SPF+ key rate normalization
+		global SPF_MAX_KEY_RATE
+		SPF_MAX_KEY_RATE = new_max_rate
+	\end{lstlisting}
+\end{LTR}
+
+اگر این کالیبراسیون انجام نشود، در حالت خط لوله همه استخرها به‌طور دائمی در وضعیت \lr{LOW} یا \lr{REPLENISHING} گیر می‌کنند و فشار استخر برای همه هاپ‌ها به $\sim 1.0$ می‌رسد که باعث می‌شود \lr{SPF+} نتواند میان مسیرها تمایز قائل شود. این رفتار در حین توسعه مشاهده شد و به‌عنوان یک باگ بحرانی شناسایی و اصلاح گردید. تغییر متغیر سراسری \lr{SPF\_MAX\_KEY\_RATE} با کلیدواژه \lr{global} انجام می‌شود که در پایتون برای اصلاح متغیرهای ماژول سطح بالا ضروری است.
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+
+\subsection{وابستگی به موتور فیزیکی \lr{main\_optimized.py}}
+
+مهم‌ترین وابستگی خارجی این ماژول، به فایل \lr{main\_optimized.py} است که در همان دایرکتوری قرار دارد. این وابستگی از طریق تابع \lr{\_load\_local\_pipeline\_module} برقرار می‌شود که موتور فیزیکی را به‌صورت پویا بارگذاری می‌کند. از موتور فیزیکی، پنج مؤلفه کلیدی استخراج می‌شود: \lr{numpy} به‌عنوان کتابخانه آرایه، \lr{DEFAULT\_CONFIG} به‌عنوان پیکربندی پایه، \lr{init\_worker} برای مقداردهی اولیه کارگر، \lr{run\_single\_simulation} به‌عنوان نقطه ورود اصلی شبیه‌سازی، و \lr{set\_nested\_value} برای اصلاح پیکربندی.
+
+این وابستگی به‌صورت اختیاری (\lr{soft dependency}) طراحی شده است؛ یعنی اگر موتور فیزیکی در دسترس نباشد، ماژول شبکه همچنان با شبیه‌ساز آماری قابل اجرا است. این طراحی \lr{graceful degradation} نامیده می‌شود و تضمین می‌کند که ماژول در محیط‌های مختلف قابل اجرا باشد. در زمان آماده‌سازی شبکه، روش \lr{initialize} در \lr{QKDNetwork7Nodes} ابتدا تلاش می‌کند موتور خط لوله را بارگذاری کند و در صورت شکست، به‌صورت شفاف به شبیه‌ساز آماری روی می‌آورد و پیام مناسبی به کاربر نمایش می‌دهد.
+
+\subsection{ورودی‌ها به ماژول}
+
+ورودی اصلی ماژول از طریق فراخوانی تابع \lr{demo()} در انتهای فایل است که نیازی به پارامتر ندارد. این تابع یک نمونه از \lr{QKDNetwork7Nodes} می‌سازد و چرخه حیات کامل را اجرا می‌کند. پارامترهای قابل تنظیم در طول اجرا عبارت‌اند از: \lr{num\_sessions\_per\_link} در روش \lr{prime\_pools} که تعداد نشست‌های \lr{QKD} برای آماده‌سازی هر لینک را تعیین می‌کند (پیش‌فرض $50$)، و \lr{pulses\_per\_session} که تعداد پالس‌ها در هر نشست است (پیش‌فرض $10^7$). در مورد \lr{pulses\_per\_session}، مقدار قبلی $10^8$ به دلیل فشار حافظه کاهش یافت؛ در $10^8$ پالس، خط لوله چندین آرایه \lr{int64} به حجم حدود $800$ مگابایت (مانند \lr{prepared\_states}، \lr{photons}، \lr{click0}، \lr{click1}) تخصیص می‌داد که باعث فشار حافظه و موارد لبه‌ای عددی در کد \lr{sifting}/\lr{parameter-estimation} بسته \lr{qkd} می‌شد.
+
+علاوه بر این، کلاس \lr{StatisticalQKDLinkSimulator} پارامترهای فیزیکی قابل تنظیمی دارد: \lr{det\_eff} (بازده آشکارساز)، \lr{dark\_rate} (نرخ دارک کانت)، \lr{fiber\_loss} (تلفات فیبر بر کیلومتر)، \lr{intrinsic\_qber} (\lr{QBER} ذاتی) و \lr{mu\_signal} (شدت پالس سیگنال). این پارامترها در سازنده پیش‌فرض‌گذاری شده‌اند تا با \lr{DEFAULT\_CONFIG} در \lr{main\_optimized.py} هم‌خوان باشند. کلاس \lr{PipelineQKDLinkSimulator} نیز دو پارامتر دارد: \lr{detector\_efficiency} که بازده آشکارساز \lr{D0} و \lr{D1} را تنظیم می‌کند، و \lr{apply\_noise} که مشخص می‌کند آیا مسیر کامل آشکارساز نویزدار استفاده شود.
+
+توپولوژی شبکه به‌صورت سخت‌کد در روش \lr{build\_network} تعریف شده است. هفت گره با نقش مشخص، ده لینک با فواصل تعریف‌شده در دیکشنری \lr{NODE\_DISTANCES}، و سه سوییچ نوری با پیکربندی پیش‌فرض ایجاد می‌شوند. فواصل لینک‌ها به‌صورت متروپولیتن در نظر گرفته شده‌اند: لینک \lr{A-C} با $50$ کیلومتر کوتاه‌ترین مسیر مستقیم به رله است، در حالی که \lr{A-B} با $75$ کیلومتر طولانی‌ترین است. لینک‌های رله به ارسال‌کننده از $30$ کیلومتر (\lr{C-D}) تا $70$ کیلومتر (\lr{B-G}) متغیر هستند.
+
+\subsection{خروجی‌ها و گزارش‌گیری}
+
+خروجی اصلی ماژول، نمایش متنی قالب‌بندی‌شده در \lr{stdout} است که شامل چندین بخش است: جدول توپولوژی گره‌ها با نقش و همسایه‌ها، جدول معیارهای لینک شامل فاصله، وضعیت، \lr{QBER}، نرخ کلید و تلفات، جدول سطح استخر با بیت‌های موجود، رزرو شده و مصرف‌شده، پیکربندی سوییچ‌های نوری، جزئیات هر درخواست کلید خدمت شامل مقایسه مسیرهای کاندید، گام‌های \lr{XOR relay}، و شناسه کلید خدمت صادر شده.
+
+علاوه بر خروجی متنی، روش \lr{get\_network\_status} در \lr{KMS} یک دیکشنری ساختار یافته برمی‌گرداند که شامل وضعیت کامل شبکه است. این دیکشنری برای یکپارچه‌سازی با سامانه‌های مانیتورینگ خارجی یا تولید گزارش خودکار مناسب است. ساختار آن به این صورت است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		{
+			"nodes": {
+				"A": {
+					"role": "RECEIVER",
+					"neighbors": ["B", "C"],
+					"pools": {
+						"A-B": {
+							"pool_id": "POOL-A-B",
+							"status": "ACTIVE",
+							"available_bits": 12345678,
+							"reserved_bits": 0,
+							"used_bits": 1024,
+							"num_blocks": 42
+						},
+						...
+					}
+				},
+				...
+			},
+			"links": {
+				"A-B": {
+					"distance_km": 75.0,
+					"status": "UP",
+					"qber": 0.023456,
+					"secret_key_rate": 0.0123,
+					"optical_loss_db": 15.0,
+					"last_session": "QKD-A-B-abc12345"
+				},
+				...
+			},
+			"switches": {
+				"SW-A-1x2": {
+					"type": "1x2",
+					"available": true,
+					"configuration": {"A": "B"}
+				},
+				...
+			},
+			"service_keys_issued": 4
+		}
+	\end{lstlisting}
+\end{LTR}
+
+این ساختار تودرتو امکان سریع پیمایش وضعیت شبکه را فراهم می‌سازد و برای ابزارهای گزارش‌گیری خودکار یا داشبورد مانیتورینگ مناسب است.
+
+\subsection{یکپارچه‌سازی با اصلاحات \lr{F-01} تا \lr{F-22}}
+
+هنگامی که موتور خط لوله فعال است، ماژول شبکه به‌صورت خودکار از تمام اصلاحات اعمال‌شده در \lr{main\_optimized.py} بهره می‌برد. این اصلاحات شامل موارد زیر است: \lr{F-01} (تثبیت ولتاژ بایاس آشکارساز و ممیزی \lr{override})، \lr{F-05} (استفاده از \lr{SeedSequence.spawn} برای جریان‌های مستقل \lr{RNG})، \lr{F-11} (اعتبارسنجی تعادل احتمال)، \lr{F-14} (ذخیره‌سازی متادیتای منبع) و \lr{F-18} (حذف کد مرده \lr{debug pulse override}). این اصلاحات به‌صورت شفاف از طریق فراخوانی \lr{run\_single\_simulation} فعال می‌شوند و نیازی به پیکربندی اضافی در ماژول شبکه ندارند.
+
+در مورد \lr{F-05}، نکته مهم آن است که بذر تصادفی در سطح ماژول شبکه با \lr{numpy.random.default\_rng().integers(0, 2**63)} تولید می‌شود و سپس به \lr{run\_single\_simulation} ارسال می‌گردد. در داخل موتور فیزیکی، این بذر با \lr{SeedSequence.spawn(5)} به پنج جریان مستقل تقسیم می‌شود که هر یک برای یک بخش مختلف خط لوله (منبع، کانال، پروتکل، آشکارساز، \lr{sifting}) استفاده می‌شود. این تضمین می‌کند که نشست‌های متوالی روی همان لینک، نتایج مستقل از نظر آماری داشته باشند و همبستگی‌های ناخواسته میان اجزای مختلف خط لوله ایجاد نشود.
+
+\subsection{رفتار در حالت خرابی و بازیابی}
+
+ماژول شبکه شامل منطق پیچیده‌ای برای مدیریت خرابی و بازیابی است. روش \lr{handle\_failure} در \lr{KMS} با دریافت شناسه یک لینک خراب، آن لینک را به وضعیت \lr{DOWN} تبدیل می‌کند، استخرهای متناظر را به وضعیت \lr{ERROR} (چسبناک) تغییر می‌دهد، و سپس برای همه جفت‌های ارسال‌کننده–گیرنده تحت تأثیر، مسیرهای جایگزین را با \lr{SPF+} جستجو می‌کند. این روش مسیرهای جایگزین را به‌صورت لیست رشته‌ای برمی‌گرداند که در خروجی \lr{demo} نمایش داده می‌شوند.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def handle_failure(self, failed_link_id: str) -> List[str]:
+		link = self.links.get(failed_link_id)
+		if link is None:
+		return []
+		
+		link.status = LinkStatus.DOWN
+		
+		node_a, node_b = link.node_a, link.node_b
+		pool_a = self.nodes[node_a].key_pools.get(f"{node_a}-{node_b}")
+		pool_b = self.nodes[node_b].key_pools.get(f"{node_b}-{node_a}")
+		if pool_a:
+		pool_a.status = KeyPoolStatus.ERROR
+		if pool_b:
+		pool_b.status = KeyPoolStatus.ERROR
+		
+		affected_pairs: List[Tuple[str, str]] = []
+		senders = ["D", "E", "F", "G"]
+		for s in senders:
+		affected_pairs.append((s, "A"))
+		
+		alternative_paths: List[str] = []
+		for sender, receiver in affected_pairs:
+		alt_path = self.spf_plus(sender, receiver)
+		if alt_path:
+		path_str = " -> ".join(alt_path)
+		alternative_paths.append(path_str)
+		
+		return alternative_paths
+	\end{lstlisting}
+\end{LTR}
+
+در \lr{demo}، پس از شبیه‌سازی خرابی لینک \lr{B-D}، درخواست کلید خدمت \lr{D-A} مجدداً اجرا می‌شود. در این حالت، \lr{SPF+} به‌جای مسیر کوتاه \lr{D-B-A}، مسیر جایگزین \lr{D-C-A} را انتخاب می‌کند چون لینک \lr{B-D} با هزینه $\infty$ عملاً از گراف حذف شده است. این رفتار به‌صورت خودکار توسط الگوریتم \lr{Dijkstra} مدیریت می‌شود و نیازی به منطق خاصی در سطح بالاتر ندارد.
+
+پس از خرابی، روش \lr{run\_demo} لینک \lr{B-D} را به‌صورت دستی به وضعیت \lr{UP} بازمی‌گرداند و استخرهای آن را به وضعیت \lr{LOW} تنظیم می‌کند تا فرآیند \lr{replenishment} آن‌ها را شناسایی و پر کند. این الگو (\lr{manual state injection}) برای شبیه‌سازی سناریوهای بازیابی استفاده می‌شود. در یک سیستم تولیدی واقعی، این تغییرات وضعیت به‌صورت خودکار توسط سیستم‌های مانیتورینگ که فاصله، \lr{QBER} یا سایر معیارها را پایش می‌کنند، اعمال می‌شوند.
+
+\subsection{رفتار حافظه و کارایی}
+
+از نظر حافظه، ماژول شبکه به‌صورت نسبتاً سبک طراحی شده است. هر استخر کلید به‌صورت یک دیکشنری از بلوک‌های کلید پیاده‌سازی شده که هر بلوک شامل یک شیء بایت با طول $32$ بایت (برای $256$ بیت کلید) است. در حالت آماری با \lr{watermark} پیش‌فرض $20$ مگابیت، هر استخر می‌تواند تا حدود $78125$ بلوک $256$ بیتی نگه دارد که در مجموع حدود $2.5$ مگابایت حافظه برای هر استخر و $50$ مگابایت برای کل شبکه نیاز دارد. در حالت خط لوله با \lr{watermark} $200$ کیلوبیت، هر استخر تنها حدود $25$ کیلوبایت حافظه نیاز دارد.
+
+از نظر کارایی، عملیات \lr{SPF+} با پیچیدگی $\mathcal{O}((V+E) \log V) \approx \mathcal{O}(17 \log 7) \approx 50$ عملیات برای هر درخواست، بسیار سریع است. عملیات \lr{reserve\_keys} با پیچیدگی $\mathcal{O}(n \log n)$ که در آن $n$ تعداد بلوک‌ها است، در بدترین حالت با $n \approx 78000$ به حدود $1.3$ میلیون عملیات می‌رسد که در عملی روی سخت‌افزار مدرن در کمتر از $100$ میلی‌ثانیه اجرا می‌شود. عملیات \lr{simulate\_link} در حالت آماری تقریباً بی‌درنگ است، در حالی که در حالت خط لوله با $10^7$ پالس، حدود چند ثانیه تا چند دقیقه زمان نیاز دارد بسته به پیکربندی.
+
+به‌طور کلی، این ماژول به‌عنوان لایه بالاترین انتزاع در فریم‌ورک شبیه‌سازی \lr{QKD} عمل می‌کند و در عین حال از موتور فیزیکی دقیق بهره می‌برد. طراحی ماژول‌ار آن امکان توسعه آسان را فراهم می‌سازد؛ برای مثال، افزودن گره‌های جدید تنها نیازمند اصلاح \lr{build\_network} و \lr{NODE\_DISTANCES} است، و افزودن پروتکل‌های رله جدید تنها با ایجاد زیرکلاس جدید از \lr{QKDNode} امکان‌پذیر است. این انعطاف‌پذیری، ماژول را به ابزاری مناسب برای مطالعه شبکه‌های \lr{QKD} در مقیاس متروپولیتن تبدیل می‌کند.

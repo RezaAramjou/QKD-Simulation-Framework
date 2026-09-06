@@ -1,0 +1,903 @@
+\sloppy
+\emergencystretch=5em
+\hbadness=10000
+\vbadness=10000
+\tolerance=2000
+\providecolor{codebg}{RGB}{248,248,248}
+\providecolor{codeframe}{RGB}{200,200,200}
+\providecolor{keyword}{RGB}{0,0,180}
+\providecolor{string}{RGB}{163,21,21}
+\providecolor{comment}{RGB}{0,128,0}
+\lstset{
+	basicstyle=\ttfamily\scriptsize,
+	breaklines=true,
+	breakatwhitespace=false,
+	columns=fullflexible,
+	keepspaces=true,
+	frame=single,
+	framesep=2pt,
+	showstringspaces=false,
+	backgroundcolor=\color{codebg},
+	rulecolor=\color{codeframe},
+	keywordstyle=\color{keyword}\bfseries,
+	stringstyle=\color{string},
+	commentstyle=\color{comment}\itshape,
+	numberstyle=\tiny\color{gray},
+	numbers=left,
+	numbersep=6pt,
+	xleftmargin=14pt,
+	framexleftmargin=14pt,
+	literate=
+	{ą}{{\v{a}}}1 {ę}{{\k{e}}}1 {ż}{{\.z}}1 {ś}{{\'s}}1
+	{ł}{{\l}}1 {ć}{{\'c}}1 {ń}{{\'n}}1 {ó}{{\'o}}1 {ź}{{\'z}}1
+	{→}{{$\rightarrow$}}1 {←}{{$\leftarrow$}}1 {≠}{{$\neq$}}1
+}
+
+\section{نمای کلی و هدف ماژول}
+
+این فصل به مستندسازی دو فایل بنیادی در لایۀ هماهنگی (\lr{orchestration layer}) فریم‌ورک شبیه‌سازی \lr{QKD} می‌پردازد: \lr{\texttt{qkd/simulation\_runner.py}} و \lr{\texttt{main\_optimized\_dispatch.py}}. این دو فایل با وجود تفاوت در سطح انتزاع و هدف عملیاتی، یکپارچگی مفهومی نزدیکی دارند و در همکاری با یکدیگر، خط لولۀ کامل اجرای شبیه‌سازی از تولید پالس تا خروجی نهایی \lr{CSV} را پوشش می‌دهند. فایل نخست یعنی \lr{\texttt{simulation\_runner.py}} پیاده‌سازی اصلی و تولید-آمادۀ (\lr{production-grade}) خط لولای شبیه‌سازی است که به عنوان یک \lr{Mixin} در کلاس شبیه‌ساز اصلی ترکیب می‌شود و وظیفۀ مدیریت چرخۀ عمر کامل یک اجرای \lr{QKD} را بر عهده دارد؛ از آماده‌سازی پارامترها، تقسیم کار به دسته‌ها (\lr{batches})، تخصیص بذر (\lr{seed}) به هر دسته، ارسال کارها به فرایندهای کارگر، تجمیع نتایج، تا پس‌پردازش امنیتی شامل تخمین \lr{Decoy-State} و محاسبۀ طول کلید امن نهایی. این فایل با شناسۀ نسخه \lr{\texttt{v18.5-quant-dsp-optimized-fixed}} علامت‌گذاری شده و نسخۀ شمای فراداده (\lr{metadata schema}) آن \lr{\texttt{2.9}} است.
+
+در مقابل، فایل \lr{\texttt{main\_optimized\_dispatch.py}} یک \lr{hook} آزمایش‌پذیری (\lr{testability hook}) است که به صورت عمدی از ماژول سنگین \lr{qkd} جدا شده تا بتوان قرارداد همزمانی (\lr{concurrency contract}) برنامه را با \lr{stub workers} ساده و قطعی (\lr{deterministic}) آزمود. این جداسازی پاسخی است به یک مشکل معماری فراگیر در سیستم‌های علمی بزرگ: زمانی که منطق هماهنگی درون تابعی نهفته باشد که وابستگی‌های سنگین به ماژول‌های \lr{qkd.*} دارد، آزمودن آن منطق به صورت مجزا نیازمند بارگذاری تمام آن ماژول‌ها است و این امر سرعت و قابلیت تکرار آزمون‌ها را به شدت کاهش می‌دهد. با استخراج قرارداد هماهنگی به یک تابع مستقل که تنها به کتابخانه استاندارد پایتون وابسته است، می‌توان رفتار ترتیب‌بندی (\lr{ordering}) و تخصیص کار را با کارگرهای تقلبی آزمود.
+
+هدف اصلی هر دو ماژول، اجرای موازی و کارآمد شبیه‌سازی \lr{Monte Carlo} برای \lr{QKD} است. شبیه‌سازی \lr{QKD} ماهیتاً یک مسئلۀ \lr{embarrassingly parallel} است: هر پالس نوری به صورت آماری مستقل از پالس‌های دیگر تولید، انتقال و آشکارسازی می‌شود. این استقلال آماری به ما اجازه می‌دهد که کل \lr{$N$} پالس را به \lr{$B$} دستۀ مجزا تقسیم کرده و هر دسته را به یک فرایند کارگر (\lr{worker process}) مستقل بسپاریم. مهم‌ترین چالش در اینجا تضمین این است که تقسیم بذرها به گونه‌ای انجام شود که دنبالۀ اعداد تصادفی هر دسته با بقیه تداخل نداشته باشد و در عین حال، اجرا با بذر اصلی (\lr{master seed}) یکسان، دقیقاً قابل بازتولید باشد. این ویژگی که به آن \lr{deterministic reproducibility} می‌گویند، برای صحت‌سنجی نتایج امنیتی و بازبینی توسط شخص ثالث حیاتی است.
+
+تفاوت کلیدی در طراحی دو فایل در انتخاب ابزار همزمانی نهفته است. فایل \lr{\texttt{simulation\_runner.py}} از \lr{\texttt{ProcessPoolExecutor}} کتابخانه‌ی \lr{\texttt{concurrent.futures}} استفاده می‌کند که یک لایۀ انتزاعی سطح بالا بر \lr{\texttt{multiprocessing.Pool}} است و امکان مدیریت \lr{Future}-ها را با \lr{\texttt{wait}} و \lr{\texttt{FIRST\_COMPLETED}} فراهم می‌کند. این انتخاب به ما اجازه می‌دهد به محض تکمیل هر دسته، نتایج آن را تجمیع کنیم و در صورت بروز خطای فیزیکی (مانند نقض یک نامتغیر فیزیکی در یک دسته)، بلافاصله اجرای بقیۀ دسته‌ها را لغو کنیم. در مقابل، فایل \lr{\texttt{main\_optimized\_dispatch.py}} از \lr{\texttt{mp.Pool.imap\_unordered}} استفاده می‌کند که ساده‌تر اما با ترتیب‌بندی غیرتضمینی است. این تفاوت در ابزار بازتابی از دو الگوی استفاده‌ی متفاوت است: \lr{simulation\_runner} نیاز به واکنش آنی به خطاهای فیزیکی دارد، در حالی که \lr{dispatch\_work\_items} فقط یک سد تکمیل (\lr{completion barrier}) ساده می‌خواهد.
+
+یک نکتۀ مهم در طراحی این دو ماژول، الگوی \lr{fail-safe} در مدیریت خطاست. در شبیه‌سازی \lr{QKD} عملیاتی، قطع کل خط لوله به دلیل شکست یک دسته می‌تواند هزینه‌بر باشد، به خصوص اگر شبیه‌سازی ساعت‌ها طول کشیده باشد. اما از سوی دیگر، ادامه‌ی اجرا با داده‌های ناقص می‌تواند منجر به تولید کلید ناامن شود. این ماژول‌ها راه‌حل میانه‌ای را برگزیده‌اند: در صورت بروز خطای فیزیکی (نظیر \lr{ParameterValidationError} که نشان‌دهندۀ نقض یک نامتغیر فیزیکی است)، اجرا متوقف می‌شود زیرا چنین خطایی نشان از اشکال اساسی در پیکربندی دارد؛ اما خطاهای عمومی (\lr{Exception}) نیز به همین شدت رفتار می‌کنند تا از تولید نتایج نادرست جلوگیری شود. در هر دو حالت، خطا در فراداده‌ی \lr{failures} ثبت می‌گردد تا قابل ردیابی باشد.
+
+\section{مبانی تئوری و فیزیکی}
+
+\subsection{ماهیت موازی‌پذیر شبیه‌سازی QKD}
+
+شبیه‌سازی \lr{QKD} یک نمونۀ کلاسیک از مسئلۀ \lr{embarrassingly parallel} است. در یک شبیه‌سازی \lr{Monte Carlo} از پروتکل \lr{QKD}، \lr{$N$} پالس نوری به صورت متوالی (یا شبه‌متوالی در حضور حافظۀ منبع) تولید، در کانال کوانتومی منتقل و در آشکارساز باب آشکارسازی می‌شوند. در فرض استاندارد که به آن فرض \lr{memoryless source} می‌گویند، هر پالس از توزیع احتمالی مشترکی مستقل از سایر پالس‌ها نمونه‌گیری می‌شود. این استقلال آماری به ما اجازه می‌دهد کل \lr{$N$} پالس را به \lr{$B$} دستۀ مجزا تقسیم کنیم:
+
+\begin{equation}
+	N = \sum_{i=0}^{B-1} n_i, \qquad n_i = \min\!\left( \left\lfloor \frac{N}{B} \right\rfloor,\; N - i \cdot \left\lfloor \frac{N}{B} \right\rfloor \right),
+\end{equation}
+
+\noindent و هر دسته را به یک فرایند کارگر مستقل بسپاریم. شرط لازم و کافی برای موازی‌سازی این‌گونه، استقلال آماری پالس‌هاست. در حضور \lr{coherent attacks} یا حمله‌هایی که در آن‌ها ایو می‌تواند حالت کوانتومی مشترک بین پالس‌ها را دستکاری کند، این استقلال به صورت محافظه‌کارانه نقض می‌شود و اثبات امنیتی باید با احتساب \lr{coherent information leakage} بازنویسی گردد. با این حال، در شبیه‌سازی، ما معمولاً فرض \lr{collective attacks} را برقرار می‌دانیم که در آن ایو به هر پالس به صورت مستقل حمله می‌کند و سپس اطلاعات کلاسیک جمع‌آوری‌شدۀ خود را به صورت دسته‌ای پردازش می‌کند.
+
+مزیت اصلی موازی‌سازی، کاهش زمان اجرا از \lr{$\mathcal{O}(N)$} به \lr{$\mathcal{O}(N / w)$} است که در آن \lr{$w$} تعداد فرایندهای کارگر است. اما این کاهش زمان تنها زمانی به دست می‌آید که سربار راه‌اندازی فرایندها، انتقال داده‌ها بین فرایندها (از طریق \lr{pickling}) و تجمیع نتایج، در برابر زمان محاسبۀ هر دسته ناچیز باشد. در عمل، برای شبیه‌سازی‌های بزرگ \lr{$N \ge 10^7$} با \lr{$w = 8$} تا \lr{$16$} کارگر، نسبت سربار به محاسبه به طور معمول کمتر از \lr{$5\%$} است و موازی‌سازی کاملاً توجیه‌پذیر است.
+
+\subsection{تئوری بذرگیری و قابلیت بازتولید}
+
+در شبیه‌سازی \lr{Monte Carlo}، تمام تصادفی بودن از یک مولد اعداد شبه‌تصادفی (\lr{PRNG}) نشأت می‌گیرد. انتخاب \lr{PRNG} و نحوۀ بذرگیری (\lr{seeding}) آن، دو جنبه‌ی حیاتی دارد: کیفیت آماری و قابلیت بازتولید. فریم‌ورک \lr{QKD} از \lr{\texttt{numpy.random.Generator}} با الگوریتم \lr{PCG64} استفاده می‌کند که یک مولد با کیفیت آماری بالا و دوره‌ی (\lr{period}) \lr{$2^{128}$} است. قابلیت بازتولید با تخصیص یک بذر \lr{$s_i$} به هر دسته \lr{$i$} از بذر اصلی \lr{$s_{\text{master}}$} تضمین می‌شود:
+
+\begin{equation}
+	s_i = \text{rng.integers}\!\left(1,\; S_{\max} + 1\right), \qquad S_{\max} = \texttt{MAX\_SEED\_INT\_PCG64}.
+\end{equation}
+
+\noindent در این رابطه، \lr{$S_{\max}$} حداکثر عدد صحیح مجاز برای بذر \lr{PCG64} است که در ثابت \lr{\texttt{MAX\_SEED\_INT\_PCG64}} تعریف شده است. این ثابت به گونه‌ای انتخاب شده که با محدودیت‌های داخلی \lr{PCG64} سازگار باشد. نکتۀ ظریف این است که اگر \lr{$B$} (تعداد دسته‌ها) از \lr{$S_{\max}$} بیشتر شود،不可避免اً برخی از بذرها تکراری خواهند بود و این می‌تواند منجر به همبستگی آماری ناخواسته بین دسته‌ها شود. کد ماژول این حالت را به صورت صریح با یک هشدار \lr{logger.warning} مدیریت می‌کند و در نتیجه، کاربر آگاه می‌شود که خروجی ممکن است با این محدودیت سازگار نباشد.
+
+برای جلوگیری از تکرار بذرها در حالت \lr{$B \le S_{\max}$}، ماژول از الگوریتم \lr{set-based deduplication} استفاده می‌کند: یک مجموعۀ (\lr{set}) از بذرهای منحصر به فرد ساخته می‌شود و تا زمانی که اندازۀ مجموعه به \lr{$B$} نرسد، نمونه‌گیری ادامه می‌یابد. این الگوریتم یک نمونۀ کلاسیک از مسئلۀ \lr{birthday paradox} است: احتمال اینکه در \lr{$k$} نمونه‌گیری از یک فضای \lr{$S_{\max}$}تایی، حداقل یک تکرار رخ دهد برابر است با:
+
+\begin{equation}
+	P(\text{collision}) = 1 - \prod_{i=0}^{k-1} \left( 1 - \frac{i}{S_{\max}} \right) \approx 1 - \exp\!\left( -\frac{k(k-1)}{2\, S_{\max}} \right).
+\end{equation}
+
+\noindent با \lr{$S_{\max} = 2^{31}$} (محدودیت \lr{uint32}) و \lr{$k = 100$} دسته، این احتمال تقریباً \lr{$2.3 \times 10^{-6}$} است که قابل صرف‌نظر است. اما برای \lr{$k = 10^4$} دسته، این احتمال به حدود \lr{$0.99$} می‌رسد و الگوریتم \lr{set-based} به تعداد تلاش‌های زیاد نیاز دارد. به همین دلیل، کد یک حداکثر تعداد تلاش (\lr{max\_attempts = num\_batches * 10}) تعریف می‌کند و در صورت نرسیدن به \lr{$B$} بذر منحصر به فرد، بذرهای تکراری را می‌پذیرد.
+
+\subsection{قفل تفسیر سراسری (GIL) و انتخاب ProcessPoolExecutor}
+
+پایتون به دلیل وجود \lr{Global Interpreter Lock (GIL)} در پیاده‌سازی \lr{CPython}، نمی‌تواند به صورت واقعی چند-رشته‌ای (\lr{multi-threaded}) محاسبات \lr{CPU-bound} را انجام دهد. \lr{GIL} یک مکانیزم قفل سراسری است که تنها به یک رشتۀ (\lr{thread}) اجازه می‌دهد در هر لحظه بایت‌کد پایتون را اجرا کند. این محدودیت به این معناست که برای محاسبات \lr{CPU-bound} (مانند شبیه‌سازی \lr{QKD} که شامل محاسبات سنگین \lr{numpy} و \lr{scipy} است)، استفاده از \lr{\texttt{threading.Thread}} تقریباً هیچ بهبود سرعتی نمی‌دهد.
+
+راه‌حل استاندارد، استفاده از \lr{multiprocessing} است که فرایندهای جداگانه‌ای با مفسرهای پایتون مستقل ایجاد می‌کند. هر فرایند \lr{GIL} خود را دارد و می‌تواند به طور واقعی موازی روی یک هستۀ \lr{CPU} مجزا اجرا شود. فریم‌ورک دو انتخاب اصلی دارد: \lr{\texttt{multiprocessing.Pool}} (سطح پایین‌تر) و \lr{\texttt{concurrent.futures.ProcessPoolExecutor}} (سطح بالاتر). انتخاب \lr{ProcessPoolExecutor} در \lr{simulation\_runner.py} به چند دلیل است:
+
+\begin{itemize}
+	\item پشتیبانی از \lr{Future} که امکان \lr{callback}-های غیرهمزمان را فراهم می‌کند.
+	\item امکان استفاده از \lr{\texttt{wait}} با \lr{\texttt{FIRST\_COMPLETED}} که به ما اجازه می‌دهد به محض تکمیل هر دسته، نتیجۀ آن را پردازش کنیم، به جای اینکه منتظر تکمیل همه باشیم.
+	\item مدیریت خطای بهتر از طریق \lr{\texttt{future.result()}} که استثنای پرتاب‌شدۀ درون کارگر را به فرایند اصلی منتقل می‌کند.
+	\item امکان لغو آیندۀ آینده‌ها (\lr{cancel\_futures=True}) در \lr{executor.shutdown} که برای توقف سریع در صورت بروز خطای فیزیکی حیاتی است.
+\end{itemize}
+
+در مقابل، \lr{\texttt{mp.Pool.imap\_unordered}} در \lr{main\_optimized\_dispatch.py} برای موارد ساده‌تر که نیازی به واکنش آنی به خطاها نیست، انتخاب شده است. این تابع نتایج را به ترتیب تکمیل (نه به ترتیب ورودی) تحویل می‌دهد و سربار کمتری دارد. تفاوت کلیدی این است که \lr{imap\_unordered} یک \lr{iterator} برمی‌گرداند و حلقه‌ی \lr{for} بر آن، به طور خودکار منتظر تکمیل هر آیتم می‌ماند، در حالی که \lr{ProcessPoolExecutor} با \lr{wait} امکان کنترل دقیق‌تر فراهم می‌کند.
+
+\subsection{مدل spawn در مقابل fork}
+
+در سیستم‌عامل‌های شبه‌یونیکس، \lr{multiprocessing} از سه مدل مختلف برای ایجاد فرایند جدید پشتیبانی می‌کند: \lr{fork}، \lr{spawn} و \lr{forkserver}. فریم‌ورک \lr{QKD} به صورت صریح از مدل \lr{spawn} استفاده می‌کند:
+
+\begin{equation}
+	\text{mp\_context} = \text{multiprocessing.get\_context}(\text{``spawn''}).
+\end{equation}
+
+\noindent انتخاب \lr{spawn} به جای \lr{fork} دلایل مهمی دارد. در مدل \lr{fork}، فرایند فرزند یک کپی از حافظۀ فرایند والد می‌گیرد که شامل تمام اشیاء پایتون، فایل‌های باز و قفل‌ها است. این امر می‌تواند منجر به مشکلات ظریف شود، به خصوص در حضور کتابخانه‌هایی که از قفل‌های \lr{C-level} استفاده می‌کنند (مانند \lr{OpenMP} در \lr{numpy} و \lr{scipy}). در \lr{fork}، اگر یک قفل در زمان \lr{fork} توسط یک رشتۀ غیراصلی نگه داشته شده باشد، در فرایند فرزند این قفل برای همیشه قفل‌شده باقی می‌ماند و هرگونه تلاش برای دریافت آن منجر به بن‌بست (\lr{deadlock}) می‌شود.
+
+در مقابل، مدل \lr{spawn} یک مفسر پایتون کاملاً جدید را راه‌اندازی می‌کند و تنها اشیایی که به صورت صریح از طریق \lr{pickling} به فرزند منتقل می‌شوند را در اختیار فرزند قرار می‌دهد. این امر هزینه‌ی راه‌اندازی بالاتری دارد (زمان \lr{spawn} حدود \lr{100} تا \lr{500} میلی‌ثانیه است در حالی که \lr{fork} چند میلی‌ثانیه طول می‌کشد)، اما امنیت و پایداری بسیار بالاتری فراهم می‌کند. برای شبیه‌سازی‌های طولانی، این هزینه‌ی راه‌اندازی ناچیز است.
+
+مدل \lr{spawn} همچنین در پلتفرم‌های \lr{Windows} و \lr{macOS} (از پایتون ۳.۸ به بعد) به صورت پیش‌فرض استفاده می‌شود و انتخاب آن در \lr{Linux} نیز، کد را به صورت متقاطع (\lr{cross-platform}) سازگار می‌کند.
+
+\subsection{محدودیت رشته‌های OpenMP در فرایندهای کارگر}
+
+یک نکتۀ بسیار مهم در موازی‌سازی محاسبات علمی، جلوگیری از \lr{oversubscription} است. \lr{Oversubscription} زمانی رخ می‌دهد که تعداد کل رشته‌های فعال از تعداد هسته‌های \lr{CPU} بیشتر شود و سیستم بیش از حد بارگذاری گردد. در چنین حالتی، زمان صرف‌شده برای \lr{context switching} می‌تواند به شدت زمان محاسبه را افزایش دهد.
+
+کتابخانه‌های \lr{numpy}، \lr{scipy} و \lr{numexpr} به طور پیش‌فرض از \lr{OpenMP} یا \lr{Intel MKL} برای موازی‌سازی داخلی استفاده می‌کنند و معمولاً به تعداد هسته‌های منطقی سیستم رشته ایجاد می‌کنند. اگر ما \lr{$w$} فرایند کارگر ایجاد کنیم و هر کدام به طور پیش‌فرض \lr{$c$} رشتۀ \lr{OpenMP} بسازد، کل رشته‌ها \lr{$w \times c$} خواهد بود که با احتمال زیاد از \lr{$c$} بیشتر است. برای جلوگیری از این مشکل، تابع \lr{\texttt{\_worker\_init}} به صورت صریح متغیرهای محیطی زیر را تنظیم می‌کند:
+
+\begin{equation}
+	\texttt{OMP\_NUM\_THREADS} = 1, \quad \texttt{MKL\_NUM\_THREADS} = 1, \quad \texttt{NUMEXPR\_NUM\_THREADS} = 1.
+\end{equation}
+
+\noindent این تنظیمات به هر فرایند کارگر می‌گویند که فقط از یک رشتۀ \lr{OpenMP} استفاده کند و موازی‌سازی داخلی را غیرفعال کند. با این کار، ما کنترل کامل موازی‌سازی را به سطح فریم‌ورک منتقل می‌کنیم و \lr{oversubscription} را از بین می‌بریم. این تکنیک به ویژه در سیستم‌های با \lr{16} یا \lr{32} هسته که در آن‌ها \lr{MKL} به طور پیش‌فرض \lr{32} رشته ایجاد می‌کند، حیاتی است.
+
+\subsection{ترتیب‌بندی در imap\_unordered}
+
+تابع \lr{\texttt{mp.Pool.imap\_unordered}} بر خلاف \lr{\texttt{imap}} و \lr{\texttt{map}}، تضمین نمی‌کند که نتایج به ترتیب ورودی تحویل داده شوند. این رفتار به صورت عمدی انتخاب شده است زیرا:
+
+\begin{equation}
+	t_{\text{total}}^{\text{ordered}} \ge \sum_{i=1}^{B} t_i^{\text{worker}}, \qquad t_{\text{total}}^{\text{unordered}} \approx \max_{i} t_i^{\text{worker}} \cdot \left\lceil \frac{B}{w} \right\rceil,
+\end{equation}
+
+\noindent که در آن \lr{$t_i^{\text{worker}}$} زمان پردازش دستۀ \lr{$i$} است. در حالت مرتب، اگر دستۀ \lr{$j$} طولانی‌تر از بقیه طول بکشد، تمام دسته‌های بعد از آن باید صبر کنند. در حالت نامرتب، هر دستۀ تکمیل‌شده بلافاصله تحویل داده می‌شود و میانگین زمان کل کاهش می‌یابد. این بهینه‌سازی به ویژه زمانی مهم است که زمان پردازش دسته‌ها متغیر باشد (مانند زمانی که برخی دسته‌ها تعداد بیشتری رویداد دارک کانت دارند).
+
+اما این رفتار نامرتب برای ماژول \lr{simulation\_runner.py} قابل قبول نیست، زیرا این ماژول نیاز به واکنش آنی به خطاهای فیزیکی در یک دستۀ خاص دارد. به همین دلیل، \lr{simulation\_runner} از \lr{\texttt{ProcessPoolExecutor}} با \lr{\texttt{wait(..., return\_when=FIRST\_COMPLETED)}} استفاده می‌کند که امکان کنترل دقیق‌تر را فراهم می‌کند: به محض تکمیل هر \lr{Future}، نتیجۀ آن پردازش می‌شود و در صورت بروز خطا، اجرا می‌تواند متوقف شود.
+
+\subsection{تجمیع آماری و قانون احتمال کل}
+
+پس از تکمیل هر دسته، نتایج آن در قالب یک \lr{\texttt{TallyCounts}} به فرایند اصلی باز می‌گردد. این شیء شامل شمارش‌های آماری برای هر پالس کانفیگ (\lr{pulse config}) است: تعداد پالس‌های ارسال‌شده، تعداد آشکارسازی‌ها در هر پایه، تعداد بیت‌های \lr{sifted}، تعداد خطاهای بیت و غیره. تجمیع این شمارش‌ها بین دسته‌ها یک عملیات ساده جمع (\lr{addition}) است:
+
+\begin{equation}
+	\text{counts}_{\text{total}}(k) = \sum_{i=0}^{B-1} \text{counts}_i(k), \qquad \forall k \in \mathcal{K},
+\end{equation}
+
+\noindent که در آن \lr{$\mathcal{K}$} مجموعۀ کلیدهای شمارش است (مانند \lr{``sent''}، \lr{``detected''}، \lr{``sifted''}). این عملیات به دلیل خاصیت جابجایی (\lr{commutativity}) و شرکت‌پذیری (\lr{associativity}) جمع، مستقل از ترتیب دسته‌هاست و به همین دلیل، ترتیب نامرتب \lr{imap\_unordered} هیچ مشکلی در صحت نهایی ایجاد نمی‌کند. این یک ویژگی کلیدی است که امکان موازی‌سازی بدون نگرانی در مورد ترتیب را فراهم می‌کند.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+
+\subsection{الگوی Mixin در SimulationRunnerMixin}
+
+کلاس \lr{\texttt{SimulationRunnerMixin}} یک \lr{Mixin} است، به این معنا که به تنهایی قابل استفاده نیست و باید با کلاس دیگری ترکیب شود تا یک کلاس شبیه‌ساز کامل بسازد. این الگو (\lr{Mixin pattern}) مزایای مهمی دارد:
+
+\begin{itemize}
+	\item \textbf{جداسازی نگرانی‌ها}: منطق اجرای شبیه‌سازی از منطق پیکربندی، منبع نوری، آشکارساز و اثبات امنیتی جدا است.
+	\item \textbf{قابلیت استفاده مجدد}: می‌توان همان \lr{Mixin} را در چند کلاس شبیه‌ساز مختلف با پیکربندی‌های متفاوت استفاده کرد.
+	\item \textbf{آزمون‌پذیری}: روش‌های \lr{Mixin} را می‌توان به صورت مجزا (با \lr{mock} کردن \lr{self.p}، \lr{self.rng} و \lr{self.proof\_module}) آزمود.
+\end{itemize}
+
+این \lr{Mixin} فرض می‌کند که کلاس میزبان (\lr{host class}) حداقل دارای ویژگی‌های (\lr{attributes}) زیر است: \lr{\texttt{self.p}} (یک شیء \lr{\texttt{SimulationParameters}})، \lr{\texttt{self.rng}} (یک \lr{\texttt{numpy.random.Generator}})، \lr{\texttt{self.proof\_module}} (یک نمونه از ماژول اثبات امنیتی مانند \lr{\texttt{Lim2014Proof}} یا \lr{\texttt{BB84TightProof}})، \lr{\texttt{self.epsilon\_allocation}} (یک شیء \lr{\texttt{EpsilonAllocation}})، \lr{\texttt{self.save\_master\_seed}} و \lr{\texttt{self.master\_seed\_int}}. این فرض‌ها به صورت صریح در امضای روش‌ها و در استفاده از \lr{\texttt{getattr}} با مقادیر پیش‌فرض قابل مشاهده است.
+
+\subsection{ساختار داده‌ی TallyCounts}
+
+شیء \lr{\texttt{TallyCounts}} یک \lr{dataclass} تغییرناپذیر (\lr{frozen dataclass}) است که شمارش‌های آماری هر پالس کانفیگ را نگه می‌دارد. این شیء دارای متدهای زیر است:
+
+\begin{itemize}
+	\item \lr{\texttt{from\_dict(d: dict)}}: ساخت یک \lr{TallyCounts} از یک دیکشنری (برای \lr{deserialization} پس از \lr{pickling}).
+	\item \lr{\texttt{merged(other: TallyCounts) -> TallyCounts}}: ادغام دو \lr{TallyCounts} با جمع میدان به میدان. این متد یک شیء جدید برمی‌گرداند و شیءهای اصلی را تغییر نمی‌دهد (اصول \lr{immutability}).
+	\item \lr{\texttt{to\_dict() -> dict}}: تبدیل به دیکشنری برای \lr{serialization}.
+\end{itemize}
+
+این ساختار تغییرناپذیر چندین مزیت دارد: ایمنی در محیط چند-رشته‌ای (\lr{thread safety})، امکان استفاده به عنوان کلید دیکشنری، و جلوگیری از تغییر ناخواسته در حین تجمیع. متد \lr{\texttt{merged}} به صورت شرکت‌پذیر و جابجایی است که با نیازهای تجمیع موازی هماهنگ است.
+
+\subsection{کلاس TqdmFallback}
+
+کلاس \lr{\texttt{TqdmFallback}} یک نمونۀ کلاسیک از الگوی \lr{Adapter} است. هدف آن، ارائه‌ی یک رابط سازگار با \lr{\texttt{tqdm.tqdm}} زمانی که \lr{tqdm} نصب نیست. این الگو به ما اجازه می‌دهد کد را بدون شرطی‌سازی (\lr{if tqdm is not None}) بنویسیم و در عین حال، در محیط‌هایی که \lr{tqdm} موجود نیست (مانند محیط‌های تولیدی بدون \lr{GUI})، کد بدون خطا کار کند. \lr{TqdmFallback} تمام روش‌های مورد نیاز \lr{tqdm} را پیاده‌سازی می‌کند:
+
+\begin{itemize}
+	\item \lr{\texttt{\_\_iter\_\_}} و \lr{\texttt{\_\_next\_\_}} برای پشتیبانی از حلقه‌ی \lr{for}.
+	\item \lr{\texttt{update(n=1)}} برای افزایش دستی شمارش.
+	\item \lr{\texttt{close()}} برای پاکسازی (که در \lr{Fallback} یک عملیات \lr{no-op} است).
+	\item \lr{\texttt{\_\_enter\_\_}} و \lr{\texttt{\_\_exit\_\_}} برای پشتیبانی از دستور \lr{with}.
+	\item \lr{\texttt{\_\_len\_\_}} برای پشتیبانی از \lr{len()}.
+\end{itemize}
+
+نکتۀ مهم در طراحی این کلاس این است که هیچ خروجی چاپ نمی‌کند، زیرا در محیط‌های تولیدی (مانند اجرای شبانه‌ی شبیه‌سازی‌ها روی کلاستر)، چاپ نوار پیشرفت می‌تواند فایل‌های لاگ را پر کند. این رفتار به صورت عمدی انتخاب شده است.
+
+\subsection{رویداد سراسری لغو: \lr{\_qkd\_terminate\_event}}
+
+متغیر سراسری \lr{\texttt{\_qkd\_terminate\_event}} یک مکانیزم هماهنگی برای لغو همکارانه (\lr{cooperative cancellation}) است. در مسیر ترتیبی (\lr{sequential})، یک \lr{\texttt{threading.Event}} ایجاد می‌شود و در هر تکرار حلقه، وضعیت آن بررسی می‌شود. در صورت تنظیم شدن (به دلیل \lr{KeyboardInterrupt} یا دلیل دیگر)، حلقه متوقف می‌شود.
+
+این الگو به این دلیل سراسری است که \lr{Python} اجازه نمی‌دهد یک \lr{Event} به سادگی به یک تابع \lr{nested} منتقل شود، به خصوص زمانی که تابع از طریق \lr{closure} به متغیر دسترسی دارد. استفاده از متغیر سراسری این مشکل را حل می‌کند، اما هزینه‌ای دارد: این متغیر باید قبل از هر اجرا به طور صحیح مقداردهی شود. در مسیر موازی، از \lr{\texttt{mp\_context.Event()}} استفاده می‌شود که یک رویداد مشترک بین فرایندها (\lr{inter-process shared event}) است و از طریق \lr{\texttt{initargs}} به هر کارگر منتقل می‌شود.
+
+\subsection{تابع \lr{\_worker\_init} و الگوی initializer}
+
+تابع \lr{\texttt{\_worker\_init}} یک \lr{initializer} برای \lr{ProcessPoolExecutor} است. این الگو به ما اجازه می‌دهد کدی را که باید یک‌بار در هر فرایند کارگر اجرا شود، تعریف کنیم. این کد پیش از اجرای هر تابع کارگر اجرا می‌شود و معمولاً برای:
+
+\begin{itemize}
+	\item تنظیم متغیرهای محیطی (مانند \lr{OMP\_NUM\_THREADS}).
+	\item ثبت رویداد لغو (\lr{terminate\_event}) برای دسترسی در تابع کارگر.
+	\item بارگذاری منابع سنگین (مانند مدل‌های یادگیری ماشین) که نباید برای هر تابع بارگذاری شوند.
+\end{itemize}
+
+استفاده می‌شود. در این ماژول، \lr{\texttt{\_worker\_init}} دو وظیفه دارد: ثبت \lr{terminate\_event} در متغیر سراسری \lr{\texttt{\_qkd\_terminate\_event}} (تا توابع کارگر بتوانند آن را بررسی کنند) و تنظیم متغیرهای محیطی برای محدود کردن رشته‌های \lr{OpenMP}.
+
+\subsection{تحلیل امضای dispatch\_work\_items}
+
+امضای تابع \lr{\texttt{dispatch\_work\_items}} به دقت طراحی شده است تا چندین هدف معماری را همزمان تأمین کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def dispatch_work_items(
+		work_items: Sequence[Any],
+		worker_fn: Callable[[Any], Any],
+		num_workers: int,
+		init_fn: Optional[Callable[..., None]],
+		init_args: Sequence[Any],
+		on_row: Callable[[Any], None],
+		*,
+		chunksize: int = 1,
+		) -> int:
+	\end{lstlisting}
+\end{LTR}
+
+\noindent تحلیل این امضا چندین نکتۀ طراحی را آشکار می‌کند:
+
+\textbf{استفاده از \lr{Sequence} به جای \lr{List}}: این انتخاب به این معناست که تابع هر شیءای را که رابط \lr{Sequence} را پیاده‌سازی کند (مانند \lr{list}، \lr{tuple}، \lr{range}، یا یک \lr{generator} محصورشده در \lr{list}) می‌پذیرد. این انعطاف‌پذیری به کاربر اجازه می‌دهد بدون تبدیل نوع، داده‌ها را ارسال کند.
+
+\textbf{استفاده از \lr{Optional[Callable[..., None]]} برای \lr{init\_fn}}: این انتخاب به این معناست که \lr{init\_fn} می‌تواند \lr{None} باشد (مخصوصاً در مسیر تک‌کارگره که نیازی به مقداردهی اولیهٔ هر فرایند نیست). عبارت \lr{Callable[..., None]} بیانگر این است که تابع می‌تواند هر تعداد آرگومان موضعی (\lr{positional}) را بپذیرد و خروجی خاصی برنگرداند (\lr{None}). این انعطاف‌‌پذیری از آن جهت لازم است که \lr{init\_args} ممکن است حاوی تعداد متفاوتی آرگومان ورودی باشد.
+
+\textbf{پارامتر \lr{chunksize} به صورت keyword-only}: علامت \lr{*} قبل از \lr{chunksize} آن را به یک پارامتر \lr{keyword-only} تبدیل می‌کند، به این معناست که باید با نام آن صدا زده شود (\lr{chunksize=4}) نه به صورت موقعیتی (\lr{positional}). این طراحی جلوی ابهام در امضا را می‌گیرد و افزودن پارامترهای آینده را آسان‌تر می‌کند.
+
+\textbf{خروجی \lr{int} به جای \lr{None}}: این انتخاب به ما اجازه می‌دهد تعداد ردیف‌های پردازش‌شده را به عنوان یک \lr{invariant} آزمایشی استفاده کنیم. در آزمون‌ها، می‌توانیم به سادگی بنویسیم \lr{assert dispatch\_work\_items(...) == len(work\_items)}.
+
+\subsection{ساختار SimulationResults}
+
+خروجی نهایی متد \lr{\texttt{run\_simulation}} یک شیء \lr{\texttt{SimulationResults}} است که یک \lr{dataclass} جامع با فیلدهای زیر است:
+
+\begin{itemize}
+	\item \lr{\texttt{params}}: شیء پارامترها (برای بازتولید).
+	\item \lr{\texttt{metadata}}: دیکشنری شامل زمان‌بندی، نسخه، فراداده‌ی فرایند، بردارهای حالت نمونه‌برداری‌شده و غیره.
+	\item \lr{\texttt{status}}: یک \lr{enum} از نوع \lr{\texttt{SimulationStatus}} (\lr{OK} یا \lr{FAILED}).
+	\item \lr{\texttt{simulation\_time\_seconds}}: زمان اجرا به ثانیه.
+	\item \lr{\texttt{secure\_key\_length}}: طول کلید امن نهایی (خروجی ماژول اثبات).
+	\item \lr{\texttt{raw\_sifted\_key\_length}}: تعداد کل بیت‌های \lr{sifted}.
+	\item \lr{\texttt{tally\_stats}}: دیکشنری از \lr{TallyCounts} برای هر پالس کانفیگ.
+	\item \lr{\texttt{decoy\_estimates}}: تخمین‌های \lr{Decoy-State} (در صورت وجود).
+	\item \lr{\texttt{weak\_gllp\_rate}}: نرخ \lr{GLLP} ضعیف.
+	\item \lr{\texttt{tagged\_fraction\_bound}}: کران بالایی کسر \lr{tagged}.
+	\item \lr{\texttt{beta\_y1\_deviation}} و \lr{\texttt{beta\_e1\_deviation}}: انحرافات \lr{$\beta_{Y_1}$} و \lr{$\beta_{e_1}$}.
+	\item \lr{\texttt{success\_probability}}: احتمال موفقیت پروتکل.
+	\item \lr{\texttt{security\_certificate}}: گواهی امنیتی.
+\end{itemize}
+
+این ساختار غنی به ما اجازه می‌دهد تمام اطلاعات لازم برای تحلیل پسین، بازتولید و گزارش‌دهی را در یک شیء داشته باشیم.
+
+\subsection{SecurityCertificate به عنوان خروجی امنیتی}
+
+شیء \lr{\texttt{SecurityCertificate}} یک \lr{dataclass} است که تمام فرضیات و انتخاب‌های امنیتی پروتکل را مستند می‌کند. این شیء شامل فیلدهای زیر است:
+
+\begin{itemize}
+	\item \lr{\texttt{proof\_name}}: نام پروتکل اثبات (مانند \lr{LIM\_2014} یا \lr{MA\_2005}).
+	\item \lr{\texttt{confidence\_bound\_method}}: روش کران اطمینان (\lr{GAUSSIAN}، \lr{HOEFFDING} و غیره).
+	\item \lr{\texttt{assumed\_phase\_equals\_bit\_error}}: آیا فرض شده خطای فاز با خطای بیت برابر است؟
+	\item \lr{\texttt{epsilon\_allocation}}: تخصیص \lr{$\varepsilon$} به اجزای مختلف.
+	\item \lr{\texttt{lp\_solver\_diagnostics}}: تشخیص‌گری \lr{LP solver}.
+\end{itemize}
+
+این گواهی به عنوان یک \lr{audit trail} عمل می‌کند و به بازبین اجازه می‌دهد تمام فرضیات امنیتی را به صورت شفاف بررسی کند.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+
+\subsection{محاسبۀ تعداد دسته‌ها}
+
+اولین محاسبۀ ریاضی در متد \lr{\texttt{run\_simulation}}، تعیین تعداد دسته‌هاست. این محاسبه با فرمول سادۀ زیر انجام می‌شود:
+
+\begin{equation}
+	B = \left\lceil \frac{N}{b} \right\rceil = \frac{N + b - 1}{b} \;\;\text{(integer division)},
+\end{equation}
+
+\noindent که در آن \lr{$N = $ \texttt{num\_bits}} تعداد کل پالس‌ها و \lr{$b = $ \texttt{batch\_size}} اندازۀ هر دسته است. این فرمول که به صورت \lr{(total\_pulses + batch\_size - 1) // batch\_size} پیاده‌سازی شده، یک راه‌حل کلاسیک برای محاسبۀ سقف (\lr{ceiling}) در محاسبۀ صحیح است.
+
+کد پیاده‌سازی این محاسبه به صورت زیر است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		total_pulses = self.p.num_bits
+		batch_size = self.p.batch_size
+		num_batches = (total_pulses + batch_size - 1) // batch_size
+	\end{lstlisting}
+\end{LTR}
+
+\noindent انتخاب \lr{$b$} یک ملاحظۀ مهم در طراحی است. اگر \lr{$b$} خیلی کوچک باشد، سربار مدیریت دسته‌ها (تخصیص بذر، \lr{pickling} پارامترها، راه‌اندازی کارگر) بر زمان محاسبه غالب می‌شود. اگر \lr{$b$} خیلی بزرگ باشد، موازی‌سازی مؤثر نخواهد بود و در صورت بروز خطا، کار زیاد هدر می‌رود. به طور معمول، \lr{$b$} به گونه‌ای انتخاب می‌شود که \lr{$B \approx 4 w$} تا \lr{$8 w$} باشد، تا بارگذاری متوازن باشد و سربار کم باشد.
+
+\subsection{تصمیم‌گیری برای مسیر موازی}
+
+تصمیم برای استفاده از مسیر موازی یا ترتیبی بر اساس سه شرط گرفته می‌شود:
+
+\begin{equation}
+	\text{use\_mp} = \left( w > 1 \right) \wedge \left( B > 1 \right) \wedge \left( \neg\, \text{force\_seq} \right),
+\end{equation}
+
+\noindent که در آن \lr{$w = $ \texttt{num\_workers}}، \lr{$B = $ \texttt{num\_batches}} و \lr{\text{force\_seq}} یک فلگ اختیاری برای اجبار به مسیر ترتیبی است. کد پیاده‌سازی این تصمیم به صورت زیر است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		use_mp = (
+		getattr(self.p, "num_workers", 1) > 1
+		and num_batches > 1
+		and not getattr(self.p, "force_sequential", False)
+		)
+	\end{lstlisting}
+\end{LTR}
+
+\noindent استفاده از \lr{\texttt{getattr}} با مقادیر پیش‌فرض به ما اجازه می‌دهد کد را حتی اگر پارامترهای \lr{num\_workers} یا \lr{force\_sequential} در شیء پارامترها تعریف نشده باشند، اجرا کنیم. این یک الگوی دفاعی است که کد را در برابر تغییرات شمای پارامترها مقاوم می‌کند.
+
+\subsection{تولید بذرهای فرزند}
+
+تولید بذرهای فرزند (\lr{child seeds}) یکی از حساس‌ترین بخش‌های کد است. این بخش باید تضمین کند که:
+
+\begin{enumerate}
+	\item هر دسته یک بذر منحصر به فرد دارد (تا جایی که امکان‌پذیر است).
+	\item اجرا با بذر اصلی یکسان، دقیقاً قابل بازتولید است.
+	\item در صورت عدم امکان تضمین یکتایی، کاربر آگاه شود.
+\end{enumerate}
+
+کد این بخش به دو شاخه تقسیم می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		child_seeds: List[int] = []
+		if num_batches > MAX_SEED_INT_PCG64:
+		logger.warning(
+		f"num_batches ({num_batches}) exceeds MAX_SEED_INT_PCG64. "
+		"Using integers with potential repetition."
+		)
+		child_seeds = [
+		int(self.rng.integers(1, MAX_SEED_INT_PCG64 + 1))
+		for _ in range(num_batches)
+		]
+		else:
+		child_seeds_set = set()
+		max_attempts = num_batches * 10
+		attempts = 0
+		
+		while len(child_seeds_set) < num_batches and attempts < max_attempts:
+		child_seeds_set.add(
+		int(self.rng.integers(1, MAX_SEED_INT_PCG64 + 1))
+		)
+		attempts += 1
+		
+		child_seeds = list(child_seeds_set)
+		while len(child_seeds) < num_batches:
+		child_seeds.append(
+		int(self.rng.integers(1, MAX_SEED_INT_PCG64 + 1))
+		)
+	\end{lstlisting}
+\end{LTR}
+
+\noindent در شاخۀ اول (\lr{num\_batches > MAX\_SEED\_INT\_PCG64})، یکتایی تضمین‌ناپذیر است زیرا تعداد دسته‌ها از فضای بذر بیشتر است. در این حالت، بذرها به صورت ساده بدون بررسی تکرار تولید می‌شوند و یک هشدار ثبت می‌شود. در شاخۀ دوم، از یک مجموعه (\lr{set}) برای ردیابی بذرهای منحصر به فرد استفاده می‌شود و تا \lr{10 \texttimes num\_batches} تلاش انجام می‌شود. اگر پس از این تعداد تلاش همچنان تعداد بذرهای منحصر به فرد کمتر از \lr{num\_batches} باشد، بذرهای تکراری به آن اضافه می‌شوند.
+
+این الگوریتم یک نمونۀ کلاسیک از مسئلۀ \lr{coupon collector} است. تعداد متوسط نمونه‌گیری‌های لازم برای جمع‌آوری \lr{$k$} بذر منحصر به فرد از یک فضای \lr{$n$}تایی برابر است با:
+
+\begin{equation}
+	\mathbb{E}[T] = n \cdot \left( H_n - H_{n-k} \right) \approx n \cdot \ln\!\left( \frac{n}{n-k} \right),
+\end{equation}
+
+\noindent که در آن \lr{$H_n$} عدد هارمونیک \lr{$n$}م است. برای \lr{$n = 2^{31}$} و \lr{$k \ll n$}، این مقدار تقریباً برابر \lr{$k$} است، به این معنا که در عمل، تعداد تلاش‌ها بسیار نزدیک به \lr{$k$} خواهد بود و حداکثر \lr{$10 k$} تلاش کافی است.
+
+\subsection{آماده‌سازی فراداده و شمارش‌های سراسری}
+
+پس از تولید بذرها، یک ساختار داده‌ی موقت برای تجمیع آماری ایجاد می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		overall_stats: Dict[str, TallyCounts] = {
+			pc.name: TallyCounts()
+			for pc in self.p.source.pulse_configs
+		}
+		total_sifted = 0
+		status_info: Dict[str, Any] = {
+			"code": SimulationStatus.OK,
+			"message": "Simulation completed successfully.",
+		}
+	\end{lstlisting}
+\end{LTR}
+
+\noindent در اینجا، \lr{\texttt{overall\_stats}} یک دیکشنری است که برای هر پالس کانفیگ (مانند \lr{``signal''}، \lr{``decoy\_weak''}، \lr{``decoy\_vacuum''}) یک \lr{\texttt{TallyCounts}} خالی دارد. این شیء در طول اجرا به تدریج با نتایج هر دسته پر می‌شود. ساختار داده‌ی \lr{\texttt{metadata}} نیز شامل زمان شروع، نسخۀ نرم‌افزار، شمای فراداده، \lr{run\_id}، تعداد دسته‌ها و وضعیت محیط ثوابت است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		metadata: Dict[str, Any] = {
+			"version": SIMULATION_VERSION,
+			"schema_version": METADATA_SCHEMA_VERSION,
+			"timing": timing_meta,
+			"failures": {},
+			"run_id": getattr(self.p, "run_id", "N/A"),
+			"batches_completed": 0,
+			"num_batches": num_batches,
+			"state_vectors": [],
+			"constants_environment": as_dict(),
+		}
+	\end{lstlisting}
+\end{LTR}
+
+\noindent فیلد \lr{\texttt{constants\_environment}} با فراخوانی \lr{\texttt{as\_dict()}} از ماژول ثوابت، تمام ثوابت محیطی (مانند \lr{EPS}، \lr{NUMERIC\_ABS\_TOL}، \lr{Y1\_SAFE\_THRESHOLD} و غیره) را به صورت یک دیکشنری ذخیره می‌کند. این امر تضمین می‌کند که هر شبیه‌سازی به صورت کامل قابل بازتولید است و تمام ثوابت عددی مورد استفاده در زمان اجرا مستند شده‌اند.
+
+\subsection{تابع \lr{\_worker\_init}}
+
+این تابع به عنوان \lr{initializer} برای \lr{ProcessPoolExecutor} استفاده می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		_qkd_terminate_event: Optional[Any] = None
+		
+		
+		def _worker_init(terminate_event: Any) -> None:
+		global _qkd_terminate_event
+		_qkd_terminate_event = terminate_event
+		os.environ.setdefault("OMP_NUM_THREADS", "1")
+		os.environ.setdefault("MKL_NUM_THREADS", "1")
+		os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+	\end{lstlisting}
+\end{LTR}
+
+\noindent تحلیل خط‌به‌خط:
+
+\begin{itemize}
+	\item \textbf{خط اول}: تعریف متغیر سراسری \lr{\texttt{\_qkd\_terminate\_event}} که در ابتدا \lr{None} است. این متغیر در طول چرخۀ عمر فریم‌ورک چندین بار بازنویسی می‌شود.
+	\item \textbf{خط \lr{global}}: اعلام اینکه تابع می‌خواهد متغیر سراسری را تغییر دهد، نه یک متغیر محلی هم‌نام ایجاد کند.
+	\item \textbf{خط سوم}: ذخیرۀ رویداد لغو در متغیر سراسری، تا توابع کارگر بتوانند آن را بررسی کنند.
+	\item \textbf{خطوط \lr{setdefault}}: تنظیم متغیرهای محیطی برای محدود کردن رشته‌های \lr{OpenMP}. استفاده از \lr{\texttt{setdefault}} به جای \lr{\texttt{os.environ[...] = ...}} به این معناست که اگر کاربر قبلاً این متغیرها را تنظیم کرده باشد، مقدار آن محترم شمرده می‌شود.
+\end{itemize}
+
+\subsection{متد \lr{\_run\_multiprocessed}: مدیریت ProcessPoolExecutor}
+
+این متد قلب مسیر موازی است و چندین مکانیزم هماهنگی پیچیده را در خود جای داده:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		mp_context = multiprocessing.get_context("spawn")
+		terminate_event = mp_context.Event()
+		
+		with ProcessPoolExecutor(
+		max_workers=num_workers,
+		mp_context=mp_context,
+		initializer=_worker_init,
+		initargs=(terminate_event,),
+		) as executor:
+		tasks = self._generate_tasks(num_batches, child_seeds, task_params)
+		submitted: Dict[Future, Dict[str, Any]] = {
+			executor.submit(self._worker_function, *task_args): {
+				"batch_idx": i
+			}
+			for i, task_args in enumerate(tasks)
+		}
+	\end{lstlisting}
+\end{LTR}
+
+\noindent تحلیل:
+
+\begin{itemize}
+	\item \textbf{\lr{mp\_context}}: انتخاب صریح مدل \lr{spawn} برای ایجاد فرایندهای کارگر.
+	\item \textbf{\lr{terminate\_event}}: یک رویداد مشترک بین فرایندها که برای لغو همکارانه استفاده می‌شود.
+	\item \textbf{\lr{ProcessPoolExecutor}}: ایجاد \lr{pool} با تعداد کارگرهای مشخص، \lr{initializer} برای مقداردهی هر فرایند.
+	\item \textbf{\lr{submitted}}: یک دیکشنری که هر \lr{Future} را به شاخص دسته‌ی آن نگاشت می‌کند. این نگاشت برای ردیابی اینکه کدام دسته با خطا مواجه شده، ضروری است.
+\end{itemize}
+
+سپس یک حلقه‌ی \lr{wait} با \lr{FIRST\_COMPLETED} اجرا می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		with TqdmType(total=num_batches, desc="Simulating Batches (MP)") as pbar:
+		done, not_done = wait(
+		submitted.keys(),
+		return_when=FIRST_COMPLETED,
+		)
+		while done:
+		for future in done:
+		batch_idx = submitted[future]["batch_idx"]
+		try:
+		batch_result = future.result()
+		self._validate_and_merge_batch(
+		batch_result,
+		overall_stats,
+		self.p.batch_size,
+		)
+		total_sifted += batch_result.get("sifted_count", 0)
+		metadata["batches_completed"] += 1
+		except ParameterValidationError as exc:
+		status_info = {
+			"code": SimulationStatus.FAILED,
+			"message": (
+			"Physical Invariant Violated in "
+			f"Batch {batch_idx}: {str(exc)}"
+			),
+		}
+		metadata["failures"][f"batch_{batch_idx}"] = {
+			"type": "PhysicalInvariantError",
+			"message": str(exc),
+		}
+		terminate_event.set()
+		executor.shutdown(wait=False, cancel_futures=True)
+		break
+	\end{lstlisting}
+\end{LTR}
+
+\noindent تحلیل کلیدی این حلقه:
+
+\begin{itemize}
+	\item \textbf{\lr{wait(..., return\_when=FIRST\_COMPLETED)}}: به جای \lr{as\_completed}، از \lr{wait} استفاده می‌شود زیرا نیاز به تفکیک \lr{done} و \lr{not\_done} داریم تا بتوانیم به صورت دستی مدیریت کنیم.
+	\item \textbf{تفکیک خطاها}: \lr{ParameterValidationError} (نقض نامتغیر فیزیکی) به صورت جداگانه از سایر استثناها مدیریت می‌شود و یک پیام خطای ساختاریافته تولید می‌کند.
+	\item \textbf{لغو فوری}: در صورت بروز خطا، \lr{terminate\_event.set()} برای آگاه‌سازی سایر کارگران و \lr{executor.shutdown(wait=False, cancel\_futures=True)} برای لغو فوری آیندۀ‌های در انتظار فراخوانی می‌شود.
+	\item \textbf{شمارش دسته‌های تکمیل‌شده}: \lr{\texttt{metadata["batches\_completed"]}} به عنوان یک شاخص پیشرفت به‌روزرسانی می‌شود.
+\end{itemize}
+
+\subsection{متد \lr{\_validate\_and\_merge\_batch}: تطبیق دو فرمت خروجی کارگر}
+
+این متد با دو فرمت مختلف خروجی کارگر سازگار است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if "tallies" in batch_result and isinstance(batch_result["tallies"], dict):
+		tallies_data = batch_result["tallies"]
+		else:
+		tallies_data = batch_result
+		
+		for key, incoming_data in tallies_data.items():
+		if key not in overall_stats:
+		continue
+		
+		if isinstance(incoming_data, dict):
+		incoming_tally = TallyCounts.from_dict(incoming_data)
+		elif isinstance(incoming_data, TallyCounts):
+		incoming_tally = incoming_data
+		else:
+		continue
+		
+		overall_stats[key] = overall_stats[key].merged(incoming_tally)
+	\end{lstlisting}
+\end{LTR}
+
+\noindent این کد دو فرمت را پشتیبانی می‌کند:
+
+\begin{enumerate}
+	\item فرمت قدیمی: \lr{\{"0": \{...\}, "1": \{...\}, ...\}} که در آن کلیدها نام پالس کانفیگ‌ها و مقادیر دیکشنری شمارش‌ها هستند.
+	\item فرمت جدید: \lr{\{"tallies": \{"0": \{...\}, ...\}, ...\}} که در آن شمارش‌ها زیر کلید \lr{"tallies"} قرار دارند.
+\end{enumerate}
+
+\noindent این تطبیق‌پذیری به ما اجازه می‌دهد نسخه‌های مختلف کارگر را بدون شکستن سازگاری به عقب (\lr{backward compatibility}) نگه داریم. متد \lr{\texttt{TallyCounts.from\_dict}} برای تبدیل دیکشنری به شیء و متد \lr{\texttt{merged}} برای ادغام استفاده می‌شود. شرط \lr{\texttt{if key not in overall\_stats: continue}} اطمینان می‌دهد که کلیدهای ناشناخته (مانند کلیدهای اشتباه یا از نسخه‌های آینده) به صورت بی‌خطر نادیده گرفته می‌شوند.
+
+\subsection{متد \lr{\_post\_process}: تخمین Decoy و محاسبۀ طول کلید}
+
+این متد پس از تکمیل موفقیت‌آمیز تمام دسته‌ها فراخوانی می‌شود و وظیفۀ محاسبۀ خروجی نهایی امنیتی را دارد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if hasattr(self.proof_module, "estimate_yields_and_errors"):
+		decoy_estimates = self.proof_module.estimate_yields_and_errors(
+		overall_stats
+		)
+		else:
+		decoy_estimates = None
+		
+		if self.p.security_proof == SecurityProof.LIM_2014:
+		key_res = self.proof_module.calculate_key_length(overall_stats)
+		else:
+		key_res = self.proof_module.calculate_key_length(
+		decoy_estimates,
+		overall_stats,
+		)
+	\end{lstlisting}
+\end{LTR}
+
+\noindent این کد دو مسیر مختلف برای محاسبۀ طول کلید دارد:
+
+\begin{itemize}
+	\item مسیر \lr{LIM\_2014}: فقط \lr{overall\_stats} را به \lr{calculate\_key\_length} می‌فرستد، زیرا این اثبات به صورت داخلی تخمین‌های لازم را انجام می‌دهد.
+	\item مسیر دیگر (مانند \lr{MA\_2005}، \lr{WANG\_2005}، \lr{BB84\_TIGHT}): ابتدا \lr{decoy\_estimates} به صورت جداگانه محاسبه شده و سپس به \lr{calculate\_key\_length} ارسال می‌شود.
+\end{itemize}
+
+سپس احتمال موفقیت محاسبه می‌شود:
+
+\begin{equation}
+	P_{\text{success}} = 1 - \left( \varepsilon_{\text{cor}} + \varepsilon_{\text{PA}} + \varepsilon_{\text{smooth}} \right),
+\end{equation}
+
+\noindent که در کد به صورت زیر پیاده‌سازی شده:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		success_prob = getattr(key_res, "success_probability", None)
+		if success_prob is None:
+		total_eps = (
+		self.epsilon_allocation.eps_cor
+		+ self.epsilon_allocation.eps_pa
+		+ self.epsilon_allocation.eps_smooth
+		)
+		success_prob = clamp_probability(1.0 - total_eps)
+	\end{lstlisting}
+\end{LTR}
+
+\noindent تابع \lr{\texttt{clamp\_probability}} اطمینان حاصل می‌کند که احتمال در بازۀ \lr{$[0, 1]$} قرار دارد. در نهایت، یک \lr{\texttt{SecurityCertificate}} ساخته می‌شود که تمام فرضیات و انتخاب‌های امنیتی را مستند می‌کند.
+
+\subsection{تابع \lr{dispatch\_work\_items}: مسیر تک‌کارگره}
+
+این تابع دو مسیر مجزا دارد. مسیر تک‌کارگره به صورت زیر پیاده‌سازی شده:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if num_workers == 1:
+		if init_fn is not None:
+		init_fn(*init_args)
+		for item in work_items:
+		row = worker_fn(item)
+		on_row(row)
+		completed += 1
+		return completed
+	\end{lstlisting}
+\end{LTR}
+
+\noindent تحلیل:
+
+\begin{itemize}
+	\item \textbf{فراخوانی \lr{init\_fn} در فرایند اصلی}: در مسیر تک‌کارگره، \lr{init\_fn} در همان فرایند فراخوانی می‌شود. این رفتار با رفتار مسیر چند-کارگره (که در آن \lr{init\_fn} در هر فرایند کارگر فراخوانی می‌شود) متفاوت است و باید در طراحی \lr{init\_fn} در نظر گرفته شود.
+	\item \textbf{ترتیب حفظ می‌شود}: \lr{on\_row} به ترتیب ورودی فراخوانی می‌شود. این تضمین برای کاربردهایی که به ترتیب وابسته‌اند (مانند نوشتن ردیف‌های \lr{CSV} با شناسۀ خطی) حیاتی است.
+	\item \textbf{بدون سربار}: هیچ \lr{pickling}، \lr{IPC} یا \lr{context switching} انجام نمی‌شود و این مسیر سریع‌ترین حالت ممکن است.
+\end{itemize}
+
+\subsection{تابع \lr{dispatch\_work\_items}: مسیر چندکارگره}
+
+مسیر چند-کارگره از \lr{mp.Pool} با \lr{imap\_unordered} استفاده می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		init_args_tuple = tuple(init_args) if init_args else ()
+		with mp.Pool(
+		processes=num_workers,
+		initializer=init_fn,
+		initargs=init_args_tuple,
+		) as pool:
+		for row in pool.imap_unordered(worker_fn, work_items, chunksize=chunksize):
+		on_row(row)
+		completed += 1
+		
+		return completed
+	\end{lstlisting}
+\end{LTR}
+
+\noindent تحلیل:
+
+\begin{itemize}
+	\item \textbf{تبدیل به \lr{tuple}}: \lr{init\_args} به \lr{tuple} تبدیل می‌شود زیرا \lr{mp.Pool} یک \lr{tuple} برای \lr{initargs} نیاز دارد. این تبدیل همچنین از تغییرپذیری (\lr{mutability}) آرگومان‌ها جلوگیری می‌کند.
+	\item \textbf{بلوک \lr{with}}: \lr{mp.Pool} به عنوان یک \lr{context manager} استفاده می‌شود که تضمین می‌کند پس از خروج از بلوک، تمام کارگرها به طور تمیز (\lr{gracefully}) بسته می‌شوند. این \lr{completion barrier} است که در مستندات ماژول به آن اشاره شده: هیچ ردیفی در حال پرواز (\lr{in flight}) باقی نمی‌ماند.
+	\item \textbf{\lr{imap\_unordered}}: این متد یک \lr{iterator} برمی‌گرداند که در هر تکرار، نتیجۀ بعدی تکمیل‌شده را تحویل می‌دهد. ترتیب تحویل، ترتیب تکمیل است، نه ترتیب ورودی.
+	\item \textbf{\lr{chunksize}}: این پارامتر به \lr{Pool} می‌گوید که چند آیتم را در یک دسته به یک کارگر بفرستد. \lr{chunksize=1} (پیش‌فرض) به این معناست که هر آیتم به صورت جداگانه ارسال می‌شود. برای آیتم‌های کوچک، \lr{chunksize} بزرگتر می‌تواند سربار \lr{IPC} را کاهش دهد.
+\end{itemize}
+
+\subsection{اعتبارسنجی ورودی‌ها}
+
+قبل از اجرای مسیرها، تابع دو اعتبارسنجی ساده انجام می‌دهد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if num_workers < 1:
+		raise ValueError(f"num_workers must be >= 1, got {num_workers}")
+		if chunksize < 1:
+		raise ValueError(f"chunksize must be >= 1, got {chunksize}")
+	\end{lstlisting}
+\end{LTR}
+
+\noindent این اعتبارسنجی‌ها به صورت \lr{fail-fast} طراحی شده‌اند: در صورت ورودی نامعتبر، بلافاصله استثنا پرتاب می‌شود تا کاربر زود متوجه اشکال شود. پیام خطا شامل مقدار نامعتبر است که اشکال‌زدایی را آسان می‌کند.
+
+\subsection{مدیریت KeyboardInterrupt و تمیزکاری}
+
+یکی از مهم‌ترین جنبه‌های \lr{run\_simulation} مدیریت تمیزکاری در صورت بروز خطا یا قطع کاربر است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		except KeyboardInterrupt as exc:
+		logger.warning("Simulation interrupted by user (KeyboardInterrupt).")
+		if _qkd_terminate_event:
+		_qkd_terminate_event.set()
+		raise SimulationInterruptedError(cause=exc)
+		except BrokenProcessPoolError as exc:
+		logger.critical(f"Broken process pool: {exc}", exc_info=True)
+		raise QKDSimulationError(
+		f"Process pool failed catastrophically: {exc}",
+		code=ErrorCode.SIMULATION,
+		cause=exc,
+		)
+		finally:
+		if temp_file_to_delete and os.path.exists(temp_file_to_delete):
+		try:
+		os.remove(temp_file_to_delete)
+		except OSError as cleanup_err:
+		logger.warning(
+		f"Failed to cleanup temporary file "
+		f"{temp_file_to_delete}: {cleanup_err}"
+		)
+	\end{lstlisting}
+\end{LTR}
+
+\noindent تحلیل:
+
+\begin{itemize}
+	\item \textbf{\lr{KeyboardInterrupt}}: اگر کاربر با \lr{Ctrl+C} اجرا را قطع کند، ابتدا رویداد لغو تنظیم می‌شود تا کارگرها متوقف شوند، سپس یک \lr{SimulationInterruptedError} با ارجاع به استثنای اصلی پرتاب می‌شود. این الگو به کاربر اجازه می‌دهد نوع قطع را تشخیص دهد.
+	\item \textbf{\lr{BrokenProcessPoolError}}: این خطا زمانی رخ می‌دهد که یک کارگر به طور غیرمنتظره از بین برود (مانند \lr{segfault} در \lr{numpy}). این یک خطای بحرانی است و با سطح لاگ \lr{CRITICAL} ثبت می‌شود.
+	\item \textbf{بلوک \lr{finally}}: این بلوک تضمین می‌کند که فایل موقت (اگر برای ذخیرۀ پارامترها ایجاد شده) حذف شود. این تمیزکاری در هر شرایطی (حتی در صورت بروز استثنای جدید در بلوک \lr{except}) اجرا می‌شود. اگر خود تمیزکاری شکست بخورد، فقط یک هشدار ثبت می‌شود تا جلوی استثنای اصلی را نگیرد.
+\end{itemize}
+
+\subsection{نمونه‌برداری از ماتریس‌های چگالی}
+
+متد \lr{\texttt{\_log\_state\_vectors}} یک ویژگی تشخیصی است که نمونه‌هایی از ماتریس‌های چگالی حالت منبع را در فراداده ثبت می‌کند. این نمونه‌برداری به صورت زیر انجام می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		for i in range(num_batches):
+		n_pulses = min(
+		self.p.batch_size,
+		self.p.num_bits - i * self.p.batch_size,
+		)
+		safe_seed = int(child_seeds[i]) % MAX_SEED_INT_UINT32 or 1
+		dm_rng = np.random.default_rng(safe_seed + 9999)
+		sample_indices = dm_rng.choice(
+		len(source_obj.pulse_configs),
+		size=min(n_pulses, 10),
+		)
+		sampled_tensors = source_obj._rho_tensor[sample_indices]
+		
+		normalized_dms = []
+		for dm in sampled_tensors:
+		trace_val = np.trace(dm)
+		if not is_close(trace_val, 1.0) and trace_val > 0:
+		dm_copy = dm / trace_val
+		normalized_dms.append(dm_copy.tolist())
+		else:
+		normalized_dms.append(dm.tolist())
+	\end{lstlisting}
+\end{LTR}
+
+\noindent تحلیل ریاضی:
+
+\begin{itemize}
+	\item \textbf{بذر نمونه‌برداری}: برای جلوگیری از تداخل با بذر اصلی شبیه‌سازی، یک بذر جداگانه با آفست \lr{9999} استفاده می‌شود. این تکنیک به نام \lr{seed derivate} شناخته می‌شود.
+	\item \textbf{بررسی نرمال‌بودن}: هر ماتریس چگالی باید \lr{$\text{tr}(\rho) = 1$} باشد. اگر به دلیل خطای عددی اینطور نباشد، ماتریس با تقسیم بر \lr{$\text{tr}(\rho)$} نرمال می‌شود. این عملیات فقط در صورتی انجام می‌شود که \lr{$\text{tr}(\rho) > 0$} باشد تا از تقسیم بر صفر جلوگیری شود.
+	\item \textbf{تبدیل به \lr{list}}: برای \lr{serialization} در \lr{JSON}، ماتریس \lr{numpy} به لیست پایتون تبدیل می‌شود.
+\end{itemize}
+
+نرمال‌سازی ماتریس چگالی با فرمول زیر انجام می‌شود:
+
+\begin{equation}
+	\rho_{\text{normalized}} = \frac{\rho}{\text{tr}(\rho)}, \qquad \text{if } \qquad \text{tr}(\rho) > 0.
+\end{equation}
+
+\noindent این فرمول تضمین می‌کند که ماتریس نرمال‌شده دارای \lr{$\text{tr}(\rho_{\text{normalized}}) = 1$} است.
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+
+\subsection{ورودی‌های SimulationRunnerMixin}
+
+ماژول \lr{\texttt{simulation\_runner.py}} به عنوان یک \lr{Mixin} به کلاس میزبان متصل می‌شود و از طریق \lr{self} به چندین منبع داده دسترسی دارد. این ورودی‌ها به چند دسته تقسیم می‌شوند:
+
+\textbf{پارامترها (از طریق \lr{self.p})}: شیء \lr{\texttt{SimulationParameters}} تمام پارامترهای پیکربندی شبیه‌سازی را در خود نگه می‌دارد. مهم‌ترین فیلدهای مورد استفاده در این ماژول عبارت‌اند از:
+
+\begin{itemize}
+	\item \lr{\texttt{num\_bits}}: تعداد کل پالس‌ها (\lr{$N$}).
+	\item \lr{\texttt{batch\_size}}: اندازۀ هر دسته (\lr{$b$}).
+	\item \lr{\texttt{num\_workers}}: تعداد فرایندهای کارگر (\lr{$w$}).
+	\item \lr{\texttt{force\_sequential}}: فلگ اجبار به مسیر ترتیبی.
+	\item \lr{\texttt{security\_proof}}: نوع پروتکل اثبات امنیتی.
+	\item \lr{\texttt{confidence\_method}}: روش کران اطمینان.
+	\item \lr{\texttt{phase\_error\_assumption}}: فرض تساوی خطای فاز و بیت.
+	\item \lr{\texttt{run\_id}}: شناسۀ یکتای اجرا.
+	\item \lr{\texttt{source}}: شیء منبع نوری با \lr{\texttt{pulse\_configs}}.
+\end{itemize}
+
+\textbf{مولد اعداد تصادفی (\lr{self.rng})}: یک شیء \lr{\texttt{numpy.random.Generator}} با الگوریتم \lr{PCG64} که برای تولید بذرهای فرزند استفاده می‌شود.
+
+\textbf{ماژول اثبات امنیتی (\lr{self.proof\_module})}: یک نمونه از کلاس‌های اثبات مانند \lr{\texttt{Lim2014Proof}}، \lr{\texttt{BB84TightProof}}، \lr{\texttt{Ma2005Proof}} یا \lr{\texttt{Wang2005Proof}}. این ماژول در پس‌پردازش برای تخمین \lr{Decoy} و محاسبۀ طول کلید استفاده می‌شود.
+
+\textbf{تخصیص \lr{$\varepsilon$} (\lr{self.epsilon\_allocation})}: یک شیء \lr{\texttt{EpsilonAllocation}} که شامل بودجه‌های \lr{$\varepsilon$} برای هر مرحله‌ی امنیتی است.
+
+\textbf{بذر اصلی (\lr{self.master\_seed\_int})}: بذر اصلی شبیه‌سازی که در فراداده ثبت می‌شود (در صورت فعال بودن \lr{\texttt{self.save\_master\_seed}}).
+
+\subsection{خروجی‌های SimulationRunnerMixin}
+
+خروجی اصلی متد \lr{\texttt{run\_simulation}} یک شیء \lr{\texttt{SimulationResults}} است که در بخش‌های قبلی به تفصیل بررسی شد. علاوه بر این، این ماژول در طول اجرا خروجی‌های جانبی زیر را تولید می‌کند:
+
+\textbf{لاگ‌ها}: از طریق \lr{logger} به سطح \lr{INFO}، \lr{WARNING} و \lr{CRITICAL} پیام‌های تشخیصی تولید می‌کند. این لاگ‌ها شامل هشدارهای مربوط به تکرار بذر، خطاهای کارگر و قطع کاربر است.
+
+\textbf{نوار پیشرفت}: از طریق \lr{TqdmType} یک نوار پیشرفت در \lr{stderr} نمایش می‌دهد (در صورت نصب \lr{tqdm}).
+
+\textbf{فایل موقت (اختیاری)}: اگر پارامترها برای \lr{pickling} بزرگ باشند (بزرگتر از \lr{\texttt{DEFAULT\_PARAMS\_PICKLE\_THRESHOLD\_BYTES = 1\_000\_000}} بایت)، یک فایل موقت برای ذخیرۀ پارامترها ایجاد می‌شود و پس از پایان اجرا حذف می‌گردد.
+
+\subsection{تعامل با ماژول اثبات امنیتی}
+
+پس از تکمیل موفق شبیه‌سازی، متد \lr{\texttt{\_post\_process}} با ماژول اثبات امنیتی به دو روش تعامل می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if hasattr(self.proof_module, "estimate_yields_and_errors"):
+		decoy_estimates = self.proof_module.estimate_yields_and_errors(
+		overall_stats
+		)
+		else:
+		decoy_estimates = None
+		
+		if self.p.security_proof == SecurityProof.LIM_2014:
+		key_res = self.proof_module.calculate_key_length(overall_stats)
+		else:
+		key_res = self.proof_module.calculate_key_length(
+		decoy_estimates,
+		overall_stats,
+		)
+	\end{lstlisting}
+\end{LTR}
+
+\noindent این کد دو الگوی متفاوت تعامل را نشان می‌دهد:
+
+\begin{itemize}
+	\item \textbf{الگوی یک‌مرحله‌ای (\lr{LIM\_2014})}: ماژول اثبات به صورت داخلی تخمین \lr{Decoy} و محاسبۀ طول کلید را در یک فراخوانی انجام می‌دهد. این الگو ساده‌تر است اما انعطاف‌پذیری کمتری دارد.
+	\item \textbf{الگوی دومرحله‌ای (سایر)}: ابتدا تخمین \lr{Decoy} به صورت جداگانه انجام می‌شود، سپس نتایج به \lr{calculate\_key\_length} ارسال می‌گردند. این الگو امکان بازبینی و ثبت تخمین‌های \lr{Decoy} را به صورت جداگانه فراهم می‌کند.
+\end{itemize}
+
+استفاده از \lr{\texttt{hasattr}} برای بررسی وجود متد \lr{\texttt{estimate\_yields\_and\_errors}} یک الگوی دفاعی است که به ما اجازه می‌دهد با ماژول‌های اثبات قدیمی‌تر که این متد را ندارند، سازگار باشیم.
+
+\subsection{تعامل با ساختارهای داده‌ی datatypes}
+
+ماژول \lr{\texttt{simulation\_runner.py}} به شدت به ماژول \lr{\texttt{datatypes}} وابسته است. این وابستگی‌ها شامل موارد زیر است:
+
+\begin{itemize}
+	\item \lr{\texttt{ConfidenceBoundMethod}}: یک \lr{enum} که روش کران اطمینان را مشخص می‌کند.
+	\item \lr{\texttt{SecurityCertificate}}: \lr{dataclass} گواهی امنیتی.
+	\item \lr{\texttt{SimulationResults}}: \lr{dataclass} خروجی نهایی.
+	\item \lr{\texttt{SimulationStatus}}: \lr{enum} وضعیت اجرا.
+	\item \lr{\texttt{TallyCounts}}: \lr{dataclass} شمارش‌های آماری.
+	\item \lr{\texttt{SecurityProof}}: \lr{enum} نوع پروتکل اثبات (در \lr{\texttt{\_post\_process}} به صورت محلی ایمپورت می‌شود).
+\end{itemize}
+
+استفاده از \lr{enum}‌ها به جای رشته‌های خام (\lr{raw strings}) چندین مزیت دارد: ایمنی نوع (\lr{type safety})، تکمیل خودکار در \lr{IDE}، و جلوگیری از خطاهای املایی. \lr{dataclass}‌ها نیز کدهای تکراری (\lr{boilerplate}) را کاهش می‌دهند و ساختار داده‌ای روشن و قابل آزمون فراهم می‌کنند.
+
+\subsection{مدیریت خطا و کدهای خطا}
+
+ماژول از یک سلسله‌مراتب خطای ساختاریافته استفاده می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		from .exceptions import (
+		ErrorCode,
+		ParameterValidationError,
+		QKDSimulationError,
+		SimulationInterruptedError,
+		)
+	\end{lstlisting}
+\end{LTR}
+
+\noindent این سلسله‌مراتب به ما اجازه می‌دهد خطاهای مختلف را به صورت تفکیک‌شده مدیریت کنیم:
+
+\begin{itemize}
+	\item \lr{\texttt{ParameterValidationError}}: نقض یک نامتغیر فیزیکی (مانند \lr{$\mu > 1$} یا \lr{$p < 0$}). این خطاها در یک دسته رخ می‌دهند و نشان از اشکال اساسی در پیکربندی دارند.
+	\item \lr{\texttt{QKDSimulationError}}: خطای عمومی شبیه‌سازی با کد خطای \lr{ErrorCode.SIMULATION}.
+	\item \lr{\texttt{SimulationInterruptedError}}: قطع توسط کاربر.
+	\item \lr{\texttt{BrokenProcessPoolError}}: فروپاشی \lr{pool} فرایندها (از کتابخانه استاندارد).
+\end{itemize}
+
+هر خطا به صورت متفاوتی در فراداده ثبت می‌شود و به کاربر اجازه می‌دهد علت شکست را به دقت تشخیص دهد.
+
+\subsection{اتصال dispatch\_work\_items به main\_optimized}
+
+تابع \lr{\texttt{dispatch\_work\_items}} به گونه‌ای طراحی شده که به عنوان یک \lr{hook} قابل آزمون برای \lr{\texttt{main\_optimized.run\_and\_save\_csv}} عمل کند. در کد اصلی، این تابع به صورت زیر فراخوانی می‌شود:
+
+\begin{itemize}
+	\item \lr{\texttt{work\_items}}: لیستی از پیکربندی‌های شبیه‌سازی (هر کدام یک سناریوی \lr{QKD}).
+	\item \lr{\texttt{worker\_fn}}: تابعی که یک پیکربندی را به یک ردیف \lr{CSV} تبدیل می‌کند.
+	\item \lr{\texttt{num\_workers}}: از خط فرمان کاربر.
+	\item \lr{\texttt{init\_fn}}: تابعی که \lr{numpy} و \lr{qkd} را در هر فرایند کارگر راه‌اندازی می‌کند.
+	\item \lr{\texttt{init\_args}}: آرگومان‌های \lr{init\_fn} (مانند تنظیمات \lr{logging}).
+	\item \lr{\texttt{on\_row}}: تابعی که یک ردیف را در فایل \lr{CSV} می‌نویسد.
+	\item \lr{\texttt{chunksize}}: معمولاً \lr{1} برای \lr{CSV}، اما می‌تواند بزرگتر باشد برای کارهای سبک.
+\end{itemize}
+
+این طراحی به ما اجازه می‌دهد \lr{dispatch\_work\_items} را با \lr{stub worker} آزمود: به جای شبیه‌سازی کامل \lr{QKD}، یک تابع ساده مانند \lr{lambda x: x*2} استفاده می‌کنیم و بررسی می‌کنیم که \lr{on\_row} به ترتیب صحیح فراخوانی می‌شود. این آزمون‌ها در کسری از ثانیه اجرا می‌شوند و تغییرات در قرارداد هماهنگی را به سرعت آشکار می‌کنند.
+
+\subsection{قرارداد تکمیل و سد همزمانی}
+
+یکی از مهم‌ترین ویژگی‌های طراحی \lr{\texttt{dispatch\_work\_items}} قرارداد تکمیل (\lr{completion contract}) آن است: زمانی که تابع برمی‌گردد، تمام کارها تکمیل شده‌اند و \lr{on\_row} برای هر آیتم فراخوانی شده است. این قرارداد در دو سطح تضمین می‌شود:
+
+\begin{itemize}
+	\item در مسیر تک‌کارگره، حلقۀ \lr{for} تا پایان \lr{work\_items} ادامه می‌یابد.
+	\item در مسیر چندکارگره، بلوک \lr{with mp.Pool(...) as pool} به عنوان یک \lr{context manager} عمل می‌کند و در خروج (\lr{\_\_exit\_\_})، \lr{pool} را به طور کامل می‌بندد و تمام \lr{Future}-های در حال اجرا را منتظر می‌ماند.
+\end{itemize}
+
+این قرارداد برای کاربردهایی که پس از \lr{dispatch} نیاز به دسترسی به منابع مشترک دارند (مانند بستن فایل \lr{CSV} و flush کردن بافر) حیاتی است. بدون این قرارداد، ممکن است برخی ردیف‌ها هنوز در پرواز باشند و در فایل نهایی گم شوند.
+
+\subsection{ملاحظات عملکرد و توصیه‌های پیکربندی}
+
+برای استفاده بهینه از این ماژول‌ها، چندین توصیه‌ی عملکردی وجود دارد:
+
+\textbf{انتخاب \lr{batch\_size} بهینه}: برای شبیه‌سازی \lr{QKD} با \lr{$N = 10^7$} پالس و \lr{$w = 8$} کارگر، یک \lr{$b = 10^5$} یا \lr{$10^6$} مناسب است. این انتخاب \lr{$B = 100$} یا \lr{$10$} دسته می‌دهد که سربار مدیریت پایین و بارگذاری متوازن را فراهم می‌کند.
+
+\textbf{تنظیم \lr{OMP\_NUM\_THREADS}}: اگر چه \lr{\texttt{\_worker\_init}} این متغیر را به \lr{1} تنظیم می‌کند، اما برای محاسباتی که نیاز به موازی‌سازی درون-فرایندی دارند (مانند \lr{LP} بزرگ)، می‌توان این مقدار را به صورت دستی بالاتر تنظیم کرد. اما باید مراقب بود که \lr{$w \times \text{OMP\_NUM\_THREADS} \le \text{core count}$} برقرار بماند.
+
+\textbf{استفاده از \lr{chunksize} در \lr{dispatch\_work\_items}}: برای کارهای سبک (زمان کوتاه به ازای هر آیتم)، \lr{chunksize > 1} می‌تواند سربار \lr{IPC} را به شدت کاهش دهد. اما برای کارهای سنگین (مانند شبیه‌سازی کامل \lr{QKD})، \lr{chunksize = 1} مناسب است زیرا سربار \lr{IPC} در برابر زمان محاسبه ناچیز است.
+
+\textbf{مدیریت حافظه}: هر فرایند کارگر یک کپی از پارامترها و منابع را در حافظه نگه می‌دارد. برای شبیه‌سازی‌های با منابع بزرگ (مانند \lr{density matrices} بزرگ)، این می‌تواند منجر به مصرف حافظۀ زیاد شود. در چنین مواردی، استفاده از \lr{shared memory} یا کاهش \lr{$w$} می‌تواند کمک‌کننده باشد.
+
+این ماژول‌ها به عنوان ستون فقرات اجرایی فریم‌ورک \lr{QKD} عمل می‌کنند و طراحی دقیق آنها امکان اجرای شبیه‌سازی‌های بزرگ‌مقیاس با قابلیت بازتولید، تشخیص‌گری غنی و رفتار \lr{fail-safe} را فراهم می‌کند. ترکیب الگوی \lr{Mixin}، مدیریت دقیق بذرها، تفکیک مسیرهای موازی و ترتیبی، و قرارداد واضح تکمیل، این ماژول‌ها را به یک پایۀ قابل اعتماد برای تحقیقات \lr{QKD} تبدیل کرده است.

@@ -1,0 +1,122 @@
+{
+  "protocol_params": {
+    "protocol": "BB84_DECOY",
+    "detector_type": "SPD",
+    "error_correction_efficiency": 1.16
+  },
+  "protocol_runtime": {
+    "protocol_class": "BB84DecoyProtocol",
+    "alice_z_basis_prob": 0.5,
+    "bob_z_basis_prob": 0.5,
+    "z_basis_prob": 0.5,
+    "double_click_policy": "DISCARD",
+    "redundancy_M": 3,
+    "use_entangling_decoder": false,
+    "use_entangling_encoder": false,
+    "codeword_mapping": null,
+    "damping_parameter": null,
+    "rotation_angle": null,
+    "parameter_estimation_fraction": 0.1,
+    "num_worker_rngs": 2
+  },
+  "channel": {
+    "fiber_loss_db_km": 0.2,
+    "dispersion_parameter_ps_nm_km": 17.0
+  },
+  "detector": {
+    "det_eff_d0": 0.15,
+    "det_eff_d1": 0.15,
+    "dark_rate": 1e-06,
+    "dark_rate_d1": 2e-06,
+    "qber_intrinsic": 0.01,
+    "misalignment": 0.005,
+    "double_click_policy": "RANDOM",
+    "detector_type": "SPD",
+    "dead_time_ns": 10.0,
+    "jitter_fwhm_ns": 0.05,
+    "dead_time_model": "NON_PARALYZABLE",
+    "afterpulse_model": "EXPONENTIAL",
+    "afterpulse_prob": 0.001,
+    "afterpulse_lifetime_ns": 10.0,
+    "temperature_k": 293.0,
+    "bias_voltage": 50.0,
+    "breakdown_voltage": 45.0,
+    "ref_temperature_k": 293.0,
+    "ref_bias_voltage": 50.0,
+    "strict_mode": false
+  },
+  "source": {
+    "source_class": "optical",
+    "pulse_period_ns": 10.0,
+    "intensity_jitter": 0.05,
+    "modulation_index": 0.0,
+    "statistics_type": "POISSON",
+    "error_model": "RANDOM_GAUSSIAN",
+    "expected_decoder": "LOCAL",
+    "assumed_double_click": "RANDOM",
+    "intended_proof": "LIM_2014",
+    "confidence_method": "CLOPPER_PEARSON",
+    "source_fidelity": 0.995,
+    "adversarial_block_size": 1000,
+    "extinction_ratio": 25.0,
+    "temperature_k": 298.15,
+    "bandwidth_hz": 1000000000.0,
+    "driver_load_resistance_ohm": 50.0,
+    "dc_photocurrent_a": 1e-06,
+    "v_pi": 3.5,
+    "phi_bias": 1.5707963267948966,
+    "max_intensity_mu": 1.0,
+    "preferred_lp_solver": "highs",
+    "N_channels": 1,
+    "is_bidirectional": false,
+    "use_small_angle_approximation": true,
+    "use_linear_modulation_approximation": false,
+    "ideal_emission_probability": 1.0,
+    "mzm": {
+      "extinction_ratio_db": 25.0,
+      "v_pi": 3.5,
+      "bias_voltage": 1.75,
+      "rf_amplitude_v": 3.5
+    },
+    "electrical_noise": {
+      "voltage_std_v": 0.05,
+      "bandwidth_hz": 1000000000.0
+    },
+    "security_metadata": null,
+    "pulses": {
+      "signal": {
+        "mu": 0.5,
+        "prob": 0.8
+      },
+      "decoy": {
+        "mu": 0.1,
+        "prob": 0.1
+      },
+      "vacuum": {
+        "mu": 0.0,
+        "prob": 0.1
+      }
+    },
+    "density_matrices": null
+  },
+  "protocol": {
+    "epsilons": {
+      "eps_sec": 1e-09,
+      "eps_cor": 1e-10,
+      "eps_pe": 1e-06,
+      "eps_smooth": 1e-10,
+      "eps_pa": 1e-10,
+      "eps_phase_est": 1e-10
+    }
+  },
+  "simulation": {
+    "apply_statistical_noise": true,
+    "sampling_cap_per_pulse_type": 200000,
+    "rng_seed": 12345,
+    "min_pulses_log": 7,
+    "max_pulses_log": 7,
+    "distance_start_km": 0.0,
+    "distance_stop_km": 150.0,
+    "distance_points": 16
+  }
+}

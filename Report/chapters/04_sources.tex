@@ -1,0 +1,677 @@
+% ============================================================
+%  QKD Simulation Framework — Chapter: Optical Sources & Modulators
+%  Authors: Documentation generated for academic thesis
+%  Encoding: UTF-8, XePersian-compatible
+% ============================================================
+
+% --- تنظیمات رفع سرریز جعبه‌افقی (Overfull \hbox) ---
+\sloppy
+\emergencystretch=3em
+\hbadness=10000
+\vbadness=10000
+
+% --- پیکربندی بسته‌ی listings برای نمایش صحیح کد پایتون در متن RTL ---
+\lstset{
+	basicstyle=\ttfamily\small,
+	keywordstyle=\color{blue}\bfseries,
+	stringstyle=\color{teal},
+	commentstyle=\color{gray!60!black}\itshape,
+	numberstyle=\tiny\color{gray},
+	showstringspaces=false,
+	breaklines=true,
+	breakatwhitespace=true,
+	frame=single,
+	rulecolor=\color{gray!40},
+	backgroundcolor=\color{gray!5},
+	language=Python,
+	extendedchars=true,
+	inputencoding=utf8,
+	tabsize=4,
+	keepspaces=true,
+	columns=fullflexible,
+	basewidth=0.55em,
+	aboveskip=1em,
+	belowskip=1em,
+	xleftmargin=1em,
+	xrightmargin=1em,
+	escapeinside={(*@}{@*)},
+	literate=
+	{→}{{$\rightarrow$}}1
+	{∂}{{$\partial$}}1
+	{α}{{$\alpha$}}1
+	{β}{{$\beta$}}1
+	{γ}{{$\gamma$}}1
+	{δ}{{$\delta$}}1
+	{ε}{{$\varepsilon$}}1
+	{θ}{{$\theta$}}1
+	{λ}{{$\lambda$}}1
+	{μ}{{$\mu$}}1
+	{ν}{{$\nu$}}1
+	{π}{{$\pi$}}1
+	{ρ}{{$\rho$}}1
+	{σ}{{$\sigma$}}1
+	{τ}{{$\tau$}}1
+	{φ}{{$\varphi$}}1
+	{ψ}{{$\psi$}}1
+	{ω}{{$\omega$}}1
+	{Γ}{{$\Gamma$}}1
+	{Δ}{{$\Delta$}}1
+	{Θ}{{$\Theta$}}1
+	{Λ}{{$\Lambda$}}1
+	{Σ}{{$\Sigma$}}1
+	{Ω}{{$\Omega$}}1
+	{≤}{{$\leq$}}1
+	{≥}{{$\geq$}}1
+	{≠}{{$\neq$}}1
+	{≈}{{$\approx$}}1
+	{·}{{$\cdot$}}1
+	{×}{{$\times$}}1
+	{∞}{{$\infty$}}1
+	{η}{{$\eta$}}1
+	{ℏ}{{$\hbar$}}1
+}
+
+\section{نمای کلی و هدف ماژول}
+\label{sec:sources-overview}
+
+ماژولِ \lr{\texttt{sources.py}} به‌همراه ماژولِ کمکیِ \lr{\texttt{modulators.py}}، لایه‌ی پایه‌ای مدل‌سازی منابع نوری را در فریم‌ورک شبیه‌سازیِ توزیع کلید کوانتومی \lr{(QKD)} تشکیل می‌دهند. این دو فایل با هم، چرخه‌ی کاملِ تولید پالس نوری، اعمال ناکامل‌های کلاسیکِ شدت، تبدیل به تعداد فوتون و نمونه‌برداری آماری را پوشش می‌دهند. خروجیِ این ماژول، ورودیِ اصلیِ ماژولِ کانال \lr{\texttt{channel.py}} است که در آن ضریب انتقالِ فیبر بر تعداد میانگین فوتون اعمال می‌شود و سپس به آشکارسازها ارسال می‌گردد.
+
+هدف بنیادینِ این ماژول، ارائه‌ی یک مدلِ واحد، تغییرناپذیر \lr{(immutable)} و قابل سریال‌سازی از منبع نوری است که هم برای منابعِ لیزریِ تضعیف‌شده با آمارِ پواسون و هم برای منابعِ نورِ گرمایی با آمارِ بوز-آینشتین و هم برای منابعِ حالت-کوانتومی-کلی با ماتریس چگالی در پایه‌ی فوک کار کند. این عموم‌بخشی از طریق یک سلسله‌مراتبِ وراثتی با کلاسِ پایه‌ی \lr{\texttt{OpticalSource}} و دو زیرکلاسِ \lr{\texttt{DensityMatrixSource}} و \lr{\texttt{PoissonSource}} محقق می‌شود. ماژول \lr{\texttt{modulators.py}} نیز کلاسِ \lr{\texttt{MZMConfig}} را برای مدل‌سازی مودولاتورِ ماخ-زندر \lr{(Mach-Zehnder Modulator)} فراهم می‌سازد که یکی از اجزای کلیدیِ لایه‌ی ناکامل‌های کلاسیک است.
+
+حوزه‌ی responsibility این ماژول به‌دقت محدود شده است: این ماژول صراحتاً مدل‌سازیِ تصادفی‌سازی فاز، کانال‌های جانبی طیفی/زمانی/قطبش، همدوسی فاز میان پالس‌ها و پدیده‌ی \lr{afterpulsing} (که یک اثر آشکارسازی است) را پوشش نمی‌دهد. این تصمیم طراحی بر اساس اصلِ تک‌مسئولیتی \lr{(Single Responsibility Principle)} اتخاذ شده است تا هر ماژول تنها یک لایه‌ی فیزیکی را پوشش دهد و وابستگی‌های متقابلِ نامطلوب ایجاد نکند. به‌خصوص، تصادفی‌سازی فاز که در اثبات‌های امنیتی \lr{Decoy-State BB84} فرضِ بنیادین است، در این ماژول صرفاً به‌عنوان یک پرچمِ فراداده‌ای \lr{(\texttt{phase\_randomization\_assumed})} ثبت می‌شود؛ این پرچم یک \lr{claim} از سوی کاربر است که تجهیزات خارجیِ وی تصادفی‌سازی فاز هر پالس را تضمین می‌کند، نه یک ویژگیِ پیاده‌سازی‌شده در کد.
+
+معماریِ داخلیِ ماژول بر دو لایه‌ی مجزا استوار است که تا حد امکان درونِ یک انتزاعِ واحد نگه داشته می‌شوند. لایه‌ی نخست، \lr{State Preparation} یا انتخاب نوع پالس است که مشخص می‌کند کدام پالس (سیگنال یا یکی از دکوی‌ها) با چه احتمال و چه میانگین فوتونِ پایه تولید شود. لایه‌ی دوم، \lr{Photon-Number Sampling} است که بر اساس آمارِ پواسون، گرمایی/هندسی یا قطرِ ماتریس چگالی در پایه‌ی فوک، تعداد فوتون را نمونه‌برداری می‌کند و سپس به‌صورت اختیاری، ناکامل‌های کلاسیکِ شدت (تضعیف \lr{MZM}، تقسیم کانال، ضریب باند جانبی \lr{SCM}، جیتر شدت و شکست گسیل) را اعمال می‌کند. این جداسازی به کاربر اجازه می‌دهد بدون تغییر در لایه‌ی فیزیکی، پیکربندیِ پالس‌ها را به‌صورت مستقل تنظیم کند.
+
+یک نکته‌ی بحرانی درباره‌ی \lr{phase\_randomization\_assumed}: این پرچم در اصلاحیه‌ی \lr{F-04} از \lr{phase\_randomized} تغییر نام یافت تا ماهیتِ صرفاً فراداده‌ایِ آن به‌روشنی در نام بازتاب یابد. وقتی این پرچم \lr{True} باشد، کاربر اطمینان می‌دهد که نمونه‌برداریِ قطریِ پواسون/گرمایی با اثبات امنیتی سازگار است زیرا تصادفی‌سازیِ فاز، هر پالس را به یک مخلوطِ قطری از حالت‌های فوک تبدیل می‌کند. وقتی \lr{False} باشد، نمونه‌برداریِ قطری برای تحلیل امنیتیِ \lr{Decoy-State BB84} مناسب نیست و کاربر باید از \lr{\texttt{DensityMatrixSource}} با ماتریس‌های چگالیِ کامل استفاده کند. این تمایز در تحلیل‌های امنیتی حیاتی است و نادیده‌گرفتنِ آن می‌تواند به تخمینِ نادرستِ نرخ کلید منجر شود.
+
+\section{مبانی تئوری و فیزیکی}
+\label{sec:sources-theory}
+
+\subsection{آمار پواسون و منابع لیزری تضعیف‌شده}
+
+منبعِ استاندارد در پروتکل‌های \lr{QKD}، لیزری است که به‌شدت تضعیف می‌شود تا میانگین تعداد فوتون به‌ازای پالس به حدود $\mu < 1$ برسد. چنین منبعی به‌دلیل ماهیتِ آماریِ فرآیندِ گسیلِ خودبه‌خودیِ \lr{spontaneous emission} در محیطِ بهره‌ی لیزر، از آمارِ پواسون پیروی می‌کند. تابع توزیع احتمالِ تعداد فوتون در یک پالس با میانگین $\mu$ به‌صورت زیر بیان می‌شود:
+\begin{equation}
+	P(n;\mu) = \frac{\mu^n e^{-\mu}}{n!}, \quad n = 0, 1, 2, \dots
+	\label{eq:poisson-pmf}
+\end{equation}
+که در آن $\mu$ میانگین تعداد فوتون، $n$ عدد فوتون و $e$ پایه‌ی لگاریتم طبیعی است. این توزیع دارای ویژگی‌های مهمی است: میانگین و واریانس هر دو برابرِ $\mu$ هستند ($\mathbb{E}[n] = \text{Var}(n) = \mu$)، که به معنای پراکندگیِ نسبتاً پایین است. برای $\mu = 0.5$ (یک مقدار متداول در \lr{BB84-Decoy})، احتمالِ پالسِ خالی $P(0) = e^{-0.5} \approx 0.607$ است، احتمالِ تک‌فوتونی $P(1) = 0.5 \cdot e^{-0.5} \approx 0.303$ و احتمالِ چندفوتونی $P(n \geq 2) \approx 0.090$. این کسرِ غیرقابل‌چشم‌پوشیِ پالس‌های چندفوتونی، پایه‌ی حمله‌ی \lr{Photon-Number Splitting (PNS)} است که \lr{Decoy-State} برای مقابله با آن معرفی شده است.
+
+محاسبه‌ی عددیِ پایدارِ توزیعِ پواسون برای $\mu$‌های بزرگ یا $n$‌های بالا نیاز به احتیاط دارد. محاسبه‌ی مستقیمِ $\mu^n / n!$ به سرریز \lr{(overflow)} می‌انجامد زیرا برای $\mu = 10$ و $n = 20$، مقدارِ $10^{20}/20! \approx 4.1 \times 10^{-4}$ است اما فاکتوریلِ ۲۰ به‌خودی‌خود $\approx 2.4 \times 10^{18}$ است. پیاده‌سازیِ این فریم‌ورک از روش بازگشتیِ پایدارِ عددی استفاده می‌کند:
+\begin{align}
+	P(0;\mu) &= e^{-\mu}, \label{eq:poisson-recurrence-init} \\
+	P(n+1;\mu) &= P(n;\mu) \cdot \frac{\mu}{n+1}, \label{eq:poisson-recurrence}
+\end{align}
+که در آن ابتدا $P(0)$ از طریقِ \lr{\texttt{math.exp(-mu)}} محاسبه می‌شود (که برای $\mu$‌های معمول در \lr{QKD}، یعنی $\mu < 10$، هیچ خطر سرریز ندارد) و سپس هر جمله از جمله‌ی قبلی با ضرب در $\mu/(n+1)$ به‌دست می‌آید. این روش علاوه بر پایداریِ عددی، از مزیتِ سرعت نیز برخوردار است زیرا نیازی به محاسبه‌ی فاکتوریل یا توان نیست و هر مرحله تنها یک ضرب و یک تقسیم دارد.
+
+\subsection{آمار گرمایی (بوز-آینشتین) و منابع نور گرمایی}
+
+برخلاف لیزر که گسیلِ تحریکیِ همدوس دارد، منابعِ نورِ گرمایی (مانند \lr{blackbody} یا \lr{chaotic light}) از آمارِ بوز-آینشتین پیروی می‌کنند. توزیعِ تعداد فوتون در یک مُدِ گرماییِ تک‌فرکانس با میانگین $\mu$ به‌صورت زیر است:
+\begin{equation}
+	P(n;\mu) = \frac{\mu^n}{(1+\mu)^{n+1}}, \quad n = 0, 1, 2, \dots
+	\label{eq:thermal-pmf}
+\end{equation}
+که این توزیع با توزیع هندسی با پارامترِ $p = 1/(1+\mu)$ معادل است. ویژگیِ بارزِ این توزیع، واریانسِ بزرگ‌تر از میانگین است: $\text{Var}(n) = \mu + \mu^2 = \mu(\mu+1)$ که برای $\mu = 0.5$ برابر با $0.75$ است (در مقایسه با $0.5$ در پواسون). این پراکندگیِ بیشتر، منابعِ گرمایی را برای \lr{QKD} نامطلوب می‌سازد زیرا کسرِ پالس‌های چندفوتونی به‌طور قابل توجهی بالاتر است: برای $\mu = 0.5$، $P(n \geq 2) \approx 0.222$ در مقایسه با $0.090$ در پواسون.
+
+با این حال، مدل‌سازی منابع گرمایی در فریم‌ورک برای دو هدف ضروری است: نخست، تحلیلِ امنیتی در برابر حمله‌ای که مهاجم منبعِ سیگنال را با منبعِ گرمایی جایگزین کند؛ و دوم، مدل‌سازیِ پس‌زمینه‌ی تابشیِ محیطی که در آشکارسازها به‌عنوان نویز ظاهر می‌شود. مانند پواسون، محاسبه‌ی پایدارِ عددی از طریق بازگشت انجام می‌شود:
+\begin{align}
+	P(0;\mu) &= \frac{1}{1+\mu}, \label{eq:thermal-recurrence-init} \\
+	P(n+1;\mu) &= P(n;\mu) \cdot \frac{\mu}{1+\mu}, \label{eq:thermal-recurrence}
+\end{align}
+که در آن نسبتِ $\mu/(1+\mu)$ یک بار پیش‌محاسبه می‌شود و سپس هر جمله از جمله‌ی قبلی با یک ضرب به‌دست می‌آید. این روش برای $\mu$‌های بزرگ نیز پایدار است زیرا نسبت همواره کوچک‌تر از ۱ است.
+
+\subsection{ماتریس چگالی در پایه‌ی فوک و مدل‌سازی حالت‌های غیرکلاسیک}
+
+برای منابعی که حالت‌های غیرکلاسیک مانند حالت‌های تک‌فوتونیِ واقعی \lr{(Fock states)}، حالت‌های فشرده \lr{(squeezed states)} یا حالت‌های گربه‌ی شرودینگر \lr{(cat states)} تولید می‌کنند، آمار پواسون یا گرمایی کافی نیست. این فریم‌ورک با کلاسِ \lr{\texttt{DensityMatrixSource}} این حالت‌ها را پشتیبانی می‌کند که در آن هر پالس با یک ماتریس چگالی $\rho$ در پایه‌ی فوک $\{|0\rangle, |1\rangle, |2\rangle, \dots\}$ مشخص می‌شود. قطرِ این ماتریس، توزیعِ احتمالِ تعداد فوتون را تشکیل می‌دهد:
+\begin{equation}
+	p_n = \langle n | \rho | n \rangle = \rho_{nn}, \quad \sum_n p_n = \text{Tr}(\rho) = 1.
+	\label{eq:dm-diagonal-pn}
+\end{equation}
+اعتبارِ فیزیکیِ ماتریس چگالی نیازمند سه شرط است: هرمیتی بودن ($\rho = \rho^\dagger$)، مثبت‌معینِ نیمه ($\rho \succeq 0$) و یک بودن رد ($\text{Tr}(\rho) = 1$). این سه شرط در تابع کمکیِ \lr{\texttt{\_validate\_density\_matrix}} بررسی می‌شوند. هرمیتی بودن از طریق مقایسه‌ی $\rho$ با $\rho^\dagger$ در تلورانسِ عددی تأیید می‌شود. مثبت‌معین بودن از طریق محاسبه‌ی مقدار ویژه‌ی کوچک‌تر و بررسیِ غیرمنفی بودن آن تأیید می‌شود. یک بودن رد نیز با مجموعِ قطر بررسی می‌گردد.
+
+عنصرهای خارج از قطر ($\rho_{mn}$ برای $m \neq n$) که نشانگر همدوسیِ کوانتومی میان حالت‌های فوک هستند، در فرآیند نمونه‌برداری \lr{(photon-number sampling)} نادیده گرفته می‌شوند زیرا اندازه‌گیریِ تعداد فوتون یک اندازه‌گیریِ قطری در پایه‌ی فوک است و همدوسی‌ها را از بین می‌برد. با این حال، این عنصرها برای تحلیل‌های امنیتیِ پیشرفته‌تر (مانند محاسبه‌ی آنتروپیِ فون‌نویمان) معتبر هستند و در ساختار داده ذخیره می‌شوند. در ادامه‌ی این بخش، مدل‌سازیِ فرآیندهای اتلاف روی ماتریس چگالی را بررسی می‌کنیم.
+
+\subsection{فرآیندهای اتلاف روی ماتریس چگالی: تقسیم کانال و شکست گسیل}
+
+وقتی منبعِ ماتریس-چگالی با $N_{\text{channels}} > 1$ پیکربندی شود، یک شبکه‌ی تقسیم‌گر پرتو \lr{(beam-splitter network)} $N$-کاناله فرض می‌شود که انرژی به‌طور یکنواخت میان کانال‌ها تقسیم می‌شود. ضریب گذارندگی هر کانال $\eta = 1/N$ است. تأثیر این تقسیم بر قطرِ ماتریس چگالی، یک تبدیلِ اتلافِ برنولی-دوجمله‌ای \lr{(binomial loss)} است:
+\begin{equation}
+	p'_k = \sum_{n=k}^{\infty} p_n \binom{n}{k} \eta^k (1-\eta)^{n-k},
+	\label{eq:binomial-loss-channel-split}
+\end{equation}
+که در آن $p'_k$ احتمالِ مشاهده‌ی $k$ فوتون در یک کانالِ خروجی است، به‌شرطی که $n$ فوتون در ورودی تقسیم‌گر بوده است. این تبدیل، فیزیکِ یک تقسیم‌گر پرتو ایده‌آل را به‌دقت بازتولید می‌کند: هر فوتون با احتمال $\eta$ به کانال مورد نظر می‌رود و با احتمال $1-\eta$ به یکی از کانال‌های دیگر. این فرمول در زمان ساختِ \lr{\texttt{DensityMatrixSource}} روی جدولِ احتمالاتِ عدد-فوتون \lr{(\texttt{\_number\_probs\_table})} اعمال می‌شود تا قطرِ ماتریس از ابتدا روی وضعیتِ پس از تقسیم تنظیم شود.
+
+شکست گسیل \lr{(emission failure)} نیز یک فرآیند اتلاف است که با احتمال $1 - p_{\text{emit}}$ منبع اصلاً پالس گسیل نمی‌کند. مدلِ فیزیکیِ این پدیده، مخلوط‌کردنِ حالتِ گسیل‌شده با حالتِ خلأ است:
+\begin{equation}
+	\rho' = p_{\text{emit}} \cdot \rho + (1 - p_{\text{emit}}) \cdot |0\rangle\langle 0|,
+	\label{eq:emission-failure-mixture}
+\end{equation}
+که بر قطر به‌صورت زیر تأثیر می‌گذارد:
+\begin{align}
+	p'_0 &= p_{\text{emit}} \cdot p_0 + (1 - p_{\text{emit}}), \label{eq:emission-failure-p0} \\
+	p'_k &= p_{\text{emit}} \cdot p_k, \quad k > 0. \label{eq:emission-failure-pk}
+\end{align}
+این تبدیل نیز در زمان ساخت اعمال می‌شود تا جدول احتمالات از ابتدا روی وضعیتِ پس از شکست گسیل تنظیم گردد. توجه شود که این دو فرآیندِ اتلاف، بر خلاف \lr{MZM}، \lr{SCM} و جیتر شدت، به‌صورت تبدیل‌های قطری روی ماتریس چگالی قابل بیان هستند و به همین دلیل در \lr{\texttt{DensityMatrixSource}} به‌صورت خودکار اعمال می‌شوند. سایر ناکامل‌های کلاسیک که حالت را به‌صورت غیرقطری تغییر می‌دهند، در این کلاس نادیده گرفته می‌شوند و کاربر باید آن‌ها را پیش از ساخت به ماتریس چگالی اعمال کند.
+
+\subsection{مودولاتور ماخ-زندر و انتقال آرام‌شیب}
+
+مودولاتورِ ماخ-زندر \lr{(Mach-Zehnder Modulator, MZM)} یکی از اجزای کلیدی در سیستم‌های \lr{QKD} با مدولاسیون شدت است. این مودولاتور از دو شاخه‌ی تداخلی تشکیل شده که با اعمال ولتاژ روی یکی از شاخه‌ها، اختلاف فاز $\phi$ میان دو مسیر ایجاد می‌شود. خروجیِ مودولاتور به‌صورت زیر مدل می‌شود:
+\begin{equation}
+	\mu_{\text{out}} = \mu_{\min} + (\mu_{\max} - \mu_{\min}) \cos^2(\phi),
+	\label{eq:mzm-transfer}
+\end{equation}
+که در آن $\mu_{\min}$ میانگین فوتونِ نشتی \lr{(leakage)} (مرتبط با نسبتِ خاموشی)، $\mu_{\max}$ حداکثر شدتِ خروجی و $\phi$ فازِ کل است که از جمعِ فازِ سیگنال و فاز بایاس به‌دست می‌آید:
+\begin{equation}
+	\phi = \frac{\pi V}{2 V_\pi} + \phi_{\text{bias}},
+	\label{eq:mzm-phase}
+\end{equation}
+که در آن $V$ ولتاژِ اعمال‌شده، $V_\pi$ ولتاژِ نیم‌موج \lr{(half-wave voltage)} (ولتاژی که برای تغییرِ فاز $\pi$ نیاز است) و $\phi_{\text{bias}}$ فاز بایاسِ ثابت است. برای $\phi_{\text{bias}} = \pi/2$، نقطه‌ی کار روی شیبِ نیمه-حداکثر تنظیم می‌شود که بیشترین حساسیت خطی را فراهم می‌کند.
+
+نسبتِ خاموشی \lr{(extinction ratio)} که با واحد دسی‌بل بیان می‌شود، نسبتی است میان حداکثر توانِ خروجی و حداقل آن (نشتی):
+\begin{equation}
+	\text{ER}_{\text{dB}} = 10 \log_{10}\left(\frac{\mu_{\max}}{\mu_{\min}}\right).
+	\label{eq:extinction-ratio}
+\end{equation}
+از این رابطه، میانگین فوتون نشتی به‌صورت زیر محاسبه می‌شود:
+\begin{equation}
+	\mu_{\min} = \mu_{\max} \cdot 10^{-\text{ER}_{\text{dB}}/10}.
+	\label{eq:mzm-leakage}
+\end{equation}
+این نشتی یک کانال جانبی امنیتی ایجاد می‌کند: حتی وقتی مودولاتور در حالت ``خاموش'' است، مقدار کمی نور گسیل می‌شود که می‌تواند اطلاعاتِ بیت را به مهاجم نشت دهد. در اثبات‌های امنیتیِ \lr{QKD}، این نشتی باید به‌صورت صریح در نظر گرفته شود و $\mu_{\min}$ در محاسبه‌ی نرخ کلید لحاظ گردد. در این فریم‌ورک، $\mu_{\min}$ به‌عنوان کفِ سختی در عملیاتِ \lr{\texttt{clip}} اعمال می‌شود تا خروجیِ مودولاتور هرگز کمتر از این مقدار نشود.
+
+نویز ولتاژِ اعمالی که از راهِ درایور الکتریکی وارد می‌شود، باعث fluctuation تصادفیِ فاز می‌شود. اگر $V_{\text{noise}} \sim \mathcal{N}(0, \sigma_V^2)$ باشد، فازِ نویزی برابر است با:
+\begin{equation}
+	\phi_{\text{noisy}} = \frac{\pi (V_{\text{signal}} + V_{\text{noise}})}{2 V_\pi} + \phi_{\text{bias}},
+	\label{eq:mzm-noisy-phase}
+\end{equation}
+و خروجی نهایی به‌صورت $\mu_{\min} + (\mu_{\max} - \mu_{\min}) \cos^2(\phi_{\text{noisy}})$ محاسبه می‌شود. این نویز، یک fluctuations غیرخطی روی شدت ایجاد می‌کند که در ولتاژهای نویز بزرگ، می‌تواند به توزیعِ غیر-گاوسی روی $\mu_{\text{out}}$ منجر شود.
+
+\subsection{مدولاسیون زیرحامل (SCM) و اتحاد ژاکوبی-آنگر}
+
+مدولاسیونِ زیرحامل \lr{(Subcarrier Modulation, SCM)} تکنیکی است که در آن فازِ حاملِ نوری با یک فرکانسِ رادیویی مدوله می‌شود تا چندین کانالِ فرعی روی یک حاملِ مشترک قرار گیرند. وقتی فاز با شاخصِ مدولاسیون $m$ مدوله می‌شود، میدانِ خروجی از طریق اتحادِ ژاکوبی-آنگر بسط می‌یابد:
+\begin{equation}
+	e^{i m \sin(\Omega t)} = \sum_{n=-\infty}^{\infty} J_n(m) e^{i n \Omega t},
+	\label{eq:jacobi-anger}
+\end{equation}
+که در آن $J_n(m)$ تابع بسل از نوع اول و مرتبه‌ی $n$ است و $\Omega$ فرکانسِ زیرحامل. این بسط، باند‌های جانبیِ متقارن در $n = \pm 1, \pm 2, \dots$ تولید می‌کند. توانِ هر باند جانبی از مرتبه‌ی $n$، متناسب با $J_n(m)^2$ است. از آنجا که $J_{-n}(m) = (-1)^n J_n(m)$، توانِ باندهای $+n$ و $-n$ یکسان است.
+
+در این فریم‌ورک، تنها باندهای جانبی مرتبه‌ی اول ($n = \pm 1$) در نظر گرفته می‌شوند. ضریب مقیاسِ \lr{SCM} که به‌عنوان یک ضرب‌کننده‌ی سراسری روی میانگین فوتون اعمال می‌شود، به‌صورت زیر تعریف می‌شود:
+\begin{equation}
+	S_{\text{SCM}}(m) = N_{\text{sb}} \cdot J_1(m)^2,
+	\label{eq:scm-exact}
+\end{equation}
+که در آن $N_{\text{sb}}$ تعداد باندهای جانبیِ مورد استفاده است: $N_{\text{sb}} = 1$ برای فیلترینگ تک‌باند جانبی \lr{(SSB)} و $N_{\text{sb}} = 2$ برای آشکارسازی دو‌باندی \lr{(DSB)}. برای مقادیر کوچک $m$، از تقریبِ زاویه کوچک استفاده می‌شود:
+\begin{equation}
+	J_1(m) \approx \frac{m}{2} - \frac{m^3}{16} + \mathcal{O}(m^5) \implies J_1(m)^2 \approx \frac{m^2}{4},
+	\label{eq:bessel-small-angle}
+\end{equation}
+که در نتیجه:
+\begin{equation}
+	S_{\text{SCM}}(m) \approx N_{\text{sb}} \cdot \frac{m^2}{4}, \quad m \ll 1.
+	\label{eq:scm-small-angle}
+\end{equation}
+این تقریب در آستانه‌ی $m \leq 10^{-3}$ با خطای نسبی کمتر از $2.5 \times 10^{-7}$ معتبر است (محاسبه‌شده از بسطِ $J_1(m) \approx m/2 - m^3/16$). این آستانه در ثابتِ \lr{\texttt{SCM\_SMALL\_ANGLE\_LIMIT}} تعریف شده است و در مقایسه با آستانه‌ی قدیمیِ $0.1$، خطای مرزی را ۱۰۰۰ برابر کاهش می‌دهد که برای بهینه‌سازیِ مبتنی بر گرادیان حیاتی است.
+
+نکته‌ی ظریف درباره‌ی ناپیوستگیِ معنایی در $m = 0$: وقتی $m = 0$ باشد، \lr{SCM} غیرفعال است و $\mu$ به‌عنوان میانگین فوتونِ پس از \lr{SCM} تفسیر می‌شود، در حالی که برای هر $m > 0$، $\mu$ به‌عنوان انرژیِ کلِ گسیل‌شده تفسیر می‌شود و ضریب $S_{\text{SCM}}(m)$ کسرِ باند جانبی را می‌دهد. این تفسیرِ دوگانه در پرچمِ مستقلِ \lr{\texttt{scm\_enabled}} جدا شده است تا ناپیوستگیِ عددی به ناپیوستگیِ فیزیکی تبدیل شود. بهینه‌سازیِ مبتنی بر گرادیان در سراسرِ $m = 0$ نامعتبر است زیرا تفسیر فیزیکی به‌صورت ناپیوسته تغییر می‌کند.
+
+\subsection{جیتر شدت: مدل گوسی با تصحیح بایاس}
+
+جیتر شدت \lr{(intensity jitter)} fluctuations پالس-به-پالسِ میانگین فوتون را مدل می‌کند که از ناپایداریِ لیزرِ نیمه‌رسانا نشأت می‌گیرد. این فریم‌ورک دو مدل را پشتیبانی می‌کند: \lr{\texttt{RANDOM\_GAUSSIAN}} برای نویز گوسی افزودنی و \lr{\texttt{ADVERSARIAL\_BLOCK}} برای fluctuations همبسته‌ی بلوکی.
+
+در مدلِ گوسی، نویز به‌صورت زیر به میانگین فوتون اعمال می‌شود:
+\begin{equation}
+	\mu_{\text{new}} = \mu \cdot |1 + \sigma z|, \quad z \sim \mathcal{N}(0, 1),
+	\label{eq:gaussian-jitter}
+\end{equation}
+که در آن $\sigma$ جیتر نسبی \lr{(std/mean)} است. استفاده از قدرمطلق $|\cdot|$ به‌جای clip کردن ($\max(0, \cdot)$) به این دلیل است که بایاسِ قدرمطلق از مرتبه‌ی دومِ $P(X < 0)$ است، در حالی که بایاسِ clip از مرتبه‌ی اول است. با این حال، مدلِ قدرمطلق دارای بایاسِ مثبتِ سیستماتیک است:
+\begin{equation}
+	\mathbb{E}[|1 + \sigma z|] = \sigma \sqrt{\frac{2}{\pi}} e^{-1/(2\sigma^2)} + \text{erf}\left(\frac{1}{\sigma\sqrt{2}}\right) > 1,
+	\label{eq:reflection-bias}
+\end{equation}
+که در آن $\text{erf}$ تابع خطا است. این بایاس در $\sigma = 0.5$ حدود $2\%$ و در $\sigma = 1.0$ حدود $16\%$ است. برای رفع این بایاس، فریم‌ورک از تصحیحِ تحلیلی استفاده می‌کند: مقدارِ $\mu_{\text{new}}$ بر $\text{bias\_factor}$ تقسیم می‌شود تا مدلِ میانگین-حفظ‌کننده شود ($\mathbb{E}[\mu_{\text{new}}] = \mu$):
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if jitter > NUMERIC_ABS_TOL:
+		inv_sigma = 1.0 / jitter
+		bias_factor = (
+		jitter * np.sqrt(2.0 / np.pi) * np.exp(-0.5 * inv_sigma * inv_sigma)
+		+ scipy_erf(inv_sigma / np.sqrt(2.0))
+		)
+		mus = mus / bias_factor  # mean-preserving correction
+	\end{lstlisting}
+\end{LTR}
+
+در مدلِ \lr{\texttt{ADVERSARIAL\_BLOCK}}، پالس‌ها به بلوک‌های متوالیِ اندازه‌ی $B$ تقسیم می‌شوند و تمامِ پالس‌های یک بلوک، یک ضریبِ fluctuation مشترک دارند که از توزیع لگاریتم-نرمال نمونه‌برداری می‌شود:
+\begin{equation}
+	\mu_{\text{new}} = \mu \cdot F_b, \quad F_b \sim \text{LogNormal}\left(-\frac{\sigma^2_{\ln}}{2}, \sigma^2_{\ln}\right),
+	\label{eq:adversarial-block}
+\end{equation}
+که در آن $b$ شناسه‌ی بلوک، $F_b$ ضریبِ مشترکِ بلوک و $\sigma^2_{\ln} = \ln(1 + \sigma^2)$ پارامترِ لگاریتم-نرمال است. این پارامتری‌سازی به‌گونه‌ای انتخاب شده که $\mathbb{E}[F_b] = 1$ (میانگین-حفظ‌کننده) و $\text{Var}(F_b) = \sigma^2$ (واریانس برابر با جیتر نسبی). این مدل، سناریویی را شبیه‌سازی می‌کند که مهاجم بتواند شدتِ منبع را به‌صورت همبسته در بلوک‌هایی از پالس‌ها دستکاری کند، که در تحلیل‌های امنیتیِ پیشرفته حائز اهمیت است.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+\label{sec:sources-architecture}
+
+\subsection{سلسله‌مراتب وراثتی کلاس‌های منبع}
+
+معماریِ کلاس‌های منبع بر یک سلسله‌مراتبِ وراثتی با کلاسِ پایه‌ی \lr{\texttt{OpticalSource}} و دو زیرکلاسِ \lr{\texttt{DensityMatrixSource}} و \lr{\texttt{PoissonSource}} استوار است. کلاسِ پایه با دو decorator تعریف می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass(slots=True)
+		class OpticalSource:
+		"""Generic optical source backed by OpticalSourceConfig."""
+		config: OpticalSourceConfig
+		security_metadata: Optional[SourceSecurityMetadata] = None
+		# ... per-instance fields like _base_mus_cache, _probabilities_cache, ...
+	\end{lstlisting}
+\end{LTR}
+
+استفاده از \lr{\texttt{@dataclass(slots=True)}} به‌جای \lr{\texttt{frozen=True}} در این کلاس، یک تصمیمِ طراحیِ مهم است. برخلافِ \lr{\texttt{FiberChannel}} که کاملاً یخ‌زده است، \lr{\texttt{OpticalSource}} نیاز به state داخلیِ قابل تغییر دارد: کش‌های \lr{\texttt{\_base\_mus\_cache}} و \lr{\texttt{\_probabilities\_cache}} در زمانِ ساخت محاسبه می‌شوند، شمارنده‌های بلوکِ حریصانه \lr{(\texttt{\_adversarial\_block\_counter})} در طولِ شبیه‌سازی به‌روز می‌شوند، و \lr{\texttt{security\_metadata}} در هر فراخوانیِ \lr{\texttt{generate\_photons}} به‌روز می‌گردد. برای جلوگیری از تغییرِ ناخواسته‌ی پیکربندی، \lr{\texttt{\_\_setattr\_\_}} override شده است تا فقط فیلدهای مجاز را قابل تغییر سازد.
+
+زیرکلاسِ \lr{\texttt{DensityMatrixSource}} دو فیلد اضافی دارد:
+\begin{itemize}
+	\item \lr{\texttt{density\_matrices: Optional[Dict[str, np.ndarray]]}}: نگاشت نام پالس به ماتریس چگالی.
+	\item \lr{\texttt{missing\_dm\_policy: str}}: سیاستِ برخورد با پالس‌های بدون ماتریس (\lr{"error"} یا \lr{"vacuum"}).
+	\item \lr{\texttt{heterogeneous\_dim\_policy: str}}: سیاستِ برخورد با ابعادِ ناهمگن (\lr{"warn"} یا \lr{"error"}).
+\end{itemize}
+این زیرکلاس الگوی طراحیِ \lr{Template Method} را با استفاده از \lr{\texttt{\_pre\_init\_hook}} و \lr{\texttt{\_post\_init\_hook}} پیاده می‌کند. این \texttt{hook}‌ها به زیرکلاس‌ها اجازه می‌دهند قبل و بعد از اعتبارسنجیِ پایه، کد اختصاصی خود را اجرا کنند. \lr{\texttt{DensityMatrixSource.\_pre\_init\_hook}} ماتریس‌های چگالی را coerce می‌کند و سیاست‌ها را اعتبارسنجی می‌نماید، در حالی که \lr{\texttt{\_post\_init\_hook}} تانسورِ \lr{\texttt{\_rho\_tensor}} و جدولِ \lr{\texttt{\_number\_probs\_table}} را می‌سازد.
+
+زیرکلاسِ \lr{\texttt{PoissonSource}} یک convenience subclass است که صرفاً تایید می‌کند \lr{\texttt{statistics\_type == POISSON}} باشد. این کلاس برای خواناییِ کد و تمایز صریح از \lr{\texttt{DensityMatrixSource}} معرفی شده است.
+
+\subsection{کلاس \lr{\texttt{SourceSimParams}}: بسته‌ی یخ‌زده‌ی پارامترهای شبیه‌سازی}
+
+این کلاس با \lr{\texttt{@dataclasses.dataclass(frozen=True)}} تعریف می‌شود و شامل ده فیلد است که در زمان اجرا توسط \lr{\texttt{main\_optimized.py}} استفاده می‌شوند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclasses.dataclass(frozen=True)
+		class SourceSimParams:
+		pulse_period_ns: float
+		source_rate: float
+		statistics_type: str  # .value of SourceStatisticsType enum
+		error_model: str      # .value of SourceErrorModel enum
+		modulation_index: float
+		intensity_jitter: float
+		N_channels: int
+		ideal_emission_probability: float
+		n_pulse_types: int
+		signal_pulse_index: int
+	\end{lstlisting}
+\end{LTR}
+
+این بسته از طریقِ تابعِ \lr{\texttt{build\_source\_params(source)}} از یک \lr{\texttt{OpticalSource}} معتبر ساخته می‌شود. یخ‌زده بودنِ این کلاس تضمین می‌کند که پارامترهای منبع در طولِ شبیه‌سازی ثابت بمانند و از رقابتِ \lr{race condition} در شبیه‌سازی‌های چندرشته‌ای جلوگیری شود. این الگو، مشابهِ \lr{\texttt{ChannelSimParams}} و \lr{\texttt{DetectorSimParams}} است که در ماژول‌های دیگر فریم‌ورک پیاده‌سازی شده‌اند.
+
+\subsection{کلاس \lr{\texttt{MZMConfig}}: مودولاتور ماخ-زندر}
+
+این کلاس با \lr{\texttt{@dataclass(slots=True)}} در ماژولِ جداگانه‌ی \lr{\texttt{modulators.py}} تعریف می‌شود و چهار فیلد دارد:
+\begin{itemize}
+	\item \lr{\texttt{v\_pi: float = 3.5}}: ولتاژ نیم‌موج به ولت.
+	\item \lr{\texttt{phi\_bias: float = np.pi / 2.0}}: فاز بایاس.
+	\item \lr{\texttt{max\_intensity\_mu: float = 1.0}}: حداکثر میانگین فوتون.
+	\item \lr{\texttt{extinction\_ratio\_db: float | None = None}}: نسبت خاموشی به دسی‌بل.
+\end{itemize}
+
+متدِ \lr{\texttt{validate()}} سه شرط را بررسی می‌کند: $V_\pi > 0$، $\mu_{\max} \geq 0$ و $\text{ER}_{\text{dB}} \geq 0$. متدِ \lr{\texttt{leakage\_mu()}} میانگین فوتونِ نشتی را از رابطه‌ی \eqref{eq:mzm-leakage} محاسبه می‌کند. متدِ \lr{\texttt{apply(target\_mus, voltage\_noise\_std, rng)}} عملیاتِ اصلیِ مودولاتور را انجام می‌دهد که در بخش بعد به‌تفصیل بررسی می‌شود.
+
+\subsection{کلاس \lr{\texttt{\_BoundedLRUCache}}: کشِ LRU با اندازه‌ی محدود}
+
+این کلاس از \lr{\texttt{OrderedDict}} ارث می‌برد و یک کشِ \lr{LRU} \lr{(Least Recently Used)} با اندازه‌ی حداکثر \lr{\texttt{ADVERSARIAL\_CACHE\_MAX\_SIZE = 10000}} پیاده‌سازی می‌کند. این کش برای نگهداریِ ضرایبِ fluctuationِ بلوک‌های حریصانه استفاده می‌شود تا همان بلوک فیزیکی همواره همان ضریب را دریافت کند، مستقل از نحوه‌ی chunkingِ شبیه‌سازی:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class _BoundedLRUCache(OrderedDict):
+		def __init__(self, max_size: int = ADVERSARIAL_CACHE_MAX_SIZE):
+		super().__init__()
+		self._max_size = max_size
+		self._lock = threading.Lock()  # thread-safety
+		
+		def __setitem__(self, key, value):
+		with self._lock:
+		if key in self:
+		self.move_to_end(key)
+		super().__setitem__(key, value)
+		if len(self) > self._max_size:
+		self.popitem(last=False)  # evict oldest
+	\end{lstlisting}
+\end{LTR}
+
+استفاده از \lr{\texttt{threading.Lock}} برای thread-safety در شبیه‌سازی‌های چندرشته‌ای ضروری است. بدون این قفل، دسترسیِ همزمان به کش می‌تواند منجر به فساد داده شود. الگوریتم \lr{LRU}: وقتی یک کلید جدید اضافه می‌شود و اندازه از حد تجاوز کند، قدیمی‌ترین ورودی \lr{(\texttt{last=False})} حذف می‌گردد.
+
+\subsection{ثابت‌های عددی ماژول-محلی}
+
+این ماژول چندین ثابتِ عددی ماژول-محلی تعریف می‌کند که به‌دقت انتخاب شده‌اند و نباید از لایه‌های دیگر فریم‌ورک بازاستفاده شوند. جدول زیر مهم‌ترین این ثابت‌ها را فهرست می‌کند:
+
+\begin{itemize}
+	\item \lr{\texttt{SCM\_SMALL\_ANGLE\_LIMIT = 1e-3}}: آستانه‌ی تقریب زاویه کوچک برای $J_1(m)$. خطای نسبی در این آستانه $\sim 2.5 \times 10^{-7}$ است.
+	\item \lr{\texttt{SCM\_POWER\_DIVISOR = 4.0}}: مقسوم‌علیه‌ی تقریبِ خطی $m^2/4$ برای توانِ باند جانبی.
+	\item \lr{\texttt{SCM\_NUM\_SIDEBANDS = 1}}: تعداد باندهای جانبیِ اول (۱ برای \lr{SSB}، ۲ برای \lr{DSB}).
+	\item \lr{\texttt{MAX\_GAMMA\_SHAPE = 1e12}}: سقفِ ایمن برای پارامتر شکل گاما.
+	\item \lr{\texttt{GAUSSIAN\_LARGE\_JITTER\_THRESHOLD = 0.1}}: آستانه‌ی جیتر بزرگ.
+	\item \lr{\texttt{SOURCE\_NORMALIZATION\_TOL = 1e-10}}: تلورانسِ نرمال‌سازیِ جمعِ ردیفِ احتمالات.
+	\item \lr{\texttt{SOURCE\_DM\_MEAN\_RTOL = 1e-3}}: تلورانسِ نسبیِ بررسیِ سازگاریِ $\mu$.
+	\item \lr{\texttt{PN\_TRUNCATION\_DIM = 20}}: بعدِ پیش‌فرضِ برشِ تعداد فوتون.
+	\item \lr{\texttt{MAX\_MU = 1e6}}: سقفِ ایمن برای میانگین فوتون.
+	\item \lr{\texttt{ADVERSARIAL\_CACHE\_MAX\_SIZE = 10000}}: حداکثر اندازه‌ی کشِ بلوک حریصانه.
+	\item \lr{\texttt{PHASE\_RANDOMIZATION\_ASSUMED\_DEFAULT = True}}: پیش‌فرضِ پرچمِ فرضِ تصادفی‌سازی فاز.
+	\item \lr{\texttt{SCM\_ENABLED\_DEFAULT = False}}: پیش‌فرضِ پرچمِ فعال‌بودن \lr{SCM}.
+\end{itemize}
+
+این ثابت‌ها عمدتاً از اصلاحیه‌های بازبینی‌های چندباره (مثل \lr{F-04}, \lr{F-08}, \lr{F-25}, \lr{F-27}) نشأت می‌گیرند و هر یک پاسخی به یک خطای عددی یا فیزیکی مشخص هستند. مثلاً \lr{\texttt{MAX\_MU}} برای جلوگیری از \lr{\texttt{rng.poisson(np.inf)}} معرفی شده که در غیر این صورت \lr{\texttt{ValueError}} پرتاب می‌کند.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+\label{sec:sources-implementation}
+
+\subsection{توابع تحلیلی توزیع تعداد فوتون}
+
+دو تابعِ \lr{\texttt{poisson\_pn\_array}} و \lr{\texttt{thermal\_pn\_array}} توابعِ خالصِ \lr{NumPy} هستند که برای کار در حلقه‌های \lr{Numba} طراحی شده‌اند و هیچ شیء پایتونی نمی‌سازند. تابعِ \lr{\texttt{photon\_number\_distribution}} یک wrapper است که بر اساس نوع آمار، به یکی از این دو تابع dispatch می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def poisson_pn_array(mu: float, max_n: int = PN_TRUNCATION_DIM) -> np.ndarray:
+		if mu < 0.0:
+		raise ParameterValidationError("mu must be >= 0 ...")
+		if mu == 0.0:
+		result = np.zeros(max_n, dtype=np.float64)
+		result[0] = 1.0
+		return result
+		result = np.empty(max_n, dtype=np.float64)
+		# Numerically stable recurrence: P(0)=exp(-mu), P(n+1)=P(n)*mu/(n+1)
+		result[0] = math.exp(-mu)
+		for n in range(1, max_n):
+		result[n] = result[n - 1] * mu / n
+		return result
+	\end{lstlisting}
+\end{LTR}
+
+خط‌به‌خط:
+\begin{itemize}
+	\item خطوط ۱-۲: اعتبارسنجی ورودی. $\mu < 0$ نامعتبر است زیرا میانگین فوتون نمی‌تواند منفی باشد.
+	\item خطوط ۳-۶: حالت خاص $\mu = 0$. در این حالت $P(0) = 1$ و $P(n > 0) = 0$ که معادل حالت خلأ است.
+	\item خط ۷: تخصیص آرایه‌ی \lr{float64} با طولِ \lr{\texttt{max\_n}}.
+	\item خط ۹: محاسبه‌ی $P(0) = e^{-\mu}$ با \lr{\texttt{math.exp}} که برای $\mu < 10$ پایدار است.
+	\item خطوط ۱۰-۱۱: اعمال بازگشتِ \eqref{eq:poisson-recurrence}. هر جمله از جمله‌ی قبلی با یک ضرب و یک تقسیم به‌دست می‌آید که از سرریز فاکتوریل جلوگیری می‌کند.
+\end{itemize}
+
+تابعِ \lr{\texttt{thermal\_pn\_array}} الگوی مشابهی دارد اما با نسبتِ $\mu/(1+\mu)$ که همواره کوچک‌تر از ۱ است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def thermal_pn_array(mu: float, max_n: int = PN_TRUNCATION_DIM) -> np.ndarray:
+		if mu == 0.0:
+		result = np.zeros(max_n, dtype=np.float64)
+		result[0] = 1.0
+		return result
+		result = np.empty(max_n, dtype=np.float64)
+		ratio = mu / (1.0 + mu)  # P(n+1) / P(n), always < 1
+		result[0] = 1.0 / (1.0 + mu)
+		for n in range(1, max_n):
+		result[n] = result[n - 1] * ratio
+		return result
+	\end{lstlisting}
+\end{LTR}
+
+استفاده از نسبتِ پیش‌محاسبه‌شده‌ی $\mu/(1+\mu)$ به‌جای محاسبه‌ی مستقیمِ $\mu^n/(1+\mu)^{n+1}$ هم از نظر سرعت (یک ضرب به‌جای توان و فاکتوریل) و هم از نظر پایداریِ عددی (نسبت همواره کوچک‌تر از ۱) برتری دارد. این الگوی بازگشتی در تمامِ توابع تحلیلیِ این فریم‌ورک برای توزیع‌های آماری استفاده می‌شود.
+
+\subsection{متد \lr{\texttt{\_scm\_scaling\_factor}}: ضریب مقیاس \lr{SCM}}
+
+این متد، ضریبِ مقیاسِ باند جانبیِ \lr{SCM} را محاسبه می‌کند. پیش‌اولویتِ اعمال به این ترتیب است: (۱) اگر \lr{\texttt{scm\_enabled}} خاموش باشد، ضریب $1.0$؛ (۲) اگر \lr{\texttt{use\_linear\_modulation\_approximation}} روشن باشد، تقریبِ خطیِ اجباری؛ (۳) اگر \lr{\texttt{use\_small\_angle\_approximation}} روشن و $m \leq 10^{-3}$، تقریبِ زاویه کوچک؛ (۴) در غیر این صورت، فرمولِ دقیقِ بسل.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _scm_scaling_factor(self) -> float:
+		if not getattr(self, 'scm_enabled', SCM_ENABLED_DEFAULT):
+		return 1.0
+		m = self.modulation_index
+		nsb = self.scm_num_sidebands
+		if self.use_linear_modulation_approximation:
+		return float(nsb * (m ** 2) / SCM_POWER_DIVISOR)
+		if self.use_small_angle_approximation and m <= SCM_SMALL_ANGLE_LIMIT:
+		return float(nsb * (m ** 2) / SCM_POWER_DIVISOR)
+		return float(nsb * (jv(1, m)) ** 2)
+	\end{lstlisting}
+\end{LTR}
+
+خط‌به‌خط:
+\begin{itemize}
+	\item خطوط ۱-۳: بررسی \lr{\texttt{scm\_enabled}}. استفاده از \lr{\texttt{getattr}} با پیش‌فرض، سازگاریِ پسین را با نسخه‌های قدیمی که این پرچم را نداشتند تضمین می‌کند.
+	\item خط ۴: خواندن شاخصِ مدولاسیون $m$.
+	\item خط ۵: خواندن \lr{\texttt{scm\_num\_sidebands}} که در هر نمونه به‌صورت مستقل ذخیره می‌شود (اصلاحیه‌ی \lr{I.4} از بازبینیِ ۷ام برای thread-safety).
+	\item خطوط ۶-۷: تقریبِ خطیِ اجباری. این شاخه برای بهینه‌سازی‌های عددی که نیاز به گرادیانِ تحلیلی دارند، معرفی شده است.
+	\item خطوط ۸-۹: تقریبِ زاویه کوچک. خطای نسبی در آستانه‌ی $m = 10^{-3}$ حدود $2.5 \times 10^{-7}$ است که برای بهینه‌سازیِ مبتنی بر گرادیان کافی است.
+	\item خط ۱۰: فرمولِ دقیق با تابع بسل $J_1(m)$ از \lr{\texttt{scipy.special.jv}}.
+\end{itemize}
+
+نکته‌ی مهم درباره‌ی ناپیوستگیِ معنایی در $m = 0$: در نسخه‌های قدیمی، آستانه‌ی $m \leq 10^{-9}$ برای ``غیرفعال‌سازی \lr{SCM}'' استفاده می‌شد که یک ناپیوستگیِ عددیِ ۳۰-مرتبه‌ای ایجاد می‌کرد. اصلاحیه‌ی \lr{F-03} این ناپیوستگی را با جدا کردنِ پرچمِ فیزیکی \lr{\texttt{scm\_enabled}} از پارامترِ پیوسته‌ی $m$ برطرف کرد.
+
+\subsection{متد \lr{\texttt{\_calculate\_effective\_mus}}: اعمال ناکامل‌های کلاسیک}
+
+این متد، تمامِ ناکامل‌های کلاسیکِ شدت را به ترتیب فیزیکیِ درست روی میانگین فوتونِ پایه اعمال می‌کند. ترتیبِ عملیات به این صورت است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _calculate_effective_mus(self, base_mus, rng, pulse_positions=None):
+		# Step 1: Intensity jitter (laser fluctuation, before modulation).
+		effective_mus = self._apply_intensity_jitter(base_mus, rng, pulse_positions)
+		# Step 2: MZM attenuation (with electrical-driver voltage noise).
+		effective_mus = self.mzm.apply(effective_mus, self._driver_voltage_noise_std, rng)
+		# Step 3: SCM sideband factor.
+		effective_mus = effective_mus * self._scm_scaling_factor()
+		# Step 4: Channel split.
+		if self.N_channels > 1:
+		effective_mus = effective_mus / float(self.N_channels)
+		return effective_mus
+	\end{lstlisting}
+\end{LTR}
+
+ترتیبِ فیزیکیِ این مراحل بر اساسِ فیزیکِ منبع است: جیترِ شدت از لیزرِ نیمه‌رسانا نشأت می‌گیرد و قبل از مودولاسیونِ خارجی اعمال می‌شود. سپس \lr{MZM} با ولتاژِ درایور، شدت را مدوله می‌کند. \lr{SCM} در حوزه‌ی فرکانس بعد از مدولاسیونِ شدت اعمال می‌شود. در نهایت، تقسیمِ کانال در مرحله‌ی چندگانه‌سازیِ نوری انجام می‌گیرد. برای مدل‌های کاملاً ضربی (مثل \lr{MZM} خطی و \lr{SCM} ضربی)، این ترتیب از نظر ریاضی معادلِ هر ترتیب دیگری است، اما برای مدل‌های غیرخطی (مثل \lr{MZM} با نشتی یا نویز افزودنی)، ترتیب مهم است.
+
+\subsection{متد \lr{\texttt{\_apply\_intensity\_jitter}}: مدل‌های جیتر}
+
+این متد، مدل‌های مختلفِ جیترِ شدت را پیاده‌سازی می‌کند. شاخه‌ی \lr{\texttt{RANDOM\_GAUSSIAN}} با تصحیحِ بایاس:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if self.error_model == SourceErrorModel.RANDOM_GAUSSIAN:
+		jitter = float(self.intensity_jitter)
+		z = rng.standard_normal(size=mus.shape)  # ALWAYS N draws
+		factor = 1.0 + jitter * z
+		mus = mus * np.abs(factor)  # 0 * |factor| = 0 for vacuum
+		if jitter > NUMERIC_ABS_TOL:
+		inv_sigma = 1.0 / jitter
+		bias_factor = (
+		jitter * np.sqrt(2.0 / np.pi) * np.exp(-0.5 * inv_sigma * inv_sigma)
+		+ scipy_erf(inv_sigma / np.sqrt(2.0))
+		)
+		mus = mus / bias_factor  # mean-preserving correction
+		return mus
+	\end{lstlisting}
+\end{LTR}
+
+نکته‌ی کلیدی: طبقِ اصلاحیه‌ی \lr{F-10} از بازبینیِ ۸ام، همواره \lr{N} نمونه از \lr{RNG} مصرف می‌شود حتی برای پالس‌های خلأ ($\mu = 0$). این کار یکنواختیِ جریانِ \lr{RNG} را در سراسرِ اسکن‌های پارامتری حفظ می‌کند: اگر تعداد نمونه‌های مصرفی به مقدارِ $\mu$ وابسته باشد، دو شبیه‌سازی با پیکربندی‌های مختلفِ دکوی، جریان‌های \lr{RNG} متفاوتی خواهند داشت و قابلیت بازتولید از بین می‌رود.
+
+شاخه‌ی \lr{\texttt{ADVERSARIAL\_BLOCK}} پیچیده‌تر است و از یک کشِ \lr{LRU} پایدار برای حفظ همبستگیِ بلوک در سراسرِ فراخوانی‌ها استفاده می‌کند. پارامترِ $\sigma^2_{\ln} = \ln(1 + \sigma^2)$ به‌گونه‌ای انتخاب شده که توزیع لگاریتم-نرمال میانگین ۱ و واریانس $\sigma^2$ داشته باشد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if self.error_model == SourceErrorModel.ADVERSARIAL_BLOCK:
+		block_size = int(self.adversarial_block_size)
+		n = len(mus)
+		sigma_sq = np.log(1.0 + self.intensity_jitter ** 2)
+		if pulse_positions is not None:
+		pulse_positions = np.asarray(pulse_positions, dtype=np.int64)
+		block_ids = pulse_positions // block_size
+		# ... lookup in _adversarial_block_factor_cache ...
+		fresh = rng.lognormal(mean=-0.5 * sigma_sq,
+		sigma=np.sqrt(sigma_sq),
+		size=len(uncached_block_ids))
+		# ... cache and apply ...
+		return mus * factors
+	\end{lstlisting}
+\end{LTR}
+
+وقتی \lr{\texttt{pulse\_positions}} ارائه شود (روش توصیه‌شده)، شناسه‌ی بلوک مستقیماً از $\text{position} // B$ محاسبه می‌شود و کش پایدار، همان بلوک فیزیکی همواره همان ضریب را دریافت می‌کند. این اصلاحیه (بازبینیِ ۷ام، مسئله‌ی \lr{I.1}) یک خطای همبستگی را برطرف کرد که در آن، فراخوانی‌های غیرمتوالی به بلوک‌های یکسان، ضرایبِ مستقل دریافت می‌کردند.
+
+\subsection{متد \lr{\texttt{generate\_photons}}: تولید نهایی فوتون}
+
+این متد، نقطه‌ی ورودیِ اصلیِ شبیه‌سازی است که از منبع، تعداد فوتون تولید می‌کند. الگوریتم:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def generate_photons(self, alice_pulse_indices, rng, num_samples=1, *,
+		pulse_positions=None):
+		if alice_pulse_indices is None:
+		indices = self.sample_pulse_indices(rng, num_samples)
+		is_scalar = False
+		else:
+		indices, is_scalar = self._validate_pulse_indices(alice_pulse_indices)
+		if len(indices) == 0:
+		return np.array([], dtype=np.int64)
+		pp = None
+		if pulse_positions is not None:
+		pp = np.asarray(pulse_positions, dtype=np.int64)
+		selected_mus = self._calculate_effective_mus(
+		self._base_mus_cache[indices], rng, pulse_positions=pp
+		)
+		photons = self._sample_poisson_or_thermal(selected_mus, rng)
+		# Emission-failure thinning
+		p_emit = clamp_probability(self.ideal_emission_probability)
+		n_attempted = len(indices)
+		emit_mask = rng.random(size=n_attempted) < p_emit
+		photons = np.where(emit_mask, photons, 0).astype(np.int64, copy=False)
+		n_emitted = int(np.count_nonzero(emit_mask))
+		self.update_internal_tallies(
+		num_pulses_generated=n_emitted,
+		num_pulses_attempted=n_attempted,
+		)
+		return int(photons[0]) if is_scalar else photons
+	\end{lstlisting}
+\end{LTR}
+
+مراحل کلیدی:
+\begin{itemize}
+	\item خطوط ۲-۷: اگر شاخص پالس \lr{None} باشد، \lr{\texttt{num\_samples}} شاخص به‌صورت تصادفی نمونه‌برداری می‌شود. در غیر این صورت، شاخص‌های ارائه‌شده اعتبارسنجی می‌شوند.
+	\item خطوط ۸-۹: مدیریتِ حالتِ خالی (\lr{num\_samples = 0}) که آرایه‌ی خالی برمی‌گرداند.
+	\item خطوط ۱۰-۱۲: تبدیل \lr{\texttt{pulse\_positions}} به آرایه برای مدل بلوک حریصانه.
+	\item خطوط ۱۳-۱۵: محاسبه‌ی $\mu_{\text{eff}}$ از $\mu_{\text{base}}$ با اعمالِ تمامِ ناکامل‌های کلاسیک.
+	\item خط ۱۶: نمونه‌برداریِ تعداد فوتون از پواسون یا گرمایی.
+	\item خطوط ۱۷-۲۰: اعمالِ شکست گسیل به‌صورت thinning. طبقِ اصلاحیه‌ی \lr{F-41} و \lr{II.3}، فراخوانیِ \lr{\texttt{rng.random}} همواره انجام می‌شود تا جریان \lr{RNG} در سراسرِ تغییراتِ $p_{\text{emit}}$ یکنواخت بماند.
+	\item خطوط ۲۱-۲۵: به‌روزرسانیِ شمارنده‌های \lr{security\_metadata} برای تحلیل‌های پسین.
+\end{itemize}
+
+\subsection{متد \lr{\texttt{MZMConfig.apply}}: عملیات مودولاتور}
+
+این متد در فایل \lr{\texttt{modulators.py}} پیاده‌سازی شده و به‌صورت زیر کار می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def apply(self, target_mus, voltage_noise_std, rng):
+		self.validate()
+		i_min = self.leakage_mu()
+		i_max = self.max_intensity_mu
+		delta_i = i_max - i_min
+		target = np.clip(np.asarray(target_mus, dtype=np.float64), i_min, i_max)
+		if delta_i < NUMERIC_ABS_TOL:
+		normalized = np.zeros_like(target)
+		else:
+		normalized = np.clip((target - i_min) / delta_i, 0.0, 1.0)
+		theta_target = np.arccos(np.sqrt(normalized))
+		v_signal = (2.0 * self.v_pi / np.pi) * (theta_target - self.phi_bias)
+		if voltage_noise_std > 0.0:
+		v_noise = rng.normal(loc=0.0, scale=voltage_noise_std, size=target.shape)
+		else:
+		v_noise = 0.0
+		v_total = v_signal + v_noise
+		noisy_phase = (np.pi * v_total) / (2.0 * self.v_pi) + self.phi_bias
+		return i_min + delta_i * (np.cos(noisy_phase) ** 2)
+	\end{lstlisting}
+\end{LTR}
+
+این پیاده‌سازی، الگوریتمِ معکوس‌سازیِ تابع انتقالِ \lr{MZM} را برای یافتنِ ولتاژِ لازم، و سپس اعمالِ نویز روی آن ولتاژ، و در نهایت اعمالِ تابع انتقال به ولتاژِ نویزی را انجام می‌دهد. این روشِ سه‌مرحله‌ای، فیزیکِ واقعیِ مودولاتور را بازتولید می‌کند: ابتدا ولتاژِ سیگنال از روی شدتِ هدف محاسبه می‌شود (معکوسِ تابع انتقال از رابطه‌ی \eqref{eq:mzm-transfer})، سپس نویزِ الکتریکی به آن افزوده می‌شود، و در نهایت خروجیِ واقعی از تابع انتقالِ $\cos^2(\phi)$ به‌دست می‌آید. این رویکرد، برخلافِ افزودنِ مستقیمِ نویز به شدت، اثرِ غیرخطیِ \lr{MZM} را به‌درستی مدل می‌کند.
+
+خط‌به‌خط:
+\begin{itemize}
+	\item خط ۲: اعتبارسنجی پارامترهای مودولاتور.
+	\item خطوط ۳-۵: محاسبه‌ی $\mu_{\min}$ (نشتی)، $\mu_{\max}$ و $\Delta = \mu_{\max} - \mu_{\min}$.
+	\item خط ۶: clip کردنِ شدتِ هدف به بازه‌ی $[\mu_{\min}, \mu_{\max}]$. شدت‌های خارج از این بازه غیرفیزیکی هستند.
+	\item خطوط ۷-۱۰: نرمال‌سازیِ شدت به بازه‌ی $[0, 1]$. اگر $\Delta$ بسیار کوچک باشد (مثلاً وقتی $\mu_{\max} = \mu_{\min}$)، همه‌ی شدت‌ها به صفر نرمال می‌شوند.
+	\item خط ۱۱: معکوسِ تابع انتقال. از $\cos^2(\theta) = \text{normalized}$ نتیجه می‌گیریم $\theta = \arccos(\sqrt{\text{normalized}})$.
+	\item خط ۱۲: محاسبه‌ی ولتاژِ سیگنال از معکوسِ رابطه‌ی \eqref{eq:mzm-phase}: $V = (2 V_\pi / \pi)(\theta - \phi_{\text{bias}})$.
+	\item خطوط ۱۳-۱۶: نمونه‌برداریِ نویز گوسی با انحراف معیار $\sigma_V$.
+	\item خط ۱۷: جمعِ ولتاژِ سیگنال و نویز.
+	\item خط ۱۸: محاسبه‌ی فازِ نویزی از رابطه‌ی \eqref{eq:mzm-phase}.
+	\item خط ۱۹: اعمالِ تابع انتقالِ $\cos^2(\phi)$ و افزودنِ کفِ نشتی.
+\end{itemize}
+
+\subsection{متد \lr{\texttt{\_build\_rho\_tensor}}: ساخت تانسور ماتریس چگالی}
+
+این متد در \lr{\texttt{DensityMatrixSource}}، ماتریس‌های چگالیِ با ابعادِ ناهمگن را در یک تانسورِ سه‌بعدی با بعدِ یکسان embed می‌کند. هر ماتریس در گوشه‌ی بالا-چپِ یک ماتریس صفرِ $\text{max\_dim} \times \text{max\_dim}$ قرار می‌گیرد. این zero-padding فیزیکی معنادار است: حالت‌های فوک با احتمال صفر را نشان می‌دهد. پس از \texttt{padding}، قطر نرمال می‌شود تا جمع برابر ۱ باشد.
+
+\subsection{متد \lr{\texttt{\_apply\_dm\_loss\_processes}}: اعمال اتلاف روی ماتریس چگالی}
+
+این متد، دو فرآیندِ اتلافِ قابل‌بیان به‌صورت قطری (تقسیم کانال و شکست گسیل) را در زمانِ ساخت اعمال می‌کند:
+
+\begin{itemize}
+	\item \textbf{تقسیم کانال}: تبدیلِ برنولی-دوجمله‌ای از رابطه‌ی \eqref{eq:binomial-loss-channel-split} با $\eta = 1/N$.
+	\item \textbf{شکست گسیل}: مخلوط با خلأ از رابطه‌های \eqref{eq:emission-failure-p0} و \eqref{eq:emission-failure-pk}.
+\end{itemize}
+
+این دو فرآیند در زمانِ ساخت روی \lr{\texttt{\_number\_probs\_table}} اعمال می‌شوند تا جدولِ از ابتدا روی وضعیتِ پس از اتلاف تنظیم شود. سایر ناکامل‌های کلاسیک (مثل \lr{MZM}، \lr{SCM} و جیتر) که به‌صورت غیرقطری عمل می‌کنند، در \lr{\texttt{DensityMatrixSource}} نادیده گرفته می‌شوند و در صورت پیکربندی غیرپیش‌فرض، هشدار ثبت می‌شود.
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+\label{sec:sources-interfacing}
+
+\subsection{ورودی‌های ماژول}
+
+ماژولِ \lr{\texttt{sources.py}} از طریق کلاسِ \lr{\texttt{OpticalSourceConfig}} (که در \lr{\texttt{datatypes.py}} تعریف شده) پیکربندی می‌شود. این پیکربندی شامل موارد زیر است:
+\begin{itemize}
+	\item \lr{\texttt{source\_rate}}: نرخ تکرار منبع به هرتز.
+	\item \lr{\texttt{pulse\_configs}}: تاپلِ پیکربندیِ پالس‌ها (سیگنال و دکوی‌ها).
+	\item \lr{\texttt{statistics\_type}}: نوع آمار (\lr{POISSON} یا \lr{THERMAL}).
+	\item \lr{\texttt{error\_model}}: مدل جیتر شدت.
+	\item \lr{\texttt{intensity\_jitter}}: جیتر نسبی.
+	\item \lr{\texttt{modulation\_index}}: شاخص مدولاسیون \lr{SCM}.
+	\item \lr{\texttt{N\_channels}}: تعداد کانال‌ها.
+	\item \lr{\texttt{ideal\_emission\_probability}}: احتمال گسیل.
+	\item \lr{\texttt{mzm}}: شیء مودولاتور \lr{MZM} از نوع \lr{\texttt{MZMConfig}}.
+	\item \lr{\texttt{electrical\_noise}}: شیء نویز الکتریکی از \lr{\texttt{noise\_models.py}}.
+\end{itemize}
+
+منابع متعددی برای ساختِ این پیکربندی وجود دارد: \lr{\texttt{from\_dict}} (از دیکشنری سریال‌شده)، \lr{\texttt{from\_protocol\_parameters}} (از \lr{\texttt{ProtocolParameters}})، \lr{\texttt{from\_pulse\_ensemble}} (از \lr{\texttt{PulseEnsembleConfig}})، و \lr{\texttt{from\_intensity\_config}} (از \lr{\texttt{IntensityConfig}}). هر یک از این \lr{\texttt{factory method‌}}ها، coerce و اعتبارسنجیِ مختصر به خود را انجام می‌دهند.
+
+برای \lr{\texttt{DensityMatrixSource}}، ورودیِ اضافی \lr{\texttt{density\_matrices}} (نگاشت نام پالس به ماتریس چگالی) نیز لازم است. این ماتریس‌ها باید در پایه‌ی فوک باشند و شروطِ هرمیتی، مثبت‌معین و یک‌بودنِ رد را برآورده کنند.
+
+\subsection{خروجی‌های ماژول}
+
+خروجیِ اصلیِ این ماژول، تعداد فوتون تولیدشده به‌ازای پالس است که از طریقِ متدِ \lr{\texttt{generate\_photons}} در دسترس قرار می‌گیرد. این خروجی به‌صورت یک آرایه‌ی \lr{int64} (یا یک اسکالر در حالتِ تک‌پالس) برگردانده می‌شود و مستقیماً به ماژولِ کانال \lr{\texttt{channel.py}} ارسال می‌شود تا ضریبِ انتقالِ فیبر روی آن اعمال شود. به‌علاوه، متدِ \lr{\texttt{calculate\_effective\_mus}} میانگین فوتون مؤثر را (بدون نمونه‌برداری) برمی‌گرداند که برای تحلیل‌های تحلیلیِ نرخ کلید استفاده می‌شود.
+
+خروجیِ تحلیلیِ دیگر، توزیعِ احتمالِ تعداد فوتون $P(n)$ است که از طریقِ متدِ \lr{\texttt{number\_probabilities\_for\_pulse}} برای هر پالس قابل دسترسی است. این خروجی در ماژول‌های تحلیل امنیتی (مانند تخمینِ $Y_1$ و $e_1$ در \lr{Decoy-State}) استفاده می‌شود. توابعِ ماژول-سطحی \lr{\texttt{poisson\_pn\_array}} و \lr{\texttt{thermal\_pn\_array}} نیز برای محاسباتِ تحلیلیِ مستقل (بدون نیاز به شیء منبع) در دسترس هستند.
+
+بسته‌ی \lr{\texttt{SourceSimParams}} نیز از طریقِ \lr{\texttt{build\_source\_sim\_params}} به ماژول \lr{\texttt{main\_optimized.py}} ارسال می‌شود تا پارامترهای اجراییِ شبیه‌سازی (مثل دوره‌ی پالس، نرخ منبع، نوع آمار) در اختیارِ موتورِ شبیه‌سازی قرار گیرد. این بسته‌ی یخ‌زده تضمین می‌کند که پارامترها در طولِ شبیه‌سازی ثابت بمانند.
+
+\subsection{وابستگی‌های داخلی}
+
+این ماژول به چندین ماژولِ دیگر وابسته است:
+\begin{itemize}
+	\item \lr{\texttt{constants.py}}: برای ثابت‌های عددی مثل \lr{\texttt{NUMERIC\_ABS\_TOL}} و \lr{\texttt{MAX\_SEED\_INT\_PCG64}} و توابعِ کمکی مثل \lr{\texttt{clamp\_probability}} و \lr{\texttt{is\_close}}.
+	\item \lr{\texttt{datatypes.py}}: برای تعاریفِ \lr{\texttt{OpticalSourceConfig}}، \lr{\texttt{PulseTypeConfig}}، \lr{\texttt{SourceErrorModel}} و \lr{\texttt{SourceStatisticsType}}.
+	\item \lr{\texttt{exceptions.py}}: برای \lr{\texttt{ParameterValidationError}}.
+	\item \lr{\texttt{security\_metadata.py}}: برای \lr{\texttt{SourceSecurityMetadata}} که شمارنده‌های امنیتی را نگه می‌دارد.
+	\item \lr{\texttt{type\_defs.py}}: برای \lr{\texttt{RNGType}} (نوعِ \lr{NumPy Generator}).
+	\item \lr{\texttt{utils/utils.py}}: برای \lr{\texttt{sanitize\_for\_serialization}}.
+	\item \lr{\texttt{scipy.special}}: برای توابع بسل \lr{\texttt{jv}} و تابع خطا \lr{\texttt{erf}}.
+\end{itemize}
+
+این وابستگی‌ها، یک گرافِ وابستگیِ خطی از لایه‌ی پایین (ثابت‌ها و تایپ‌ها) به لایه‌ی بالای فیزیکی (منابع) تشکیل می‌دهند. ماژول \lr{\texttt{modulators.py}} به‌صورت مستقل عمل می‌کند و تنها به \lr{\texttt{constants.py}} و \lr{\texttt{exceptions.py}} وابسته است، که به \lr{\texttt{OpticalSource}} اجازه می‌دهد آن را به‌عنوان یک کامپوننتِ قابل‌تعویض استفاده کند.
+
+\subsection{جریانِ داده در شبیه‌سازیِ کامل}
+
+جریانِ داده از منبع تا آشکارساز به‌صورت زیر است:
+\begin{enumerate}
+	\item کاربر، \lr{\texttt{OpticalSource}} را از طریقِ \lr{\texttt{from\_dict}} یا \lr{\texttt{from\_protocol\_parameters}} می‌سازد.
+	\item \lr{\texttt{build\_source\_sim\_params}} بسته‌ی اجرایی را برای موتور شبیه‌سازی می‌سازد.
+	\item در هر تکرارِ شبیه‌سازی، \lr{\texttt{generate\_photons}} فراخوانی می‌شود و آرایه‌ای از تعداد فوتون تولید می‌کند.
+	\item این آرایه به \lr{\texttt{FiberChannel.transmittance}} ارسال می‌شود تا ضریبِ انتقال روی هر فوتون اعمال شود (به‌صورت ضرب در $T$ و سپس گردکردن به عدد صحیح).
+	\item خروجیِ کانال به ماژولِ آشکارساز \lr{\texttt{detectors.py}} ارسال می‌شود تا کاراییِ آشکارساز، نرخ شمارش تاریک و پدیده‌ی afterpulsing اعمال شود.
+	\item در نهایت، رویدادهای آشکارسازی به ماژولِ \lr{post-processing} (تصحیح خطا و تقویت حریم خصوصی) ارسال می‌شوند.
+\end{enumerate}
+
+این جریانِ خطی، مدولار بودنِ فریم‌ورک را تضمین می‌کند: هر ماژول مسئولیتِ یک لایه‌ی فیزیکی مشخص را دارد و خروجیِ آن، ورودیِ ماژولِ بعدی است. این معماری، امکانِ جایگزینیِ آسانِ هر ماژول با یک پیاده‌سازیِ متفاوت (مثلاً مدلِ آشکارسازِ پیشرفته‌تر) را بدون تغییر در سایر ماژول‌ها فراهم می‌سازد.

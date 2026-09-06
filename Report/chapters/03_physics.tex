@@ -1,0 +1,857 @@
+% ============================================================
+%  QKD Simulation Framework — Chapter: Channel, Physics, Noise
+%  Authors: Documentation generated for academic thesis
+%  Encoding: UTF-8, XePersian-compatible
+% ============================================================
+
+% --- تنظیمات رفع سرریز جعبه‌افقی (Overfull \hbox) ---
+\sloppy
+\emergencystretch=3em
+\hbadness=10000
+\vbadness=10000
+
+% --- پیکربندی بسته‌ی listings برای نمایش صحیح کد پایتون در متن RTL ---
+\lstset{
+	basicstyle=\ttfamily\small,
+	keywordstyle=\color{blue}\bfseries,
+	stringstyle=\color{teal},
+	commentstyle=\color{gray!60!black}\itshape,
+	numberstyle=\tiny\color{gray},
+	showstringspaces=false,
+	breaklines=true,
+	breakatwhitespace=true,
+	frame=single,
+	rulecolor=\color{gray!40},
+	backgroundcolor=\color{gray!5},
+	language=Python,
+	extendedchars=true,
+	inputencoding=utf8,
+	tabsize=4,
+	keepspaces=true,
+	columns=fullflexible,
+	basewidth=0.55em,
+	aboveskip=1em,
+	belowskip=1em,
+	xleftmargin=1em,
+	xrightmargin=1em,
+	escapeinside={(*@}{@*)},
+	literate=
+	{→}{{$\rightarrow$}}1
+	{∂}{{$\partial$}}1
+	{α}{{$\alpha$}}1
+	{β}{{$\beta$}}1
+	{γ}{{$\gamma$}}1
+	{δ}{{$\delta$}}1
+	{ε}{{$\varepsilon$}}1
+	{θ}{{$\theta$}}1
+	{λ}{{$\lambda$}}1
+	{μ}{{$\mu$}}1
+	{ν}{{$\nu$}}1
+	{π}{{$\pi$}}1
+	{σ}{{$\sigma$}}1
+	{η}{{$\eta$}}1
+	{≤}{{$\leq$}}1
+	{≥}{{$\geq$}}1
+	{≠}{{$\neq$}}1
+	{∈}{{$\in$}}1
+	{∞}{{$\infty$}}1
+	{Σ}{{$\Sigma$}}1
+	{Δ}{{$\Delta$}}1
+	{Ω}{{$\Omega$}}1
+}
+
+\providecommand{\code}[1]{\texttt{\LR{#1}}}
+
+\section{نمای کلی و هدف ماژول}
+\label{sec:channel-overview}
+
+این فصل به بررسی سه لایه‌ی به‌هم‌پیوسته در مدل‌سازی کانال کوانتومی در فریم‌ورک شبیه‌سازی \lr{QKD} می‌پردازد: (الف) فایل \lr{\texttt{channel.py}} که حاوی کلاس اصلی \lr{\texttt{FiberChannel}} و کلاس‌های کمکیِ آن است؛ (ب) فایل \lr{\texttt{\_physics.py}} که توابع محاسبات فیزیکی مشتق‌شده (مانند محاسبه‌ی \lr{Transmittance}، کسر تلفات، و ترکیب آبشاری کانال‌ها) را از بدنه‌ی کلاس جدا می‌سازد؛ و (ج) فایل \lr{\texttt{noise\_models.py}} که مدل‌های نویز الکتریکی سمت منبع (مانند نویز حرارتی \lr{Johnson-Nyquist} و نویز شات \lr{Schottky}) را به‌صورت یک \lr{dataclass} مستقل پیاده‌سازی می‌کند. این سه ماژول در کنار یکدیگر، چرخه‌ی کاملِ تبدیلِ پارامترهای فیزیکیِ فیبر (طول $L$ و ضریب تلفات $\alpha$) به کمیت‌های قابل‌استفاده در محاسباتِ نرخ کلید \lr{QKD} را فراهم می‌سازند.
+
+هدف بنیادین این مجموعه، ارائه‌ی یک مدلِ تغییریافته‌ناپذیر \lr{(immutable)}، قابل سریال‌سازی \lr{(serializable)} و از نظر عددی پایدار از کانال فیبر نوری است که بر پایه‌ی قانون \lr{Beer-Lambert} بنا شده است. در این قانون، ضریب انتقال کل کانال به‌صورت تابعی نمایی از حاصل‌ضربِ طول فیبر در ضریب تلفات تعریف می‌شود. این رابطه که در ظاهر ساده به‌نظر می‌رسد، در عمل با چالش‌های متعددی روبه‌رو است: سرریز عددی \lr{(underflow)} برای فواصل طولانی، ظهور مقادیر زیرنرمال \lr{(subnormal)} که دقت محاسبات آنتروپی را تخریب می‌کنند، عدم تقارنِ \lr{round-trip} میان $\alpha \cdot L$ و $L_{\text{total}}$ به‌دلیل خطای گردکردنِ \lr{IEEE-754}، و نیاز به سازوکارهایی برای تشخیص پیکربندی‌های فیزیکی مشکوک \lr{(physical suspicion)} بدون توقف کاملِ شبیه‌سازی. این فصل به‌تفصیل نشان می‌دهد که چگونه هر یک از این چالش‌ها در سطح کدِ پایتون آدرس‌دهی شده‌اند.
+
+طراحیِ این ماژول بر چهار اصل بنیادین استوار است. نخست، \lr{``fail-fast''}: هرگونه ناسازگاری در زمان بارگذاری پیکربندی باید بلافاصله با یک استثنای صریح افشا گردد تا از انتشار خطا به لایه‌های پایین‌تر جلوگیری شود. دوم، \lr{``strict mode'}': کاربر می‌تواند با فعال‌سازی این حالت، رفتار ماژول را از هشدار دادن \lr{(warning)} به پرتاب استثنا \lr{(raising)} تغییر دهد تا در خطوط لوله‌ی تولید \lr{(production pipelines)} هیچ پیکربندیِ مشکوکی پذیرفته نشود. سوم، \lr{``reproducibility'}': فراداده‌ی زمان ساخت \lr{(construction-time metadata)}، حالت \lr{strict} در زمان ساخت، و مسیرِ ساخت \lr{(construction path)} در هر نمونه ثبت می‌شوند تا بازتولید آزمایش‌ها در محیط‌های مختلف تضمین گردد. چهارم، \lr{``type-safety'}': استفاده‌ی گسترده از \lr{\texttt{TypeVar}}، \lr{\texttt{Generic}}، \lr{\texttt{Protocol}} و \lr{\texttt{Final}} اطمینان می‌دهد که تحلیل‌گرهای ایستا مانند \lr{mypy} و \lr{pyright} می‌توانند بسیاری از خطاهای نوعی را پیش از اجرای کد شناسایی کنند.
+
+در سطح کلان، فایل \lr{\texttt{channel.py}} با بیش از ۴۵۰۰ خط کد، سنگین‌ترین و پیچیده‌ترین جزء این مجموعه است. این فایل نه‌تنها کلاس \lr{\texttt{FiberChannel}} را تعریف می‌کند، بلکه زیرکلاسِ \lr{\texttt{AttenuationOnlyFiberChannel}} را به‌عنوان نشانگر نوعی برای کانال‌های صرفاً تلفاتی، توابع برداریِ \lr{\texttt{transmittance\_array}} و \lr{\texttt{transmittance\_scalar}} را برای حلقه‌های داغِ \lr{Monte Carlo}، کلاس \lr{\texttt{ChannelSimParams}} را به‌عنوان بسته‌ی یخ‌زده‌ی کمیت‌های مشتق‌شده، و سازوکار \lr{strict mode} را به‌صورت یک \lr{\texttt{ContextVar}} پیاده‌سازی می‌کند. فایل \lr{\texttt{\_physics.py}} با حدود ۶۲۰ خط، توابعی را که در نسخه‌های پیشین به‌عنوان متدهای کلاس تعریف می‌شدند، به توابعی مستقل تبدیل کرده است؛ این تفکیکِ نگرانی‌ها \lr{(separation of concerns)} امکان تست واحدِ آسان‌تر و استفاده‌ی مجددِ منطق را فراهم می‌سازد. فایل \lr{\texttt{noise\_models.py}} با تنها ۸۰ خط، یک ماژول فشرده اما مهم برای مدل‌سازی نویز الکتریکیِ فوتودیودِ نظارتی در سمت فرستنده است که در سیستم‌های \lr{SCM-QKD} و \lr{WDM} برای تخمین نویز اضافی به‌کار می‌رود.
+
+\section{مبانی تئوری و فیزیکی}
+\label{sec:channel-theory}
+
+\subsection{قانون Beer-Lambert و تلفات فیبر نوری}
+
+در فیبر نوری سیلیکا، تضعیفِ سیگنال نوری ناشی از سه مکانیزم فیزیکی اصلی است: پراکندگی \lr{Rayleigh} ناشی از نوسانات چگالی در مقیاسِ کوچک‌تر از طول موج، جذب ناشی از ناخالصی‌های یونی (به‌ویژه یون‌های OH$^-$ در طول موج $1383\,\text{nm}$)، و پراکندگی \lr{Mie} ناشی از ناخالصی‌های با مقیاسِ بزرگ‌تر. در طول موج‌های پنجره‌ی مخابراتی ($1310\,\text{nm}$ و $1550\,\text{nm}$)، پراکندگی \lr{Rayleigh} مکانیزم غالب است و منجر به ضریب تلفاتِ تقریباً ثابت به ازای واحد طول می‌گردد. این رفتار خطی با قانون \lr{Beer-Lambert} مدل می‌شود:
+\begin{equation}
+	T(L) = \frac{P(L)}{P(0)} = 10^{-\alpha\,L/10},
+	\label{eq:beer-lambert}
+\end{equation}
+که در آن $T$ ضریب انتقال \lr{(transmittance)}، $P(L)$ توان نوری خروجی در طول $L$، $P(0)$ توان ورودی، $\alpha$ ضریب تلفات به واحد \lr{dB/km} و $L$ طول فیبر به کیلومتر است. تلفات کل به دسی‌بل از رابطه‌ی خطی زیر به دست می‌آید:
+\begin{equation}
+	L_{\text{total}}\,[\text{dB}] = \alpha\,[\text{dB/km}] \times L\,[\text{km}],
+	\label{eq:total-loss-linear}
+\end{equation}
+و در نتیجه رابطه‌ی نماییِ معادل برای ضریب انتقال به‌صورت $T = 10^{-L_{\text{total}}/10}$ نوشته می‌شود. در طول موج $1550\,\text{nm}$ مقدار معمولِ $\alpha \approx 0.2\,\text{dB/km}$ است که به فاصله‌ی تقریبی $50\,\text{km}$ نرخ کلید غیرصفری در \lr{BB84-Decoy} با آشکارسازهای \lr{SNSPD} اجازه می‌دهد.
+
+\subsection{تفکیک $\eta_{\text{channel}}$ از بهره‌ی کلی آشکارساز}
+
+در یک حلقه‌ی بودجه‌ی پیوندِ \lr{QKD}، احتمال کلی آشکارسازیِ یک فوتونِ منتشرشده از سمت آلیس به‌صورت زیر تجزیه می‌شود:
+\begin{equation}
+	\eta = \eta_{\text{channel}} \cdot \eta_{\text{detector}} \cdot \eta_{\text{coupling}},
+	\label{eq:link-budget}
+\end{equation}
+که در آن $\eta_{\text{channel}} = T$ همان ضریب انتقالِ فیبر است، $\eta_{\text{detector}}$ بازدهی تک‌آشکارساز (معمولاً $0.1$ تا $0.3$ برای \lr{SNSPD} و $0.05$ تا $0.15$ برای \lr{SPAD})، و $\eta_{\text{coupling}}$ تلفات اتصالات، اتصال‌دهنده‌ها و جوش‌های فیبر (معمولاً $0.5$ تا $0.9$) است. یکی از خطاهای متداول در ادبیات شبیه‌سازی، استفاده‌ی مستقیم $T$ به‌جای $\eta$ در فرمول بهره‌ی \lr{Decoy-State}:
+\begin{equation}
+	Q_\mu = \sum_{n=0}^{\infty} Y_n \cdot \frac{\mu^n\,e^{-\mu}}{n!}, \qquad Y_n = 1 - (1-\eta)^n + Y_0,
+	\label{eq:decoy-gain}
+\end{equation}
+است که می‌تواند منجر به جابهجاییِ منحنی نرخ کلید تا $50$ تا $100\,\text{km}$ گردد. به همین دلیل، کلاس \lr{\texttt{FiberChannel}} صراحتاً تنها $\eta_{\text{channel}}$ را ارائه می‌دهد و تابع کمکیِ \lr{\texttt{link\_efficiency}} ترکیب سه‌گانه‌ی رابطه‌ی \eqref{eq:link-budget} را در یک نقطه‌ی متمرکز انجام می‌دهد تا اطمینان حاصل شود که تمام محاسبات (تحلیل متقاطع \lr{Rogers et al. (2007)} و فرمول بهره) از یک ترکیب‌بندیِ واحد استفاده می‌کنند.
+
+\subsection{پدیده‌ی زیرنرمال بودن و سرریز عددی}
+
+در فواصل بسیار طولانی (مثلاً $L = 5000\,\text{km}$ با $\alpha = 0.2$)، مقدار $L_{\text{total}} = 1000\,\text{dB}$ و $T = 10^{-100}$ است که به‌راحتی در محدوده‌ی نرمالِ \lr{double} نمایش داده می‌شود. اما برای $L = 50000\,\text{km}$ با همان $\alpha$، مقدار $T = 10^{-1000}$ است که بسیار کوچک‌تر از کوچک‌ترین عدد نرمالِ مثبت در \lr{IEEE-754} ($\approx 2.225 \times 10^{-308}$) می‌باشد. در این حالت دو سناریو رخ می‌دهد: (الف) اگر مقدار به‌صورتِ تدریجی‌کاهش‌یافته \lr{(gradual underflow)} محاسبه شود، یک عدد زیرنرمال با تنها $1$ تا $2$ بیت معتبرِ مانتیس تولید می‌شود؛ (ب) اگر زیرنرمال‌ها در محیطِ اجرا غیرفعال باشند \lr{(FTZ/DAZ modes)}، مقدار به صفر دقیق تبدیل می‌شود.
+
+هر دو حالت برای محاسبات \lr{QKD} فاجعه‌بارند: یک عدد زیرنرمال در فرمولِ بهره‌ی $Y_n = 1 - (1-\eta)^n$ به دلیل از دست رفتن بیت‌های معتبر، منجر به نتایجِ کاملاً اشتباه می‌شود؛ و یک مقدار صفر دقیق، در لگاریتمِ آنتروپیِ شانون $H_2(p) = -p\log_2 p - (1-p)\log_2(1-p)$ منجر به $\log(0) = -\infty$ و در نتیجه \lr{NaN} می‌گردد. به همین دلیل، ماژول \lr{\texttt{channel.py}} سه سطح تشخیص را پیاده‌سازی می‌کند: آستانه‌ی زیرنرمال \lr{\texttt{TRANSMITTANCE\_SUBNORMAL\_THRESHOLD}} (برابرِ \lr{\texttt{sys.float\_info.min}})، آستانه‌ی سرریزِ مطلق \lr{\texttt{\_TRANSMITTANCE\_UNDERFLOW\_ABS\_TOL}} (همان مقدار)، و آستانه‌ی قراردادِ $L,T$ به مقدار $10^{-12}$. در حالتِ \lr{strict mode}، هر یک از این شرایط به پرتابِ استثنای \lr{\texttt{ParameterValidationError}} منجر می‌شوند.
+
+\subsection{نویز حرارتی Johnson-Nyquist}
+
+مقاومتِ اهمی در دمای غیرصفر، به‌دلیلِ حرکتِ حرارتیِ تصادفیِ الکترون‌ها، یک ولتاژِ نویزِ تصادفی تولید می‌کند که به افتخارِ کاشفان آن، نویز \lr{Johnson-Nyquist} نامیده می‌شود. توانِ طیفیِ این نویز در محدوده‌ی فرکانسیِ پایین (نسبت به دمای پلاسمایی) مسطح است و از رابطه‌ی زیر پیروی می‌کند:
+\begin{equation}
+	\langle v_n^2 \rangle = 4\,k_B\,T\,R\,\Delta f,
+	\label{eq:johnson-noise}
+\end{equation}
+که در آن $k_B = 1.380649 \times 10^{-23}\,\text{J/K}$ ثابت بولتزمن، $T$ دمای مطلق، $R$ مقاومت بار \lr{(load resistance)} و $\Delta f$ پهنای‌باندِ الکتریکی است. انحراف معیارِ ولتاژ نویزِ حرارتی از ریشه‌گیریِ رابطه‌ی فوق به دست می‌آید:
+\begin{equation}
+	\sigma_v^{\text{(thermal)}} = \sqrt{4\,k_B\,T\,R\,\Delta f}.
+	\label{eq:thermal-std}
+\end{equation}
+در دمای اتاق $T = 298.15\,\text{K}$، با $R = 50\,\Omega$ و $\Delta f = 1\,\text{GHz}$، این مقدار تقریباً $28.9\,\mu\text{V}$ است.
+
+\subsection{نویز شات Schottky}
+
+عبورِ جریان الکتریکی از یک فراسو، به‌دلیلِ گسسته‌بودنِ بارِ الکترون، با نویزِ شات همراه است. توانِ طیفیِ جریانِ نویزِ شات از رابطه‌ی \lr{Schottky} به دست می‌آید:
+\begin{equation}
+	\langle i_n^2 \rangle = 2\,e\,I_{\text{DC}}\,\Delta f,
+	\label{eq:shot-noise}
+\end{equation}
+که در آن $e = 1.60217663 \times 10^{-19}\,\text{C}$ بار الکترون، $I_{\text{DC}}$ جریانِ مستمرِ فوتودیودِ نظارتی، و $\Delta f$ پهنای‌باند است. با عبور از مقاومتِ بار، این نویز به ولتاژ تبدیل می‌شود:
+\begin{equation}
+	\sigma_v^{\text{(shot)}} = R \cdot \sqrt{2\,e\,I_{\text{DC}}\,\Delta f}.
+	\label{eq:shot-std}
+\end{equation}
+چون نویزِ حرارتی و نویزِ شات از فرایندهای فیزیکیِ مستقل هستند، ترکیبِ آن‌ها به‌صورتِ جمعِ توان‌ها انجام می‌شود:
+\begin{equation}
+	\sigma_v^{\text{(total)}} = \sqrt{(\sigma_v^{\text{(thermal)}})^2 + (\sigma_v^{\text{(shot)}})^2}.
+	\label{eq:total-noise}
+\end{equation}
+این رابطه در متدِ \lr{\texttt{total\_voltage\_std}} کلاس \lr{\texttt{ElectricalNoiseConfig}} پیاده‌سازی شده است.
+
+\subsection{کسر تلفات تک‌کیلومتری و تقریب خطی}
+
+کسرِ توانِ نوریِ از دست‌رفته در دقیقاً یک کیلومتر فیبر از رابطه‌ی زیر به دست می‌آید:
+\begin{equation}
+	\ell = 1 - T(1\,\text{km}) = 1 - 10^{-\alpha/10}.
+	\label{eq:loss-fraction}
+\end{equation}
+برای $\alpha = 0.2\,\text{dB/km}$، این مقدار $\ell \approx 0.0451$ است. یک اشتباهِ متداول در ادبیاتِ مهندسی، ضربِ این کسر در طول فیبر برای تخمینِ تلفاتِ کل است؛ اما این کار نادرست است زیرا کسر تلفات به‌صورتِ نمایی با فاصله ترکیب می‌شود:
+\begin{equation}
+	\ell_{\text{total}}(L) = 1 - (1-\ell)^L \neq \ell \cdot L.
+	\label{eq:nonlinear-composition}
+\end{equation}
+برای $\alpha = 0.2$ و $L = 100\,\text{km}$، تقریب خطیِ $\ell \cdot L \approx 4.51$ است که کاملاً غیرفیزیکی (بزرگ‌تر از ۱) می‌باشد، در حالی که مقدار دقیق $\ell_{\text{total}} \approx 0.990$ است. به همین دلیل، ماژول \lr{\texttt{channel.py}} متدِ قدیمیِ \lr{\texttt{loss\_fraction\_per\_km}} را منسوخ کرده و نامِ جدیدِ \lr{\texttt{single\_km\_power\_loss\_fraction}} را برای آن انتخاب کرده است تا ماهیتِ غیرخطیِ این کمیت به‌طور صریح در نام بازتاب یابد.
+
+برای $\alpha$‌های بسیار کوچک (نظیر $\alpha = 10^{-6}\,\text{dB/km}$ در شبیه‌سازی‌های فرضی)، فرمول مستقیمِ $1 - 10^{-\alpha/10}$ دچار لغوِ فاجعه‌بار \lr{(catastrophic cancellation)} می‌شود: مقدار $10^{-10^{-7}} \approx 0.99999976$ تنها $6$ رقم معتبر دارد و تفریق از $1.0$ منجر به از دست رفتنِ بیشترِ بیت‌ها می‌شود. برای جلوگیری از این ناپایداری، از تابعِ \lr{\texttt{math.expm1}} که به‌صورتِ تخصصی برای محاسبه‌ی دقیقِ $e^x - 1$ برای $x$‌های کوچک طراحی شده، استفاده می‌گردد:
+\begin{equation}
+	\ell = -\mathrm{expm1}\!\left(-\frac{\alpha \cdot \ln 10}{10}\right).
+	\label{eq:expm1-stable}
+\end{equation}
+این فرمول برای هر مقدار $\alpha$، تمامی بیت‌های معتبر را حفظ می‌کند.
+
+تقریبِ خطیِ مرتبه‌ی اولِ تیلور از رابطه‌ی \eqref{eq:loss-fraction} به‌صورت زیر است:
+\begin{equation}
+	\ell_{\text{linear}} \approx \frac{\alpha \cdot \ln 10}{10} \approx 0.2303 \cdot \alpha,
+	\label{eq:linear-approx}
+\end{equation}
+که برای $\alpha = 0.2$ مقدار $\ell_{\text{linear}} \approx 0.0461$ را می‌دهد. این تقریب واقعاً خطی است (به $L$ وابسته نیست) و با فاصله به‌صورتِ خطی ترکیب می‌شود، اما تنها برای $\alpha \cdot L$‌های کوچک معتبر است. برای $\alpha > 4.34\,\text{dB/km}$ (که در آن $10/\ln 10 \approx 4.34$) این تقریب از $1$ فراتر می‌رود و فیزیکی نمی‌باشد.
+
+\subsection{ترکیب آبشاری کانال‌ها}
+
+در یک زنجیره‌ی چندبُعدی از فیبرها با پارامترهای متفاوت، ضریب انتقالِ کل از حاصل‌ضربِ ضرایبِ انتقالِ هر بخش به دست می‌آید:
+\begin{equation}
+	T_{\text{total}} = \prod_{i=1}^{N} T_i = \prod_{i=1}^{N} 10^{-\alpha_i L_i / 10} = 10^{-\sum_i \alpha_i L_i / 10},
+	\label{eq:cascade-product}
+\end{equation}
+که معادل با جمعِ تلفات در واحد دسی‌بل است: $L_{\text{total}} = \sum_i \alpha_i L_i$. اگر بخواهیم یک کانالِ معادلِ تک‌بُعدی با همان تلفاتِ کل و طولِ کل تعریف کنیم، ضریب تلفاتِ میانگینِ آن به‌صورت زیر محاسبه می‌شود:
+\begin{equation}
+	\alpha_{\text{avg}} = \frac{L_{\text{total}}}{L_{\text{total\_distance}}} = \frac{\sum_i \alpha_i L_i}{\sum_i L_i}.
+	\label{eq:cascade-alpha-avg}
+\end{equation}
+این یک میانگینِ حسابیِ وزن‌دار است که به هیچ نوع فیبرِ استانداردی در هیچ طول موجی اشاره ندارد. به‌عنوان مثال، ترکیبِ یک فیبر $100\,\text{km}$ با $\alpha = 0.2$ و یک فیبر $10\,\text{km}$ با $\alpha = 3.0$ به $\alpha_{\text{avg}} \approx 0.47\,\text{dB/km}$ می‌انجامد که در هیچ طول موجی فیزیکی نیست. به همین دلیل، متد \lr{\texttt{cascade}} در کد به‌صراحت هشدار می‌دهد که کانالِ معادل، یک \lr{``composite loss-equivalent''} است و نباید در مقایسه‌های ادبی به‌عنوان فیبر واقعی به‌کار رود.
+
+\subsection{پاشش کروماتیک و محدودیت‌های مدل}
+
+پاشش کروماتیک \lr{(Chromatic Dispersion)} باعث پهن‌شدنِ پالس نوری در طول فیبر می‌شود و در صورتی که پهنای زمانیِ پالس از پنجره‌ی زمانیِ آشکارساز فراتر رود، به از بین رفتنِ اطلاعات می‌انجامد. ضریب پاشش $D(\lambda)$ به واحد \lr{ps/(nm· km)} بیان می‌شود و پهن‌شدنِ زمانی از رابطه‌ی زیر تقریب زده می‌شود:
+\begin{equation}
+	\Delta\tau \approx D(\lambda) \cdot L \cdot \Delta\lambda,
+	\label{eq:chromatic-dispersion}
+\end{equation}
+که در آن $\Delta\lambda$ پهنای طیفیِ منبع است. در فیبر استانداردِ تک‌حالته در $1550\,\text{nm}$، $D \approx 17\,\text{ps/(nm· km)}$ است که برای منبعِ لیزری با $\Delta\lambda = 0.1\,\text{nm}$ در $100\,\text{km}$، پهن‌شدنِ $170\,\text{ps}$ تولید می‌کند. این پدیده در مدل \lr{\texttt{FiberChannel}} پیاده‌سازی نشده است (زیرا بر ضریب انتقال اثر مستقیم ندارد) اما در \lr{\texttt{ChannelSimParams}} به‌عنوان فراداده‌ی عددی ثبت می‌گردد تا توسط موتورِ شبیه‌سازیِ آشکارساز برای مدل‌سازیِ پنجره‌ی زمانیِ قابل‌استفاده باشد.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+\label{sec:channel-architecture}
+
+\subsection{کلاس \lr{\texttt{FiberChannel}} به‌عنوان \lr{Frozen Dataclass}}
+
+کلاسِ \lr{\texttt{FiberChannel}} با دو decorator اصلی تعریف می‌شود:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass(frozen=True, slots=True)
+		class FiberChannel:
+		"""Models a simple optical fiber channel defined by attenuation."""
+		attenuation: AttenuationConfig
+		_construction_path: str = field(default="direct", repr=False)
+		_total_loss_db_override: Optional[float] = field(
+		init=False, default=None, repr=False
+		)
+		_transmittance: Any = field(init=False, repr=False, default=_UNSET)
+		_strict_mode_at_construction: bool = field(init=False, repr=False, default=False)
+		wavelength_nm: Optional[float] = field(default=None, repr=False)
+		_metadata_extra: Mapping[str, Any] = field(
+		init=False, repr=False, default_factory=lambda: _EMPTY_METADATA_EXTRA
+		)
+		__hash__ = None  # type: ignore[assignment,method-assign]
+	\end{lstlisting}
+\end{LTR}
+پرچمِ \lr{\texttt{frozen=True}} کلاس را تغییرناپذیر می‌سازد؛ پس از ساختِ نمونه، هیچ فیلدی نمی‌تواند با تخصیصِ معمولی تغییر کند. این ویژگی برای تضمینِ \lr{reproducibility} حیاتی است. هرگاه تغییر ضروری باشد (مانند تنظیمِ \lr{\texttt{\_total\_loss\_db\_override}} در \lr{\texttt{from\_total\_loss}})، باید از \lr{\texttt{object.\_\_setattr\_\_(...)}} استفاده شود که تنها راه قانونیِ دور زدنِ محدودیتِ \lr{frozen} است. پرچمِ \lr{\texttt{slots=True}} از تخصیصِ \lr{\_\_dict\_\_} جلوگیری کرده و به‌جای آن فضا را از طریقِ \lr{\_\_slots\_\_} تخصیص می‌دهد؛ این بهینه‌سازی مصرفِ حافظه را تا $40\%$ کاهش داده و سرعتِ دسترسی به فیلدها را افزایش می‌دهد.
+
+\subsection{فیلدهای کلاس و نقش آن‌ها}
+
+\textbf{فیلدِ \lr{\texttt{attenuation}} (نوع: \lr{\texttt{AttenuationConfig}}):} تنها فیلدِ اجباریِ کاربر. این فیلد، یک \lr{dataclass} دیگر از ماژولِ \lr{\texttt{qkd.datatypes}} است که دو فیلدِ \lr{\texttt{fiber\_length}} (به \lr{km}) و \lr{\texttt{attenuation\_coefficient}} (به \lr{dB/km}) را در بر می‌گیرد. قراردادِ \lr{\texttt{AttenuationConfig}} آن است که \lr{\texttt{total\_loss\_db = fiber\_length * attenuation\_coefficient}} باید برقرار باشد.
+
+\textbf{فیلدِ \lr{\texttt{\_construction\_path}} (نوع: \lr{\texttt{str}}، پیش‌فرض: \lr{\texttt{"direct"}}):} این فیلد مسیرِ ساختِ نمونه را ثبت می‌کند تا در پیام‌های هشدار و فراداده‌ی بازتولید، ریشه‌ی خطا قابل ردیابی باشد. مقادیرِ ممکن عبارت‌اند از: \lr{\texttt{"direct"}} (ساخت مستقیم)، \lr{\texttt{"from\_total\_loss"}}، \lr{\texttt{"from\_tuple"}}، \lr{\texttt{"from\_config\_dict"}}، \lr{\texttt{"with\_distance"}}، \lr{\texttt{"with\_loss"}}، \lr{\texttt{"fast\_construct"}} و \lr{\texttt{"cascade"}}.
+
+\textbf{فیلدِ \lr{\texttt{\_total\_loss\_db\_override}} (نوع: \lr{\texttt{Optional[float]}}، \lr{\texttt{init=False}}):} این فیلد برای حفظِ دقتِ \lr{round-trip} در کانال‌های ساخته‌شده با \lr{\texttt{from\_total\_loss}} طراحی شده است. هنگامی که کاربر $L_{\text{total}}$ را به‌طور صریح ارائه می‌دهد، $\alpha = L_{\text{total}} / L$ محاسبه می‌شود که به‌دلیلِ گردکردنِ \lr{IEEE-754} ممکن است $\alpha \cdot L$ با $L_{\text{total}}$ اصلی در سطحِ \lr{ULP} متفاوت باشد. برای جلوگیری از این ناسازگاری، مقدارِ اصلیِ $L_{\text{total}}$ در این فیلد ذخیره شده و در محاسباتِ \lr{\texttt{total\_loss\_db}} و \lr{\texttt{transmittance}} به‌جای $\alpha \cdot L$ به‌کار می‌رود.
+
+\textbf{فیلدِ \lr{\texttt{\_transmittance}} (نوع: \lr{\texttt{Any}}، \lr{\texttt{init=False}}، پیش‌فرض: \lr{\texttt{\_UNSET}}):} این فیلد مقدارِ از پیش محاسبه‌شده‌ی ضریب انتقال را نگه می‌دارد. استفاده از نوعِ \lr{\texttt{Any}} و پیش‌فرضِ \lr{\texttt{\_UNSET}} (یک \lr{singleton} از کلاسِ \lr{\texttt{\_Unset}}) به ما اجازه می‌دهد بینِ حالتِ ``هنوز محاسبه نشده'' و ``مقدارِ عددیِ معتبر'' تمایز قائل شویم؛ این امر در \lr{\texttt{\_\_repr\_\_}} و \lr{\texttt{\_\_setstate\_\_}} حیاتی است.
+
+\textbf{فیلدِ \lr{\texttt{\_strict\_mode\_at\_construction}} (نوع: \lr{\texttt{bool}}، \lr{\texttt{init=False}}):} این فیلد مقدارِ \lr{strict mode} را در زمانِ ساختِ نمونه ثبت می‌کند (نه در زمانِ سریال‌سازی). این تمایز مهم است زیرا اگر کاربر بینِ ساخت و سریال‌سازی، حالت \lr{strict} را تغییر دهد، فراداده‌ی بازتولید نباید جعلی شود.
+
+\textbf{فیلدِ \lr{\texttt{wavelength\_nm}} (نوع: \lr{\texttt{Optional[float]}}):} طول موجِ عملیاتی به نانومتر. هنگامی که تنظیم شود، یک بررسیِ سازگاریِ فیزیکی بر اساسِ جدولِ \lr{\texttt{TYPICAL\_WAVELENGTH\_ALPHA\_RANGES}} انجام می‌شود تا مقادیرِ $\alpha$ نامتعارف شناسایی شوند.
+
+\textbf{فیلدِ \lr{\texttt{\_metadata\_extra}} (نوع: \lr{\texttt{Mapping[str, Any]}}):} این فیلد کلیدهای ناشناخته‌ی \lr{\texttt{\_metadata}} را که از \lr{\texttt{from\_config\_dict}} عبور کرده‌اند، برای \lr{round-trip} حفظ می‌کند. استفاده از \lr{\texttt{MappingProxyType}} به‌جای \lr{\texttt{dict}}، تغییرناپذیریِ این فیلد را در یک \lr{dataclass} یخ‌زده تضمین می‌کند.
+
+\subsection{\lr{\texttt{\_\_hash\_\_ = None}: ناسازگاریِ تساویِ مبتنی بر تلورانس}}
+
+یکی از تصمیماتِ طراحیِ ظریف، تنظیمِ \lr{\texttt{\_\_hash\_\_ = None}} پس از تعریفِ کلاس است:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		FiberChannel.__hash__ = None  # type: ignore[assignment,method-assign]
+	\end{lstlisting}
+\end{LTR}
+این کار به این دلیل ضروری است که تساویِ مبتنی بر \lr{\texttt{is\_close}} غیرانتقالی است: اگر $a \approx b$ و $b \approx c$، نمی‌توان نتیجه گرفت که $a \approx c$. این ویژگی با قراردادِ هش $a == b \Rightarrow \text{hash}(a) = \text{hash}(b)$ در تضاد است. به همین دلیل، کلاس به‌صورتِ صریح غیرقابل‌هش \lr{(unhashable)} می‌شود و تلاش برای استفاده از نمونه‌ها به‌عنوان کلیدِ \lr{dict} یا عضوِ \lr{set} با \lr{\texttt{TypeError}} مواجه می‌گردد.
+
+\subsection{زیرکلاسِ \lr{\texttt{AttenuationOnlyFiberChannel}}}
+
+این زیرکلاس به‌عنوان یک نشانگرِ نوعی \lr{(type marker)} عمل می‌کند:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class AttenuationOnlyFiberChannel(FiberChannel):
+		__slots__ = ()
+		def __eq__(self, other: Any) -> bool:
+		if not isinstance(other, AttenuationOnlyFiberChannel):
+		return NotImplemented
+		return super().__eq__(other)
+	\end{lstlisting}
+\end{LTR}
+بدنه‌ی کلاس خالی است (\lr{\texttt{\_\_slots\_\_ = ()}} برای جلوگیری از تداخلِ \lr{slot} در زیرکلاس‌سازی آینده) زیرا رفتارِ آن با کلاسِ پایه یکسان است. تنها تفاوت در \lr{\texttt{\_\_eq\_\_}} است که \lr{\texttt{type(self) == type(other)}} را الزامی می‌کند؛ به این ترتیب، یک \lr{\texttt{FiberChannel}} و یک \lr{\texttt{AttenuationOnlyFiberChannel}} با همان اسکالرها دیگر برابر در نظر گرفته نمی‌شوند. این امر به کدهای پایین‌دستی اجازه می‌دهد با \lr{\texttt{isinstance}} بررسی کنند که آیا کانالِ ارائه‌شده واقعاً صرفاً تلفاتی است یا خیر.
+
+\subsection{ثابت‌های آستانه‌ای}
+
+ماژول چندین ثابتِ آستانه‌ای در سطحِ ماژول تعریف می‌کند:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		TRANSMITTANCE_SUBNORMAL_THRESHOLD: float = sys.float_info.min
+		TRANSMITTANCE_UNDERFLOW_THRESHOLD: float = TRANSMITTANCE_SUBNORMAL_THRESHOLD
+		MAX_DISTANCE_KM: float = 10_000.0
+		WARNING_DISTANCE_KM: float = 1e-6
+		MAX_FIBER_LOSS_DB_KM: float = 100.0
+		_CONTRACT_CHECK_REL_TOL: float = 1e-12
+		_CONTRACT_CHECK_ABS_TOL: float = 1e-12
+		_ZERO_LOSS_ABS_TOL: float = 1e-12
+		_TRANSMITTANCE_UNDERFLOW_ABS_TOL: float = sys.float_info.min
+	\end{lstlisting}
+\end{LTR}
+این ثابت‌ها هر یک نقشِ مشخصی دارند. \lr{\texttt{TRANSMITTANCE\_SUBNORMAL\_THRESHOLD}} کوچک‌ترین عدد نرمالِ مثبت در \lr{IEEE-754} را نشان می‌دهد و آستانه‌ی تشخیصِ مقادیر زیرنرمال است. \lr{\texttt{MAX\_DISTANCE\_KM}} حداکثر طولِ فیبرِ قابل پذیرش برای یک قطعه‌ی منفرد را تعیین می‌کند (پیش از این $1000\,\text{km}$ بود که در نسخه‌های جدید به $10000\,\text{km}$ افزایش یافت تا لینک‌های اولترالانگ با تقویت‌کننده پوشش داده شوند). \lr{\texttt{MAX\_FIBER\_LOSS\_DB\_KM}} حداکثر ضریب تلفاتِ مجاز را تعیین می‌کند (افزایش از $10$ به $100\,\text{dB/km}$ برای پوششِ فیبرهای پلاستیکی و فیبرهای تخصصی). \lr{\texttt{\_CONTRACT\_CHECK\_*}} تلورانس‌های بررسیِ قراردادِ $L = \alpha \cdot L$ هستند. \lr{\texttt{\_ZERO\_LOSS\_ABS\_TOL}} آستانه‌ی یکپارچه‌ی ``تلفاتِ صفر'' است.
+
+\subsection{مدیریت \lr{strict mode} با \lr{ContextVar}}
+
+یکی از نقاطِ قوتِ معماری، استفاده از \lr{\texttt{contextvars.ContextVar}} برای مدیریتِ \lr{strict mode} است:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		_STRICT_MODE: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
+		"QKD_STRICT",
+		default=os.environ.get("QKD_STRICT", "").lower()
+		in ("1", "true", "yes", "on"),
+		)
+		
+		def get_strict_mode() -> bool:
+		return _STRICT_MODE.get()
+		
+		def set_strict_mode(enabled: bool) -> contextvars.Token:
+		return _STRICT_MODE.set(bool(enabled))
+		
+		def reset_strict_mode(token: contextvars.Token) -> None:
+		_STRICT_MODE.reset(token)
+	\end{lstlisting}
+\end{LTR}
+این رویکرد سه مزیت دارد: (الف) \lr{thread-safe} و \lr{async-safe} است (هر \lr{thread} یا \lr{task} مقدارِ مستقلِ خود را دارد)؛ (ب) امکان \lr{scoped strictness} را فراهم می‌کند (یک \lr{token} بازگردانده می‌شود که می‌توان با آن به مقدارِ قبلی بازگشت)؛ (ج) مقدارِ پیش‌فرض از متغیرِ محیطی \lr{\texttt{QKD\_STRICT}} خوانده می‌شود تا کاربر بتواند بدون تغییرِ کد، حالت را فعال کند.
+
+\subsection{ثبتِ هشدارهای فیزیکی مشکوک}
+
+کلاسِ \lr{\texttt{PhysicalSuspicionWarning}} به‌عنوان زیرکلاسِ \lr{\texttt{UserWarning}} تعریف می‌شود:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class PhysicalSuspicionWarning(UserWarning):
+		"""Warning emitted when a channel configuration is physically suspicious."""
+		
+		def _warn_physical_suspicion(msg: str, *, stacklevel: int = 2) -> None:
+		warnings.warn(msg, PhysicalSuspicionWarning, stacklevel=stacklevel)
+	\end{lstlisting}
+\end{LTR}
+استفاده از \lr{\texttt{warnings.warn}} به‌جای \lr{\texttt{logger.warning}} تضمین می‌کند که هشدارها به‌صورت پیش‌فرض به کاربر نمایش داده می‌شوند (برخلاف \lr{\texttt{logger}} که نیازمند پیکربندی است). این هشدارها در مواردی مانند فاصله‌های زیرمیلی‌متری، $\alpha = 0$ با فاصله‌ی غیرصفر، و ناسازگاری طول‌موج با $\alpha$ صادر می‌شوند.
+
+
+\subsection{کلاسِ \lr{\texttt{ElectricalNoiseConfig}}}
+
+این کلاس در \lr{\texttt{noise\_models.py}} به‌صورت یک \lr{dataclass} با \lr{\texttt{slots=True}} (اما نه \lr{\texttt{frozen=True}}، زیرا مقادیرِ آن ممکن است در طولِ شبیه‌سازی به‌روز شوند) تعریف می‌شود:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass(slots=True)
+		class ElectricalNoiseConfig:
+		temperature_k: float = 298.15
+		bandwidth_hz: float = 1e9
+		load_resistance_ohm: float = 50.0
+		monitor_photocurrent_a: Optional[float] = None
+		
+		def validate(self) -> None:
+		if self.temperature_k <= 0:
+		raise ParameterValidationError("temperature_k must be positive.")
+		if self.bandwidth_hz < 0:
+		raise ParameterValidationError("bandwidth_hz must be non-negative.")
+		if self.load_resistance_ohm <= 0:
+		raise ParameterValidationError("load_resistance_ohm must be positive.")
+		if self.monitor_photocurrent_a is not None and self.monitor_photocurrent_a < 0:
+		raise ParameterValidationError("monitor_photocurrent_a must be non-negative.")
+	\end{lstlisting}
+\end{LTR}
+چهار فیلدِ آن پارامترهای فیزیکیِ نویز الکتریکی را در بر می‌گیرند: دما، پهنای‌باند، مقاومتِ بار، و جریانِ فوتودیودِ نظارتی. متدِ \lr{\texttt{validate}} به‌صورت صریح محدوده‌های فیزیکی را بررسی می‌کند؛ به‌عنوان مثال، دمای صفر یا منفی به‌دلیلِ نقضِ ترمودینامیک رد می‌شود.
+
+\subsection{کلاسِ \lr{\texttt{ChannelSimParams}}}
+
+این کلاس به‌عنوان یک بسته‌ی یخ‌زده‌ی کمیت‌های مشتق‌شده عمل می‌کند:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclasses.dataclass(frozen=True)
+		class ChannelSimParams:
+		transmittance: float
+		total_loss_db: float
+		fiber_loss_db_km: float
+		distance_km: float
+		dispersion_parameter_ps_nm_km: float = 0.0
+		wavelength_nm: Optional[float] = None
+	\end{lstlisting}
+\end{LTR}
+این کلاس با ثابت‌کردنِ مقادیر در زمانِ ساخت، اطمینان حاصل می‌کند که کدِ شبیه‌سازیِ پایین‌دستی همیشه از یک تصوِیر لحظه‌ای \lr{(snapshot)} یکپارچه می‌خواند و خطرِ خواندنِ مقادیرِ قدیمی از دیکشنریِ پیکربندی را از بین می‌برد. تابعِ کارخانه‌ی \lr{\texttt{build\_channel\_sim\_params}} تنها مسیرِ تأییدشده‌ی ساختِ این کلاس است.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+\label{sec:channel-implementation}
+
+\subsection{محاسبه‌ی ضریب انتقال در \lr{\texttt{\_compute\_transmittance}}}
+
+این متد که در \lr{\texttt{channel.py}} و نسخه‌ی مستقلِ آن در \lr{\texttt{\_physics.py}} پیاده‌سازی شده، قلبِ محاسباتِ فیزیکی ماژول است:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _compute_transmittance(self) -> float:
+		total_db = self._effective_total_loss_db()
+		return self._transmittance_from_loss_db(total_db)
+		
+		@staticmethod
+		def _transmittance_from_loss_db(total_db: float) -> float:
+		if total_db == 0.0:
+		if math.copysign(1.0, total_db) < 0:
+		_warn_physical_suspicion(
+		f"_transmittance_from_loss_db: total_db is negative zero (-0.0)...",
+		stacklevel=2,
+		)
+		return 1.0
+		return math.pow(10.0, -total_db / 10.0)
+	\end{lstlisting}
+\end{LTR}
+این کد سه نکته‌ی ظریف را آدرس‌دهی می‌کند. نخست، استفاده از \lr{\texttt{self.\_effective\_total\_loss\_db()}} به‌جایِ \lr{\texttt{self.attenuation.total\_loss\_db}} امکانِ استفاده از \lr{\texttt{\_total\_loss\_db\_override}} را فراهم می‌کند. دوم، شاخه‌ی \lr{\texttt{total\_db == 0.0}} برای جلوگیری از محاسبه‌ی \lr{\texttt{math.pow(10.0, 0.0)}} است که همیشه $1.0$ را برمی‌گرداند؛ اما این شاخه‌ی صریح به ما اجازه می‌دهد نویز صفرِ منفی \lr{(-0.0)} را که می‌تواند نشانه‌ی خطای بالادستی باشد، تشخیص دهیم. سوم، استفاده از \lr{\texttt{math.pow}} به‌جای عملگرِ \lr{\texttt{**}} به این دلیل است که \lr{\texttt{math.pow}} در برابرِ \lr{\texttt{OverflowError}} در پلتفرم‌های مختلف، رفتارِ یکدست‌تری دارد.
+
+\subsection{بررسیِ سلامتِ ضریب انتقال}
+
+متدِ \lr{\texttt{\_check\_transmittance\_health}} یک بررسیِ چهارمرحله‌ای انجام می‌دهد:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _check_transmittance_health(self, transmittance: float) -> None:
+		# NaN: reject unconditionally.
+		if math.isnan(transmittance):
+		raise ParameterValidationError(f"Transmittance computed as NaN...")
+		
+		# Negative zero: suspicious, may mask upstream sign error.
+		if transmittance == 0.0 and math.copysign(1.0, transmittance) < 0:
+		neg_zero_msg = (...)
+		if get_strict_mode():
+		raise ParameterValidationError(neg_zero_msg, ...)
+		_warn_physical_suspicion(neg_zero_msg, stacklevel=4)
+		
+		total_db = self._effective_total_loss_db()
+		
+		# Underflow: exact-zero transmittance with non-zero total_db.
+		if transmittance == 0.0 and total_db > 0.0:
+		underflow_msg = (...)
+		if get_strict_mode():
+		raise ParameterValidationError(underflow_msg, ...)
+		_warn_physical_suspicion(underflow_msg, stacklevel=4)
+		# Subnormal: between 0 and smallest normal float.
+		elif 0.0 < transmittance < TRANSMITTANCE_SUBNORMAL_THRESHOLD:
+		subnormal_msg = (...)
+		if get_strict_mode():
+		raise ParameterValidationError(...)
+		_warn_physical_suspicion(subnormal_msg, stacklevel=4)
+		
+		# Range validation.
+		if not (0.0 <= transmittance <= 1.0):
+		raise ParameterValidationError(f"Transmittance out of range [0, 1]...")
+	\end{lstlisting}
+\end{LTR}
+هر یک از این مراحل به یک ناپایداریِ عددیِ متفاوت اشاره دارد. \lr{NaN} معمولاً ناشی از ورودی‌های \lr{NaN} است (که نباید از \lr{\texttt{AttenuationConfig}} معتبر عبور کنند، اما ممکن است از طریقِ \lr{pickle} یا \lr{monkey-patching} وارد شوند). زیرنرمال‌بودن نشانه‌ی فواصلِ بسیار طولانی است که دقت محاسبات را به‌شدت کاهش می‌دهد. سرریز به صفر نیز مشکلِ مشابهی دارد اما شدیدتر است زیرا در لگاریتم‌ها به $-\infty$ می‌انجامد.
+
+\subsection{محاسبه‌ی کسر تلفاتِ تک‌کیلومتری}
+
+این متد در \lr{\texttt{\_physics.py}} به‌صورت یک تابعِ مستقل پیاده‌سازی شده است:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def compute_single_km_power_loss_fraction(channel: Any) -> float:
+		alpha = get_fiber_loss_db_km(channel)
+		if not is_finite_non_negative(alpha):
+		raise ParameterValidationError(
+		f"single_km_power_loss_fraction requires finite non-negative "
+		f"alpha, got {alpha!r}",
+		param_name="fiber_loss_db_km",
+		param_value=alpha,
+		)
+		if alpha == 0.0:
+		return 0.0
+		return -math.expm1(-alpha * math.log(10.0) / 10.0)
+	\end{lstlisting}
+\end{LTR}
+محاسبه‌ی ریاضی آن بر پایه‌ی رابطه‌ی \eqref{eq:expm1-stable} است. شاخه‌ی \lr{\texttt{alpha == 0.0}} برای جلوگیری از محاسبه‌ی \lr{\texttt{expm1(0)}} است که همیشه $0$ را برمی‌گرداند اما صرفه‌جویی در زمانِ محاسبه می‌کند. مهم‌تر از آن، این شاخه‌ی صریح، رفتار را در حالتِ $\alpha = 0$ (کانال بدون تلفات) تضمین می‌کند.
+
+\subsection{تقریب خطیِ تلفات و هشدارِ منسوخ‌سازی}
+
+متدِ \lr{\texttt{compute\_linear\_loss\_per\_km}} در \lr{\texttt{\_physics.py}} به‌صورت زیر پیاده‌سازی شده:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def compute_linear_loss_per_km(channel: Any) -> float:
+		global _LINEAR_LOSS_WARNED
+		with _LINEAR_LOSS_LOCK:
+		if not _LINEAR_LOSS_WARNED:
+		warnings.warn(
+		"FiberChannel.linear_loss_per_km() is deprecated; use "
+		"loss_fraction_per_km() for the exact per-km power-loss "
+		"fraction...",
+		DeprecationWarning,
+		stacklevel=2,
+		)
+		_LINEAR_LOSS_WARNED = True
+		
+		alpha = get_fiber_loss_db_km(channel)
+		val = alpha * math.log(10.0) / 10.0
+		if val > 1.0:
+		msg = (f"linear_loss_per_km() returned {val:.6g} > 1.0 for alpha={alpha:.6g}...")
+		if get_strict_mode():
+		raise ParameterValidationError(msg, ...)
+		_warn_physical_suspicion(msg, stacklevel=2)
+		val = 1.0  # clamp to physical range [0, 1]
+		return val
+	\end{lstlisting}
+\end{LTR}
+این متد سه ویژگی دارد. نخست، هشدارِ منسوخ‌سازی تنها یک‌بار در هر پردازش \lr{(process)} با استفاده از \lr{\texttt{threading.Lock}} برای \lr{thread-safety} emit می‌شود. دوم، مقدار بازگردانده‌شده بر اساسِ رابطه‌ی \eqref{eq:linear-approx} محاسبه می‌شود که واقعاً خطی است. سوم، اگر مقدار از $1$ فراتر رود (که برای $\alpha > 4.34\,\text{dB/km}$ رخ می‌دهد)، در حالت \lr{strict} استثنا پرتاب می‌شود و در غیر این صورت، مقدار به $1$ بریده \lr{(clamp)} می‌شود.
+
+\subsection{ترکیب آبشاری کانال‌ها}
+
+این متد در \lr{\texttt{\_physics.py}} به‌صورت زیر پیاده‌سازی شده:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def compute_cascade(channel: Any, other: Any) -> Any:
+		if not isinstance(other, type(channel)):
+		raise TypeError(f"cascade requires a {type(channel).__name__} argument, ...")
+		total_loss_db = get_total_loss_db(channel) + get_total_loss_db(other)
+		total_distance = get_distance_km(channel) + get_distance_km(other)
+		if total_distance == 0.0:
+		instance = type(channel)(
+		AttenuationConfig(fiber_length=0.0, attenuation_coefficient=0.0),
+		_construction_path="cascade",
+		)
+		else:
+		instance = type(channel).from_total_loss(
+		total_distance, total_loss_db, _construction_path="cascade",
+		)
+		merged_metadata: Dict[str, Any] = dict(channel._metadata_extra)
+		merged_metadata.update(other._metadata_extra)
+		if merged_metadata:
+		object.__setattr__(instance, "_metadata_extra",
+		types.MappingProxyType(merged_metadata))
+		if total_distance > 0.0:
+		avg_alpha = total_loss_db / total_distance
+		if avg_alpha < 0.05 or avg_alpha > 5.0:
+		msg = (f"cascade: The cascaded average alpha={avg_alpha:.6g} dB/km "
+		f"is outside typical fiber ranges (0.05--5 dB/km)...")
+		if get_strict_mode():
+		raise ParameterValidationError(msg, ...)
+		_warn_physical_suspicion(msg, stacklevel=2)
+		return instance
+	\end{lstlisting}
+\end{LTR}
+این کد چندین نکته‌ی طراحی را بازتاب می‌دهد. استفاده از \lr{\texttt{type(channel)}} به‌جای \lr{\texttt{FiberChannel}} به زیرکلاس‌ها اجازه می‌دهد نمونه‌ای از همان نوعِ زیرکلاس تولید کنند. شاخه‌ی \lr{\texttt{total\_distance == 0.0}} برای حالتی است که هر دو کانال طولِ صفر دارند؛ در این حالت، کانالِ معادلِ هویت \lr{(identity)} با $\alpha = 0$ ساخته می‌شود. ترکیبِ فراداده‌ها با تقدمِ کانالِ دوم \lr{(\texttt{other})} در صورت تداخلِ کلید انجام می‌شود. هشدارِ $\alpha_{\text{avg}}$ خارج از محدوده، کاربر را از اشتباهِ گرفتنِ کانالِ معادل با فیبرِ واقعی بازمی‌دارد.
+
+\subsection{ترکیبِ آبشاریِ بدون اعتبارسنجی}
+
+متدِ \lr{\texttt{compute\_cascade\_unchecked}} برای حلقه‌های \lr{Monte Carlo} با کاراییِ بالا طراحی شده:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def compute_cascade_unchecked(cls: Type[Any], channels: Sequence[Any]) -> Any:
+		if not channels:
+		raise ParameterValidationError("_cascade_unchecked requires at least one channel", ...)
+		for ch in channels:
+		if not isinstance(ch, cls):
+		raise TypeError(f"Expected {cls.__name__}, got {type(ch).__name__}")
+		total_loss = math.fsum(get_total_loss_db(ch) for ch in channels)
+		total_distance = math.fsum(get_distance_km(ch) for ch in channels)
+		if not is_finite_non_negative(total_loss):
+		raise ParameterValidationError(...)
+		if not is_finite_non_negative(total_distance):
+		raise ParameterValidationError(...)
+		metadata_extra: Dict[str, Any] = {}
+		for ch in channels:
+		metadata_extra.update(ch._metadata_extra)
+		if total_distance > MAX_DISTANCE_KM:
+		raise ParameterValidationError(...)
+		if total_distance == 0.0:
+		instance = fast_construct(cls, AttenuationConfig(0.0, 0.0),
+		_construction_path="cascade")
+		else:
+		alpha = total_loss / total_distance
+		if alpha > MAX_FIBER_LOSS_DB_KM:
+		raise ParameterValidationError(...)
+		if alpha < 0.05 or alpha > 5.0:
+		_warn_physical_suspicion(...)
+		instance = fast_construct(cls, AttenuationConfig(total_distance, alpha),
+		_construction_path="cascade",
+		_total_loss_db_override=total_loss)
+		_eff_loss = get_total_loss_db(instance)
+		_expected_T = transmittance_from_loss_db(_eff_loss)
+		assert math.isclose(instance._transmittance, _expected_T,
+		rel_tol=0.0, abs_tol=_CONTRACT_CHECK_ABS_TOL), \
+		f"(L, T) contract violation after cascade: ..."
+		if metadata_extra:
+		object.__setattr__(instance, "_metadata_extra",
+		types.MappingProxyType(metadata_extra))
+		return instance
+	\end{lstlisting}
+\end{LTR}
+نکاتِ کلیدی این پیاده‌سازی عبارت‌اند از: (الف) بررسیِ نوع پیش از دسترسی به ویژگی‌ها برای جلوگیری از \lr{\texttt{AttributeError}}؛ (ب) استفاده از \lr{\texttt{math.fsum}} برای جمعِ پایدارِ عددی در هزاران کانال؛ (ج) بررسیِ \lr{NaN} و \lr{Inf} در جمعِ تجمعی؛ (د) استفاده از \lr{\texttt{fast\_construct}} برای دور زدنِ اعتبارسنجیِ هر کانال؛ (هـ) \lr{assert} برای بررسیِ قراردادِ $(L,T)$ پس از ساخت (که در حالتِ \lr{-O} حذف می‌شود).
+
+\subsection{محاسبه‌ی نویز حرارتی}
+
+این متد در \lr{\texttt{noise\_models.py}} پیاده‌سازی شده:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def thermal_voltage_std(self) -> float:
+		self.validate()
+		return float(
+		np.sqrt(
+		4.0
+		* CONST_BOLTZMANN
+		* self.temperature_k
+		* self.bandwidth_hz
+		* self.load_resistance_ohm
+		)
+		)
+	\end{lstlisting}
+\end{LTR}
+این کد مستقیماً رابطه‌ی \eqref{eq:thermal-std} را پیاده‌سازی می‌کند. فراخوانیِ \lr{\texttt{self.validate()}} پیش از محاسبه، اطمینان حاصل می‌کند که پارامترها در محدوده‌ی فیزیکی هستند. استفاده از \lr{\texttt{numpy.sqrt}} به‌جای \lr{\texttt{math.sqrt}} به این دلیل است که در صورت عبورِ یک آرایه (که ممکن است در حالت‌های پردازشِ برداری رخ دهد)، کد همچنان کار کند.
+
+\subsection{محاسبه‌ی نویز شات}
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def shot_voltage_std(self) -> float:
+		self.validate()
+		if self.monitor_photocurrent_a is None or self.monitor_photocurrent_a == 0.0:
+		return 0.0
+		i_std = np.sqrt(
+		2.0
+		* CONST_ELECTRON_CHARGE
+		* self.monitor_photocurrent_a
+		* self.bandwidth_hz
+		)
+		return float(i_std * self.load_resistance_ohm)
+	\end{lstlisting}
+\end{LTR}
+این کد رابطه‌ی \eqref{eq:shot-std} را پیاده‌سازی می‌کند. شاخه‌ی بازگشتِ $0$ در صورتِ نبودِ جریان، یک بهینه‌سازیِ کوچک است اما مهم‌تر از آن، از محاسبه‌ی $\sqrt{0}$ و تولیدِ $0.0$ جلوگیری می‌کند که در برخی محیط‌ها ممکن است منجر به هشدارهای \lr{runtime} شود.
+
+\subsection{ترکیبِ نویزهای مستقل}
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def total_voltage_std(self) -> float:
+		vt = self.thermal_voltage_std()
+		vs = self.shot_voltage_std()
+		return float(np.sqrt(vt * vt + vs * vs))
+	\end{lstlisting}
+\end{LTR}
+این متد رابطه‌ی \eqref{eq:total-noise} را پیاده‌سازی می‌کند. استفاده از $v_t^2 + v_s^2$ به‌جای $v_t \cdot v_t + v_s \cdot v_s$ (که ریاضیاً معادل است) ممکن است به‌دلیلِ بهینه‌سازیِ پردازنده، اندکی سریع‌تر باشد. این الگوی جمعِ توان‌ها در همه‌ی مدل‌های نویزِ مستقلِ فریم‌ورک استفاده می‌شود.
+
+\subsection{متدِ \lr{\texttt{from\_total\_loss}} و ساختِ دو مرحله‌ای}
+
+این متد که برای حفظِ دقتِ \lr{round-trip} طراحی شده، الگوی ساختِ دو مرحله‌ای را به‌کار می‌برد:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@classmethod
+		def from_total_loss(cls, distance_km, total_loss_db, *,
+		_construction_path="from_total_loss",
+		wavelength_nm=None):
+		coerced_distance = _coerce_numeric(distance_km, param_name="distance_km")
+		coerced_total_loss = _coerce_numeric(total_loss_db, param_name="total_loss_db")
+		
+		if not is_finite_non_negative(coerced_distance):
+		raise ParameterValidationError(...)
+		if not is_finite_non_negative(coerced_total_loss):
+		raise ParameterValidationError(...)
+		
+		if coerced_distance == 0.0:
+		if not is_close(coerced_total_loss, 0.0, abs_tol=_ZERO_LOSS_ABS_TOL):
+		raise ParameterValidationError(f"distance_km=0 requires total_loss_db=0...")
+		attenuation = AttenuationConfig(fiber_length=0.0, attenuation_coefficient=0.0)
+		return cls(attenuation=attenuation, _construction_path=_construction_path,
+		wavelength_nm=wavelength_nm)
+		
+		if coerced_distance > MAX_DISTANCE_KM:
+		raise ParameterValidationError(...)
+		
+		if is_close(coerced_total_loss, 0.0, abs_tol=_ZERO_LOSS_ABS_TOL):
+		msg = (f"from_total_loss: distance_km={coerced_distance:.6g} > 0 "
+		f"but total_loss_db={coerced_total_loss:.6g} is zero...")
+		if get_strict_mode():
+		raise ParameterValidationError(msg, ...)
+		_warn_physical_suspicion(msg, stacklevel=2)
+		
+		fiber_loss_db_km = coerced_total_loss / coerced_distance
+		if not math.isfinite(fiber_loss_db_km):
+		raise ParameterValidationError(...)
+		if fiber_loss_db_km > MAX_FIBER_LOSS_DB_KM:
+		raise ParameterValidationError(...)
+		
+		attenuation = AttenuationConfig(fiber_length=coerced_distance,
+		attenuation_coefficient=fiber_loss_db_km)
+		
+		# Two-phase construction: skip health check during __post_init__
+		_skip_health_token = _SKIP_TRANSMITTANCE_HEALTH.set(True)
+		try:
+		instance = cls(attenuation=attenuation,
+		_construction_path=_construction_path,
+		wavelength_nm=wavelength_nm)
+		finally:
+		_SKIP_TRANSMITTANCE_HEALTH.reset(_skip_health_token)
+		object.__setattr__(instance, "_total_loss_db_override", coerced_total_loss)
+		new_t = cls._transmittance_from_loss_db(coerced_total_loss)
+		object.__setattr__(instance, "_transmittance", new_t)
+		instance._check_transmittance_health(new_t)
+		return instance
+	\end{lstlisting}
+\end{LTR}
+این متد سه ویژگیِ مهم دارد. نخست، الگوی \lr{ContextVar} به نام \lr{\texttt{\_SKIP\_TRANSMITTANCE\_HEALTH}} برای دور زدنِ بررسیِ سلامت در \lr{\texttt{\_\_post\_init\_\_}} استفاده می‌شود؛ این کار از هشدارهای متناقض جلوگیری می‌کند (مقدارِ موقتاً محاسبه‌شده از $\alpha \cdot L$ ممکن است متفاوت از مقدارِ نهاییِ محاسبه‌شده از \lr{override} باشد). دوم، \lr{override} پس از ساختِ نمونه با \lr{\texttt{object.\_\_setattr\_\_}} تنظیم می‌شود. سوم، بررسیِ نهاییِ سلامت روی مقدارِ نهایی انجام می‌شود.
+
+\subsection{متدِ \lr{\texttt{\_fast\_construct}}}
+
+این متد برای حلقه‌های \lr{Monte Carlo} طراحی شده و تمام اعتبارسنجی‌ها را دور می‌زند:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@classmethod
+		def _fast_construct(cls, attenuation, *,
+		_construction_path="fast_construct",
+		_total_loss_db_override=None,
+		_wavelength_nm=None):
+		if not isinstance(attenuation, AttenuationConfig):
+		raise TypeError(f"_fast_construct requires an AttenuationConfig, got ...")
+		instance = object.__new__(cls)
+		object.__setattr__(instance, "attenuation", attenuation)
+		object.__setattr__(instance, "_construction_path", _construction_path)
+		object.__setattr__(instance, "_total_loss_db_override", _total_loss_db_override)
+		object.__setattr__(instance, "_strict_mode_at_construction", get_strict_mode())
+		object.__setattr__(instance, "_metadata_extra", _EMPTY_METADATA_EXTRA)
+		object.__setattr__(instance, "wavelength_nm", _wavelength_nm)
+		
+		total_db = (_total_loss_db_override if _total_loss_db_override is not None
+		else attenuation.total_loss_db)
+		t = cls._transmittance_from_loss_db(total_db)
+		if not math.isfinite(t):
+		raise ParameterValidationError(...)
+		if not (0.0 <= t <= 1.0):
+		raise ParameterValidationError(...)
+		if 0.0 < t < TRANSMITTANCE_SUBNORMAL_THRESHOLD:
+		logger.debug("_fast_construct: computed transmittance %r is subnormal...")
+		object.__setattr__(instance, "_transmittance", t)
+		return instance
+	\end{lstlisting}
+\end{LTR}
+این متد از \lr{\texttt{object.\_\_new\_\_(cls)}} به‌جای فراخوانیِ سازنده‌ی کلاس استفاده می‌کند تا \lr{\texttt{\_\_post\_init\_\_}} اجرا نشود. سپس تمام فیلدها به‌صورت دستی با \lr{\texttt{object.\_\_setattr\_\_}} تنظیم می‌شوند. با وجودِ دور زدنِ اعتبارسنجی، یک بررسیِ حداقلیِ \lr{\texttt{isfinite}} و بازه‌ی $[0,1]$ روی ضریب انتقال انجام می‌شود تا از تولیدِ نمونه‌های کاملاً نادرست جلوگیری شود.
+
+\subsection{متدِ \lr{\texttt{validate}}}
+
+این متد برای بررسیِ سازگاریِ حالتِ مشتق‌شده پس از عملیاتی که ممکن است آن را فاسد کند، طراحی شده:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def validate(self) -> None:
+		self.validate_parameter("distance_km", self.distance_km, MAX_DISTANCE_KM)
+		self.validate_parameter("fiber_loss_db_km", self.fiber_loss_db_km,
+		MAX_FIBER_LOSS_DB_KM)
+		
+		if self._total_loss_db_override is None:
+		expected_total_db = (self.attenuation.fiber_length
+		* self.attenuation.attenuation_coefficient)
+		if not is_close(self.total_loss_db, expected_total_db,
+		rel_tol=_CONTRACT_CHECK_REL_TOL,
+		abs_tol=_CONTRACT_CHECK_ABS_TOL):
+		raise ParameterValidationError(f"Derived state inconsistency: ...")
+		
+		expected_transmittance = self._transmittance_from_loss_db(self.total_loss_db)
+		
+		if expected_transmittance == 0.0 and self.transmittance == 0.0:
+		logger.warning("validate(): both expected and stored transmittance are 0.0...")
+		elif not is_close(self.transmittance, expected_transmittance,
+		rel_tol=1e-9,
+		abs_tol=_TRANSMITTANCE_UNDERFLOW_ABS_TOL):
+		raise ParameterValidationError(f"Derived state inconsistency: transmittance...")
+		
+		self._check_transmittance_health(self._transmittance)
+		
+		if 0.0 < self.transmittance < TRANSMITTANCE_SUBNORMAL_THRESHOLD:
+		subnormal_warning = (f"validate(): Transmittance {self.transmittance:.3e} "
+		f"is subnormal...")
+		if get_strict_mode():
+		raise ParameterValidationError(subnormal_warning, ...)
+		_warn_physical_suspicion(subnormal_warning, stacklevel=2)
+	\end{lstlisting}
+\end{LTR}
+این متد سه سطحِ بررسی دارد: بازه‌ی پارامترها، قراردادِ $L = \alpha \cdot L$ (تنها در صورت نبودِ \lr{override})، و سازگاریِ ضریبِ انتقال. تلورانسِ \lr{\texttt{\_TRANSMITTANCE\_UNDERFLOW\_ABS\_TOL}} به‌عنوان تلورانسِ مطلق برای همه‌ی مقایسه‌ها (حتی برای مقادیرِ نرمال) استفاده می‌شود تا مقادیرِ زیرنرمال که تنها $1$ یا $2$ بیتِ معتبر دارند، به‌اشتباهِ ناسازگار تشخیص داده نشوند.
+
+\subsection{متدِ \lr{\texttt{link\_efficiency}}}
+
+این تابع کمکی ترکیبِ سه‌گانه‌ی رابطه‌ی \eqref{eq:link-budget} را متمرکز می‌کند:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def link_efficiency(channel_transmittance, detector_efficiency,
+		coupling_efficiency=1.0):
+		result = float(channel_transmittance) * float(detector_efficiency) \
+		* float(coupling_efficiency)
+		if result < 0.0:
+		return 0.0
+		if result > 1.0:
+		return 1.0
+		return result
+	\end{lstlisting}
+\end{LTR}
+برش به بازه‌ی $[0,1]$ در اینجا عمدی است: اگر کاربر به‌اشتباه یک بازدهیِ آشکارسازِ بزرگ‌تر از $1$ ارسال کند، نتیجه به‌جای پرتابِ استثنا به $1$ بریده می‌شود. این رفتار برای حلقه‌های \lr{Monte Carlo} که در آنجا سرعت مهم‌تر از تشخیصِ خطاست، مناسب است.
+
+\subsection{توابع برداریِ \lr{\texttt{transmittance\_array}} و \lr{\texttt{transmittance\_scalar}}}
+
+این دو تابع برای حلقه‌های \lr{Monte Carlo} با کاراییِ بالا طراحی شده‌اند:
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def transmittance_array(distances_km, fiber_loss_db_km):
+		distances_km = np.asarray(distances_km, dtype=np.float64)
+		if fiber_loss_db_km == 0.0:
+		return np.ones_like(distances_km)
+		total_loss_db = fiber_loss_db_km * distances_km
+		return np.float_power(10.0, -total_loss_db / 10.0)
+		
+		def transmittance_scalar(distance_km, fiber_loss_db_km):
+		if fiber_loss_db_km == 0.0 or distance_km == 0.0:
+		return 1.0
+		total_db = fiber_loss_db_km * distance_km
+		return math.pow(10.0, -total_db / 10.0)
+	\end{lstlisting}
+\end{LTR}
+تابعِ \lr{\texttt{transmittance\_array}} از قابلیتِ \lr{vectorization} \lr{NumPy} استفاده می‌کند و برای محاسبه‌ی همزمانِ ضرایبِ انتقال برای هزاران فاصله طراحی شده. تابعِ \lr{\texttt{transmittance\_scalar}} تنها از \lr{\texttt{math.pow}} و حسابِ پایه استفاده می‌کند تا با \lr{Numba @njit} سازگار باشد. هیچ‌کدام از این توابع هشدارِ اعتبارسنجی emit نمی‌کنند زیرا در حلقه‌های داغ، هزینه‌ی هشدارهای نقطه‌به‌نقطه بیش از حد است.
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+\label{sec:channel-interface}
+
+این سه ماژول با طیفِ گسترده‌ای از سایر اجزای فریم‌ورک در ارتباط هستند. در این بخش، این ارتباطات را به‌تفصیل بررسی می‌کنیم.
+
+\subsection{وابستگی‌های ورودی به \lr{\texttt{channel.py}}}
+
+\textbf{ماژولِ \lr{\texttt{qkd.exceptions}}:} دو استثنای \lr{\texttt{ParameterValidationError}} و \lr{\texttt{ConfigurationError}} از این ماژول وارد می‌شوند. این دو استثنا نقش‌های متفاوتی دارند: \lr{\texttt{ParameterValidationError}} برای خطاهای مربوط به مقدارِ یک پارامتر خاص (مانند \lr{\texttt{distance\_km = -1}}) استفاده می‌شود، در حالی که \lr{\texttt{ConfigurationError}} برای خطاهای ساختاریِ پیکربندی (مانند بخشِ گم‌شده‌ی \lr{channel\_config}) به‌کار می‌رود. علاوه بر این، کلاسِ \lr{\texttt{ChannelError}} که در \lr{\texttt{channel.py}} به‌صورت محلی تعریف شده، به‌عنوان کلاسِ پایه برای تمام استثناهای مرتبط با کانال عمل می‌کند (هرچند که در نسخه‌ی فعلی، \lr{\texttt{ConfigurationError}} و \lr{\texttt{ParameterValidationError}} هنوز از آن ارث نمی‌برند). تا این ارث‌بری پیاده‌سازی شود، تاپلِ \lr{\texttt{CHANNEL\_ERRORS = (ConfigurationError, ParameterValidationError)}} به‌عنوان سازوکارِ ایمنِ \lr{catch-all} توصیه می‌شود.
+
+\textbf{ماژولِ \lr{\texttt{qkd.constants}}:} دو تابعِ \lr{\texttt{is\_close}} و \lr{\texttt{is\_finite\_non\_negative}} از این ماژول وارد می‌شوند. \lr{\texttt{is\_close}} برای مقایسه‌های مبتنی بر تلورانس در تساوی و بررسیِ قراردادها استفاده می‌شود. \lr{\texttt{is\_finite\_non\_negative}} برای اعتبارسنجیِ پارامترها به‌کار می‌رود و اطمینان حاصل می‌کند که مقادیر \lr{NaN}، \lr{Inf} و منفی رد می‌شوند.
+
+\textbf{ماژولِ \lr{\texttt{qkd.datatypes}}:} کلاسِ \lr{\texttt{AttenuationConfig}} از این ماژول وارد می‌شود. این کلاس یک \lr{dataclass} ساده با دو فیلدِ \lr{\texttt{fiber\_length}} و \lr{\texttt{attenuation\_coefficient}} است. قراردادِ آن این است که \lr{\texttt{total\_loss\_db = fiber\_length * attenuation\_coefficient}} باید برقرار باشد.
+
+\textbf{ماژولِ \lr{\texttt{\_schema}} (داخلی):} این ماژول ثابت‌ها، تایپ‌ها و توابعِ پایه‌ای را که در نسخه‌ی تجزیه‌شده‌ی \lr{\texttt{channel.py}} به اشتراک گذاشته می‌شوند، فراهم می‌سازد. از جمله می‌توان به \lr{\texttt{TRANSMITTANCE\_SUBNORMAL\_THRESHOLD}}، \lr{\texttt{MAX\_DISTANCE\_KM}}، \lr{\texttt{MAX\_FIBER\_LOSS\_DB\_KM}}، \lr{\texttt{\_CONTRACT\_CHECK\_ABS\_TOL}}، تایپ‌های \lr{\texttt{Transmittance}}، \lr{\texttt{Distance}}، \lr{\texttt{Loss}} و \lr{\texttt{Numeric}}، و توابعِ \lr{\texttt{get\_strict\_mode}} و \lr{\texttt{\_warn\_physical\_suspicion}} اشاره کرد.
+
+\textbf{ماژولِ \lr{\texttt{\_gating}} (داخلی):} توابعِ \lr{\texttt{transmittance\_from\_loss\_db}}، \lr{\texttt{check\_transmittance\_health}}، \lr{\texttt{validate\_parameter}} و \lr{\texttt{effective\_total\_loss\_db}} از این ماژول وارد می‌شوند. این توابع لایه‌ی ``گیتینگ'' \lr{(gating)} را تشکیل می‌دهند که اعتبارسنجی و محاسباتِ پایه‌ای را فراهم می‌سازد.
+
+\textbf{ماژولِ \lr{\texttt{\_casting}} (داخلی):} تابعِ \lr{\texttt{fast\_construct}} از این ماژول وارد می‌شود. این تابع همانند متدِ \lr{\texttt{\_fast\_construct}} در کلاس، اما در سطحِ ماژول عمل می‌کند.
+
+\textbf{بسته‌های استاندارد:} \lr{\texttt{contextlib}} برای مدیریتِ زمینه، \lr{\texttt{contextvars}} برای \lr{ContextVar}، \lr{\texttt{dataclasses}} برای \lr{dataclass}، \lr{\texttt{logging}} برای لاگ‌گذاری، \lr{\texttt{math}} برای توابعِ ریاضی، \lr{\texttt{types}} برای \lr{\texttt{MappingProxyType}}، \lr{\texttt{warnings}} برای هشدارها، و \lr{\texttt{numpy}} برای محاسباتِ برداری.
+
+\subsection{وابستگی‌های ورودی به \lr{\texttt{noise\_models.py}}}
+
+\textbf{ماژولِ \lr{\texttt{qkd.exceptions}}:} استثنای \lr{\texttt{ParameterValidationError}} وارد می‌شود.
+
+\textbf{ماژولِ \lr{\texttt{qkd.constants}}:} دو ثابتِ فیزیکیِ \lr{\texttt{CONST\_BOLTZMANN}} و \lr{\texttt{CONST\_ELECTRON\_CHARGE}} وارد می‌شوند. این ثابت‌ها در \lr{\texttt{constants\_definitions.py}} با مقادیر دقیقِ \lr{SI} تعریف شده‌اند.
+
+\textbf{بسته‌های استاندارد:} \lr{\texttt{dataclasses}} برای \lr{dataclass}، \lr{\texttt{typing}} برای \lr{\texttt{Optional}}، و \lr{\texttt{numpy}} برای \lr{\texttt{sqrt}}.
+
+\subsection{خروجی‌ها و مصرف‌کنندگان}
+
+نمونه‌ی \lr{\texttt{FiberChannel}} پس از ساخت، در سراسر فریم‌ورک به‌عنوان مرجعِ مرکزیِ مدلِ کانال استفاده می‌شود. مصرف‌کنندگانِ اصلی عبارت‌اند از:
+
+\textbf{موتور شبیه‌سازی اصلی (\lr{\texttt{main\_optimized.py}}):} این موتور از \lr{\texttt{FiberChannel}} برای استخراجِ \lr{\texttt{transmittance}}، \lr{\texttt{total\_loss\_db}}، \lr{\texttt{fiber\_loss\_db\_km}} و \lr{\texttt{distance\_km}} استفاده می‌کند. تابعِ \lr{\texttt{build\_channel\_sim\_params}} تمام این کمیت‌ها را در یک \lr{\texttt{ChannelSimParams}} یخ‌زده بسته‌بندی می‌کند تا موتور شبیه‌سازی همیشه از یک تصویرِ لحظه‌ایِ یکپارچه بخواند. این طراحی از خطرِ خواندنِ مقادیرِ قدیمی از دیکشنریِ پیکربندی در طولِ شبیه‌سازی جلوگیری می‌کند.
+
+\textbf{ماژول‌های اثباتِ امنیتی (\lr{\texttt{proofs/}}):} هر یک از ماژول‌های اثبات (مانند \lr{\texttt{Ma 2005}}، \lr{\texttt{Lim 2014}} و \lr{\texttt{MDI-QKD}}) از \lr{\texttt{transmittance}} برای محاسبه‌ی بهره‌های $Y_n$ و نرخ‌های خطای $e_n$ استفاده می‌کنند. به‌عنوان مثال، در اثباتِ \lr{Ma 2005}، نرخ کلیدِ مجانبی از رابطه‌ی \eqref{eq:decoy-gain} محاسبه می‌شود که در آن $\eta$ به‌طور مستقیم از \lr{\texttt{link\_efficiency(channel.transmittance, detector\_efficiency, coupling\_efficiency)}} به دست می‌آید. استفاده از تابعِ متمرکزِ \lr{\texttt{link\_efficiency}} تضمین می‌کند که تمام اثبات‌ها از یک ترکیب‌بندیِ واحد استفاده می‌کنند و از ناسازگاریِ پارامترها جلوگیری می‌شود.
+
+\textbf{ماژول آشکارساز (\lr{\texttt{qkd.detectors}}):} این ماژول از \lr{\texttt{ChannelSimParams}} برای استخراجِ پارامترهای مرتبط با کانال (مانند \lr{\texttt{dispersion\_parameter\_ps\_nm\_km}}) که در مدل‌سازیِ پنجره‌ی زمانیِ آشکارساز استفاده می‌شوند، بهره می‌برد. مقادیرِ \lr{\texttt{transmittance}} و \lr{\texttt{total\_loss\_db}} نیز در محاسبه‌ی نرخِ شمارشِ تاریکِ مؤثر \lr{(effective dark count rate)} که به‌دلیلِ نشتِ فوتون از کانالِ کلاسیک  مجاور در سیستم‌های \lr{DWDM} افزایش می‌یابد، استفاده می‌شوند.
+
+\textbf{ماژول \lr{Privacy Amplification}:} این ماژول از \lr{\texttt{total\_loss\_db}} برای تخمینِ $\varepsilon_{\text{PE}}$ (خطای تخمین پارامتر) استفاده می‌کند؛ هرچه تلفاتِ کل بیشتر باشد، تعدادِ رویدادهای قابل مشاهده کمتر شده و $\varepsilon_{\text{PE}}$ باید بزرگ‌تر در نظر گرفته شود.
+
+\textbf{ماژول‌های لاگ‌گذاری و بازتولید:} متدِ \lr{\texttt{to\_config\_dict}} برای ذخیره‌ی پیکربندی در فایل‌های \lr{JSON} به‌کار می‌رود. این فایل‌ها امکان بازتولیدِ دقیقِ آزمایش‌ها را فراهم می‌سازند. متدِ \lr{\texttt{\_\_repr\_\_}} و \lr{\texttt{\_\_str\_\_}} نیز برای لاگ‌های خوانا استفاده می‌شوند؛ این متدها برای مقادیرِ بسیار کوچکِ $T$ به‌طور خودکار به نمای علمی تغییر می‌کنند.
+
+\textbf{ماژول \lr{ElectricalNoiseConfig}:} این کلاس به‌طور مستقل توسط ماژولِ منبع نوری \lr{(\texttt{qkd.sources})} برای مدل‌سازیِ نویز الکتریکیِ فوتودیودِ نظارتی استفاده می‌شود. خروجیِ \lr{\texttt{total\_voltage\_std()}} به موتورِ شبیه‌سازی ارسال می‌شود تا به‌عنوان نویزِ افزودنی در مدلِ آشکارساز اعمال گردد.
+
+\subsection{جریان داده از ورودی تا خروجی}
+
+برای روشن‌تر شدنِ ارتباطات، جریانِ داده را می‌توان به‌صورت زیر خلاصه کرد:
+
+\begin{enumerate}
+	\item \textbf{ورودی:} کاربر یک دیکشنریِ پیکربندی (یا یک فایلِ \lr{JSON}) ارائه می‌دهد که شامل کلیدهای \lr{\texttt{distance\_km}}، \lr{\texttt{fiber\_loss\_db\_km}} (یا \lr{\texttt{total\_loss\_db}}) و به‌اختیار \lr{\texttt{wavelength\_nm}} است.
+	\item \textbf{بارگذاری:} متدِ \lr{\texttt{from\_config\_dict}} دیکشنری را دریافت کرده و با استفاده از \lr{\texttt{\_coerce\_numeric}} مقادیر را به \lr{float} تبدیل می‌کند. در صورت وجودِ \lr{\texttt{total\_loss\_db}}، از \lr{\texttt{from\_total\_loss}} استفاده می‌کند تا دقتِ \lr{round-trip} حفظ شود.
+	\item \textbf{اعتبارسنجی:} سازنده‌ی \lr{\texttt{FiberChannel}} متدِ \lr{\texttt{\_\_post\_init\_\_}} را فراخوانی می‌کند که به‌نوبه‌ی خود هفت مرحله‌ی اعتبارسنجی را اجرا می‌کند: بررسیِ نوع، بازه‌ی پارامترها، معناداریِ $\alpha$، معناداریِ فاصله، محدودبودنِ تلفاتِ کل، قراردادِ $L = \alpha \cdot L$، و سازگاریِ طول موج.
+	\item \textbf{محاسبه‌ی ضریب انتقال:} متدِ \lr{\texttt{\_compute\_transmittance}} مقدارِ $T$ را محاسبه کرده و در \lr{\texttt{\_transmittance}} ذخیره می‌کند. سپس متدِ \lr{\texttt{\_check\_transmittance\_health}} بررسیِ چهارمرحله‌ایِ \lr{NaN}، زیرنرمال، سرریز و بازه را انجام می‌دهد.
+	\item \textbf{استفاده:} نمونه‌ی تأییدشده به موتور شبیه‌سازی، ماژول‌های اثباتِ امنیتی و ماژول آشکارساز ارسال می‌شود. تابعِ \lr{\texttt{build\_channel\_sim\_params}} تمام کمیت‌های لازم را در یک \lr{\texttt{ChannelSimParams}} یخ‌زده بسته‌بندی می‌کند.
+	\item \textbf{ذخیره‌سازی:} متدِ \lr{\texttt{to\_config\_dict}} پیکربندیِ نهایی را برای بازتولیدِ آینده ذخیره می‌کند. این خروجی شامل \lr{\texttt{schema\_version}}، فراداده‌ی زمانِ ساخت و تمام پارامترهای فیزیکی است.
+	\item \textbf{لاگ‌گذاری:} متدِ \lr{\texttt{\_\_repr\_\_}} یک نمایشِ خوانا از کانال تولید می‌کند که در لاگ‌های شبیه‌سازی استفاده می‌شود.
+\end{enumerate}
+
+\subsection{مدیریتِ نسخه‌گذاری و سازگاریِپسین}
+
+فیلدِ \lr{\texttt{\_metadata.version}} در خروجیِ \lr{\texttt{to\_config\_dict}} مدیریت می‌شود. در هنگامِ بارگذاری، اگر نسخه‌ی ذخیره‌شده با نسخه‌ی فعلی (\lr{\texttt{\_\_version\_\_ = "4.2.1"}}) متفاوت باشد، یک هشدار ثبت می‌شود. علاوه بر این، چندین سازوکارِ سازگاری‌پسین پیاده‌سازی شده است: نامِ قدیمیِ \lr{\texttt{STRICT\_MODE}} (که اکنون یک \lr{ContextVar} است) از طریقِ \lr{\texttt{\_\_getattr\_\_}} در سطحِ ماژول \lr{(PEP 562)} پشتیبانی می‌شود و هشدارِ منسوخ‌سازی emit می‌کند. نامِ قدیمیِ \lr{\texttt{loss\_fraction\_per\_km}} همچنان به‌عنوان نامِ مستعارِ منسوخ‌شده‌ی \lr{\texttt{single\_km\_power\_loss\_fraction}} کار می‌کند. متدِ \lr{\texttt{from\_config}} نیز با هشدارِ منسوخ‌سازی پشتیبانی می‌شود و کاربران به استفاده‌ی مستقیم از سازنده تشویق می‌شوند.
+
+\subsection{رفتار در برابر خطا و پیام‌های تشخیصی}
+
+یکی از ویژگی‌های برجسته‌ی این ماژول، کیفیتِ پیام‌های خطا است. تمامی استثناها با \lr{context} دقیق تولید می‌شوند: نامِ پارامترِ نامعتبر، مقدارِ دریافتی و نوعِ آن، نوعِ مورد انتظار، مقادیرِ مجاز (در صورتِ وجود)، و پیشنهادهای هوشمند در صورتِ وجودِ خطایِ تایپیِ نزدیک. این رویکرد، تجربه‌ی کاربر را به‌طور چشمگیری بهبود می‌بخشد. علاوه بر این، استفاده‌ی متمایز از \lr{\texttt{logger.warning}} (برای مواردِ فنیِ قابل‌توجه اما غیربحرانی)، \lr{\texttt{\_warn\_physical\_suspicion}} (برای مواردِ فیزیکیِ مشکوک) و \lr{\texttt{raise}} (برای مواردِ غیرقابل‌قبول) به کاربر اجازه می‌دهد تا به‌سرعت تشخیص دهد که آیا شبیه‌سازی می‌تواند ادامه یابد یا خیر. در حالتِ \lr{strict mode}، تمام هشدارهای \lr{\texttt{\_warn\_physical\_suspicion}} به استثنا تبدیل می‌شوند تا در خطوط لوله‌ی تولید، هیچ پیکربندیِ مشکوکی پذیرفته نشود.
+
+\subsection{جمع‌بندیِ معماری}
+
+به‌عنوان جمع‌بندی، این سه ماژول با طراحیِ چندلایه، تغییرناپذیر و نوع-امن خود، زیربنایِ پایدارِ فریم‌ورک شبیه‌سازیِ \lr{QKD} را در لایه‌ی کانال فراهم می‌سازند. تفکیکِ سه‌گانه‌ی \lr{\texttt{channel.py}} (کلاس اصلی و توابعِ کمکی)، \lr{\texttt{\_physics.py}} (توابعِ فیزیکیِ مستقل) و \lr{\texttt{noise\_models.py}} (مدل‌های نویزِ الکتریکی) الگوی تمیزی برای سازماندهیِ منطقِ پیچیده در پروژه‌های بزرگ فراهم می‌کند. کلاسِ \lr{\texttt{FiberChannel}} با بیش از پنجاه متد و فیلدِ دقیقاً نوع‌دار، یک ظرفِ پیکربندیِ کامل و قابل اتکا فراهم می‌سازد که در عینِ سادگیِ استفاده، قدرتِ بیانِ کاملِ پیچیدگی‌های فیزیکی و عددیِ مدل‌سازیِ کانالِ کوانتومی را دارد. کلاسِ \lr{\texttt{ElectricalNoiseConfig}} به‌عنوان یک ماژولِ مستقل اما مرتبط، امکانِ مدل‌سازیِ نویزِ الکتریکیِ سمتِ منبع را بدون افزوده‌کردنِ پیچیدگی به کلاسِ اصلیِ کانال فراهم می‌سازد. در مجموع، این معماری تعادلیِ ظریف میانِ دقتِ فیزیکی، پایداریِ عددی، کاراییِ محاسباتی و قابلیتِ استفاده فراهم می‌سازد که برای شبیه‌سازی‌های \lr{QKD} در سطحِ تولید ضروری است.

@@ -1,0 +1,204 @@
+\documentclass[11pt, a4paper, oneside]{book}
+
+% =====================================================================
+% بسته‌های ضروری
+% =====================================================================
+% توجه: \usepackage[utf8]{inputenc} و \usepackage[T1]{fontenc} حذف شدند
+% چون با xelatex/xepersian ناسازگارند و خطای "inputenc package ignored" می‌دهند
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{hyperref}
+\hypersetup{
+	colorlinks=true,
+	linkcolor=blue,
+	filecolor=magenta,      
+	urlcolor=blue,
+	pdftitle={QKD Simulation Framework Documentation},
+}
+\usepackage{listings}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{titlesec}
+\usepackage{tocloft}
+\usepackage{fancyhdr}
+
+% =====================================================================
+% xepersian باید همیشه آخرین بسته باشد
+% =====================================================================
+\usepackage{xepersian}
+\settextfont{Vazirmatn}
+
+% =====================================================================
+% رفع خطای: Font shape `TU/Vazirmatn(0)/m/it' undefined
+% علت: فونت Vazirmatn حالت italic ندارد
+% این تعریف، italic را به regular هدایت می‌کند
+% =====================================================================
+\DeclareFontShape{TU}{Vazirmatn(0)}{m}{it}{<-> ssub * Vazirmatn(0)/m/n}{}
+\DeclareFontShape{TU}{Vazirmatn(0)}{bx}{it}{<-> ssub * Vazirmatn(0)/bx/n}{}
+
+% =====================================================================
+% رفع خطای: Make it at least 13.59999pt (headheight)
+% علت: fancyhdr با هدر italic نیاز به ارتفاع بیشتر دارد
+% =====================================================================
+\setlength{\headheight}{14pt}
+\setlength{\headsep}{0.5cm}
+
+% =====================================================================
+% تنظیمات هدر و فوتر
+% =====================================================================
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textit{QKD Simulation Framework}}
+\fancyhead[R]{\textit{\leftmark}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% =====================================================================
+% تنظیمات کدنویسی پایتون
+% =====================================================================
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+	backgroundcolor=\color{backcolour},   
+	commentstyle=\color{codegreen},
+	keywordstyle=\color{magenta},
+	numberstyle=\tiny\color{codegray},
+	stringstyle=\color{codepurple},
+	basicstyle=\ttfamily\footnotesize\setLTR,   % \setLTR حیاتی برای RTL
+	breakatwhitespace=false,         
+	breaklines=true,                 
+	captionpos=b,                    
+	keepspaces=true,                 
+	numbers=left,                    
+	numbersep=5pt,                  
+	showspaces=false,                
+	showstringspaces=false,
+	showtabs=false,                  
+	tabsize=2,
+	mathescape=false,                % جلوگیری از تفسیر $ به‌عنوان ریاضی
+	extendedchars=true,
+	literate={→}{$\rightarrow$}{1}
+	{≤}{$\leq$}{1}
+	{≥}{$\geq$}{1},
+}
+\lstset{style=mystyle, language=Python}
+
+% =====================================================================
+% رفع Overfull \hbox
+% =====================================================================
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+\hfuzz=2pt
+
+% =====================================================================
+% اطلاعات سند
+% =====================================================================
+\title{\lr{\textbf{Comprehensive Documentation\\ of QKD Simulation Framework}}}
+
+\author{\lr{\textbf{Reza Aramjou}}}
+\date{\today}
+
+\begin{document}
+	
+	% --------------------------- صفحه عنوان ---------------------------
+	\maketitle
+	\frontmatter
+	
+	% --------------------------- پیشگفتار ---------------------------
+	\addcontentsline{toc}{chapter}{Preface}
+	\input{chapters/00_preface}
+	
+	% --------------------------- فهرست مطالب ---------------------------
+	\tableofcontents
+	\listoftables
+	\lstlistoflistings
+	\newpage
+	
+	% =========================== بخش اول: معماری ===========================
+	\mainmatter
+	\part{معماری چارچوب و فیزیک بنیادی}
+	
+	\input{chapters/01_intro}        % این فایل باید \chapter و \label خودش را داشته باشد
+	
+	\chapter{پیکربندی هسته و پارامترها}
+	\label{ch:params}
+	\input{chapters/02_params}
+	
+	\chapter{فیزیک و شبیه‌سازی کانال}
+	\label{ch:physics}
+	\input{chapters/03_physics}
+	
+	\chapter{منابع نوری}
+	\label{ch:sources}
+	\input{chapters/04_sources}
+	
+	\chapter{مدل‌های آشکارساز و ساختارهای داده}
+	\label{ch:detectors}
+	\input{chapters/05_detectors}
+	
+	% =========================== بخش دوم: لایه کریپتوگرافی ===========================
+	\part{اثبات‌های امنیتی رمزنگاری}
+	
+	\chapter{ساختار بنیادین اثبات امنیت}
+	\label{ch:base_proof}
+	\input{chapters/06_base_proof}
+	
+	\chapter{اثبات امنیت کلید محدود لیم ۲۰۱۴}
+	\label{ch:lim2014}
+	\input{chapters/07_lim2014}
+	
+	\chapter{برهان‌های \lr{(Ma, 2005) و (Wang, 2005)}}
+	\label{ch:ma_wang}
+	\input{chapters/08_ma_wang}
+	
+	\chapter{اثبات امنیت فشرده}
+	\label{ch:tight}
+	\input{chapters/09_tight}
+	
+	\chapter{بهینه‌سازی پارامترها با استفاده از برنامه‌ریزی خطی (\lr{LP})}
+	\label{ch:optimization}
+	\input{chapters/10_optimization}
+	
+	% =========================== بخش سوم: اجرا و شبکه ===========================
+	\part{خط لوله اجرا و لایه شبکه}
+	
+	\chapter{اسکریپت اصلی اجرا}
+	\label{ch:main}
+	\input{chapters/12_main}
+	
+	\chapter{لایه شبکه QKD و مسیریابی}
+	\label{ch:network}
+	\input{chapters/13_network}
+	
+	% =========================== بخش چهارم: اعتبارسنجی و تست‌ها ===========================
+	\part{اعتبارسنجی و آزمون}
+	
+	\chapter{اعتبارسنجی لایه فیزیکی}
+	\label{ch:val_physics}
+	\input{chapters/14_val_physics}
+	
+	\chapter{اعتبارسنجی رمزنگاری و تحلیلی}
+	\label{ch:val_crypto}
+	\input{chapters/15_val_crypto}
+	
+	\chapter{اعتبارسنجی حل‌گر برنامه‌ریزی خطی}
+	\label{ch:val_lp}
+	\input{chapters/16_val_lp}
+	
+	\chapter{آزمون‌های هم‌روندی و حفظ هویت}
+	\label{ch:val_concurrency}
+	\input{chapters/17_val_concurrency}
+	
+	\part{نتایج شبیه‌سازی}
+	\label{part:results_final}     % تغییر نام از part:results به part:results_final
+	\input{chapters/18_simulation_results}
+	
+\end{document}

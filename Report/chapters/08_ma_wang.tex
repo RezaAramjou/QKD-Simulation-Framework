@@ -1,0 +1,983 @@
+\sloppy
+\emergencystretch=5em
+\hbadness=10000
+\vbadness=10000
+\tolerance=2000
+\providecolor{codebg}{RGB}{248,248,248}
+\providecolor{codeframe}{RGB}{200,200,200}
+\providecolor{keyword}{RGB}{0,0,180}
+\providecolor{string}{RGB}{163,21,21}
+\providecolor{comment}{RGB}{0,128,0}
+\lstset{
+	basicstyle=\ttfamily\scriptsize,
+	breaklines=true,
+	breakatwhitespace=false,
+	columns=fullflexible,
+	keepspaces=true,
+	frame=single,
+	framesep=2pt,
+	showstringspaces=false,
+	backgroundcolor=\color{codebg},
+	rulecolor=\color{codeframe},
+	keywordstyle=\color{keyword}\bfseries,
+	stringstyle=\color{string},
+	commentstyle=\color{comment}\itshape,
+	numberstyle=\tiny\color{gray},
+	numbers=left,
+	numbersep=6pt,
+	xleftmargin=14pt,
+	framexleftmargin=14pt,
+	literate=
+	{ą}{{\v{a}}}1 {ę}{{\k{e}}}1 {ż}{{\.z}}1 {ś}{{\'s}}1
+	{ł}{{\l}}1 {ć}{{\'c}}1 {ń}{{\'n}}1 {ó}{{\'o}}1 {ź}{{\'z}}1
+	{→}{{$\rightarrow$}}1 {←}{{$\leftarrow$}}1 {≠}{{$\neq$}}1
+}
+
+\section{نمای‌ کلی و هدف ماژول}
+
+فایل‌های \lr{\texttt{qkd/proofs/ma2005.py}} و \lr{\texttt{qkd/proofs/wang2005.py}} دو ستون فقرات تئوریک چارچوب شبیه‌سازی \lr{QKD} در زمینه پروتکل‌های \lr{Decoy-State} را تشکیل می‌دهند. این دو ماژول به صورت موازی عمل می‌کنند و هر کدام پاسخگوی نیاز متفاوتی در تحلیل امنیتی هستند: ماژول \lr{ma2005.py} پیاده‌سازی وفادارانه و چندگانه چارچوب مرجع \lr{Ma, Qi, Zhao, Lo} (سال 2005) است که در مقاله \lr{``Practical decoy state for quantum key distribution''} در مجله \lr{Physical Review A} (جلد 72، شماره 012326) منتشر شده، و ماژول \lr{wang2005.py} پیاده‌سازی چارچوب تکمیلی \lr{Wang} (سال 2008) است که در مقاله \lr{``General theory of decoy-state quantum cryptography with source errors''} در همان مجله (جلد 77، شماره 042311) ارائه شده است. در حالی که چارچوب \lr{Ma 2005} فرض می‌کند که منبع نوری آلیس یک منبع \lr{coherent state} ایده‌آل با شدت دقیقاً مشخص است، چارچوب \lr{Wang 2008} این فرض را کنار می‌گذارد و اجازه می‌دهد شدت منبع دارای نوسان باشد یا حتی خود حالت کوانتومی از یک \lr{coherent state} ایده‌آل منحرف شود. این دو چارچوب در کنار هم طیف کاملی از فرضیات منبع را پوشش می‌دهند و به کاربر اجازه می‌دهند با انتخاب ماژول مناسب، تحلیل امنیتی متناسب با شرایط واقعی منبع خود را انتخاب کند.
+
+ماژول \lr{ma2005.py} شامل پنج پیاده‌سازی مجزا از چارچوب \lr{Ma 2005} است که هر کدام برای سناریوی خاصی بهینه شده‌اند. این پنج کلاس عبارتند از: \lr{\texttt{Ma2005VacuumWeakProof}} که پروتکل کلاسیک \lr{``Vacuum + Weak''} را با دو \lr{decoy} (یک \lr{decoy} ضعیف با شدت $\nu$ و یک \lr{decoy} خلأ) پیاده‌سازی می‌کند و در برابر نوسان شدت منبع به صورت \lr{worst-case} مقاوم است؛ \lr{\texttt{Ma2005GeneralTwoDecoyProof}} که حالت تعمیم‌یافته دو \lr{decoy} را با استفاده از فرمول‌های تحلیلی معادلات (18)، (21) و (25) مقاله پیاده می‌کند و بر خلاف \lr{Vacuum + Weak}، فرض خلأ بودن یکی از \lr{decoy}‌ها را ندارد؛ \lr{\texttt{Ma2005OneDecoyProof}} که پروتکل تک‌‌‌decoy را با دو حالت تحلیلی (با یا بدون فرض \lr{zero-background}) پیاده‌سازی می‌کند و برای شبکه‌هایی با محدودیت سخت‌افزاری مناسب است؛ \lr{\texttt{Ma2005GeneralMultiDecoyProof}} که برای حالت چند \lr{decoy} (بیش از دو) از برنامه‌ریزی خطی (\lr{LP}) برای یافتن کران‌های بهینه $Y_1$ و $e_1$ استفاده می‌کند و تنها پیاده‌سازی در این ماژول است که از توزیع \lr{Thermal} پشتیبانی می‌کند؛ و در نهایت \lr{\texttt{Ma2005AsymptoticProof}} که حد نظری \lr{``Infinite Decoy State''} را با معادلات (27) و (28) مقاله پیاده می‌کند و به عنوان مرجع بالای عملکرد (\lr{upper bound}) عمل می‌کند.
+
+ماژول \lr{wang2005.py} یک پیاده‌سازی تک‌کلاسی به نام \lr{\texttt{Wang2005Proof}} دارد که از کلاس پایه \lr{\texttt{FiniteKeyProof}} ارث می‌برد و یک \lr{dataclass} تخصصی به نام \lr{\texttt{DecoyEstimatesWang2005}} را معرفی می‌کند که فیلد اضافی \lr{\texttt{intensity\_error\_bound}} را برای ثبت کران خطای منبع نگه می‌دارد. این ماژول از همان فرمول پایه \lr{Vacuum + Weak} استفاده می‌کند اما تمام شدت‌ها ($\mu$ و $\nu$) را با کران‌های بالا و پایین ($\mu^U$, $\mu^L$, $\nu^U$, $\nu^L$) جایگزین می‌کند تا در بدترین حالت نوسان منبع، امنیت حفظ شود. علاوه بر این، ماژول \lr{wang2005.py} از یک مفهوم جدید به نام \lr{source fidelity} پشتیبانی می‌کند که نشان می‌دهد حالت واقعی منبع چقدر به یک \lr{coherent state} ایده‌آل نزدیک است. اگر \lr{fidelity} کمتر از یک باشد، ماژول به صورت خودکار یک \lr{mapping} محافظه‌کارانه از $(1 - F)$ به یک \lr{delta} مؤثر انجام می‌دهد و آن را در فرمول‌های کران شدت جایگزین می‌کند.
+
+وظیفه نهایی هر دو ماژول، تبدیل شمارش‌های آماری شبکه آشکارسازی (که در شیء \lr{\texttt{TallyCounts}} ذخیره شده‌اند) به یک تخمین امن از طول کلید نهایی است. این تبدیل با رعایت سخت‌گیرانه تمام محافظه‌کاری‌های ریاضی، آماری و فیزیکی انجام می‌شود تا هیچ طول کلیدی که از نظر تئوری قابل اثبات نیست، تولید نشود. در صورت بروز ناسازگاری پیکربندی، آمار ناکافی، یا خطای عددی، خروجی به جای \lr{raise} کردن استثنا، یک شیء \lr{\texttt{KeyCalculationResult}} با طول کلید صفر و کد خطای مناسب تولید می‌کند تا خط لوله شبیه‌سازی متوقف نشود و علت شکست در گزارش تشخیصی (\lr{diagnostics}) ثبت گردد. این طراحی \lr{fail-safe} برای کاربردهای تولیدی که در آن‌ها قطع شبیه‌سازی هزینه بر است، حیاتی است.
+
+اهمیت تاریخی و علمی این دو ماژول در این است که چارچوب \lr{Ma 2005} نخستین پیاده‌سازی عملی و قابل استفاده از ایده \lr{Decoy-State} بود که توسط \lr{Hwang, Lo} (2003) ارائه شده بود. پیش از این، ایده \lr{Decoy-State} تنها یک مفهوم نظری بود و پیاده‌سازی عملی آن به دلیل پیچیدگی محاسباتی و فقدان فرمول‌های بسته ممکن نبود. \lr{Ma 2005} با ارائه فرمول‌های تحلیلی بسته برای کران‌های $Y_1$ و $e_1$، این ایده را به یک فناوری قابل اجرا تبدیل کرد. چارچوب \lr{Wang 2008} سپس این پیاده‌سازی را با در نظر گرفتن نقص‌های واقعی منبع (مانند نوسان شدت لیزر و انحراف از حالت \lr{coherent}) توسعه داد. این دو چارچوب در کنار هم پایه‌ای برای تمام پروتکل‌های \lr{Decoy-State QKD} تجاری مدرن (مانند شبکه‌های \lr{Toshiba, ID Quantique, Quantum CTek}) شده‌اند.
+
+\section{مبانی تئوری و فیزیکی}
+
+\subsection{حمله \lr{Photon-Number Splitting} و انگیزه \lr{Decoy-State}}
+
+در پروتکل استاندارد \lr{BB84} با یک منبع تک‌شدت، امنیت در برابر حمله \lr{Photon-Number Splitting (PNS)} قابل تضمین نیست. در این حمله، یک مهاجم (اِو) با استفاده از یک \lr{beam splitter} غیرتعاملی (\lr{ND-PS}) یا تکنیک‌های \lr{QND}، یک فوتون از هر پالس چندفوتونی استخراج می‌کند و بقیه را به سمت باب ارسال می‌کند. از آنجا که این کار بدون ایجاد خطا انجام می‌شود، باب متوجه حضور اِو نمی‌شود. پس از پایه‌گذاری عمومی، اِو فوتون‌های ذخیره‌شده خود را در پایه درست اندازه می‌گیرد و کلید را به طور کامل به دست می‌آورد. در سیستم‌های واقعی با منبع \lr{coherent state}، بخش قابل توجهی از پالس‌ها چندفوتونی هستند (به ویژه وقتی $\mu \approx 0.5$ که برای دستیابی به نرخ کلید مطلوب انتخاب می‌شود)، و در نتیجه حمله \lr{PNS} یک تهدید جدی است.
+
+راه‌حل \lr{Decoy-State} این است که آلیس به طور تصادفی شدت نور ارسالی را میان چندین سطح تغییر می‌دهد. باب پس از اندازه‌گیری، با مقایسه نرخ آشکارسازی در شدت‌های مختلف، می‌تواند تخمین بزند که مهاجم در حال انجام \lr{PNS} هست یا نه. ایده کلیدی این است که بازده تک‌فوتونی $Y_1$ و خطای تک‌فوتونی $e_1$ مستقل از انتخاب شدت آلیس است (زیرا کانال و آشکارساز فقط تعداد فوتون‌ها را می‌بینند نه شدت انتخاب‌شده را). در نتیجه، با ترکیب اطلاعات از چندین شدت، می‌توان $Y_1$ و $e_1$ را به صورت کران‌های بسته تخمین زد. چارچوب \lr{Ma 2005} نخستین کسی بود که این تخمین را به صورت فرمول‌های تحلیلی بسته ارائه داد.
+
+\subsection{توزیع آماری فوتون‌های ارسالی}
+
+توزیع آماری فوتون‌های ارسالی از یک منبع به نوع آماری آن بستگی دارد. دو نوع آماری متداول در شبیه‌سازی \lr{QKD} عبارتند از \lr{Poisson} (برای منبع \lr{coherent state} که از لیزر معمولی به دست می‌آید) و \lr{Thermal} (برای منبع \lr{thermal state} که از منابع حرارتی یا \lr{chaotic light} به دست می‌آید). اگر میانگین فوتون $\mu$ باشد، احتمال ارسال $n$ فوتون در توزیع \lr{Poisson} برابر است با:
+\begin{equation}
+	P(n \mid \mu) = e^{-\mu}\,\frac{\mu^n}{n!},
+\end{equation}
+و در توزیع \lr{Thermal} برابر است با:
+\begin{equation}
+	P(n \mid \mu) = \frac{\mu^n}{(1 + \mu)^{n+1}}.
+\end{equation}
+تفاوت کلیدی این دو توزیع در واریانس است: برای \lr{Poisson} واریانس برابر میانگین ($\text{Var} = \mu$) است، در حالی که برای \lr{Thermal} واریانس برابر $\mu(1 + \mu)$ است (بزرگ‌تر از میانگین). این بدان معناست که در \lr{Thermal}، بخش بیشتری از پالس‌ها چندفوتونی هستند و در نتیجه حمله \lr{PNS} تهدید جدی‌تری است. در کد، تابع \lr{\texttt{\_get\_prob\_n}} در کلاس \lr{\texttt{Ma2005BaseProof}} این دو توزیع را بر اساس پرچم \lr{\texttt{is\_thermal}} (که از پیکربندی منبع استخراج می‌شود) انتخاب می‌کند. تنها کلاس \lr{\texttt{Ma2005GeneralMultiDecoyProof}} از توزیع \lr{Thermal} پشتیبانی می‌کند زیرا تنها این کلاس از \lr{LP} استفاده می‌کند و فرمول‌های تحلیلی بسته برای \lr{Thermal} پیچیده‌تر و در دسترس نیستند.
+
+\subsection{بازده، خطا و \lr{Gain}}
+
+برای هر شدت $\mu$، دو کمیت قابل مشاهده تعریف می‌شوند: \lr{Gain} (نرخ آشکارسازی) $Q_\mu$ و \lr{QBER} $E_\mu$. این دو کمیت به ترتیب برابرند با:
+\begin{align}
+	Q_\mu &= \sum_{n=0}^{\infty} Y_n\,P(n \mid \mu), \\
+	E_\mu\,Q_\mu &= \sum_{n=0}^{\infty} e_n\,Y_n\,P(n \mid \mu),
+\end{align}
+که در آن $Y_n$ بازده (احتمال آشکارسازی مشروط به ارسال $n$ فوتون) و $e_n$ خطای تک‌فوتونی مشروط به ارسال $n$ فوتون است. این کمیت‌ها مستقل از انتخاب شدت آلیس هستند و تنها به خصوصیات کانال و آشکارساز بستگی دارند. این مستقل‌بودن، پایه ریاضی کل ایده \lr{Decoy-State} است. در کد، این کمیت‌ها به صورت $Q_\mu = \text{sifted}/\text{sent}$ و $E_\mu = \text{errors\_sifted}/\text{sifted}$ از شیء \lr{\texttt{TallyCounts}} استخراج می‌شوند.
+
+بازده $Y_n$ را می‌توان به صورت $Y_n = Y_0 + \eta_n$ تجزیه کرد که در آن $Y_0$ نرخ آشکارسازی \lr{dark count} (مستقل از فوتون ارسالی) و $\eta_n$ احتمال آشکارسازی حداقل یک فوتون از $n$ فوتون ارسالی است. برای یک کانال با عبور $\eta$ و آشکارساز با راندمان $\eta_{\text{det}}$، بازده تک‌فوتونی برابر $Y_1 = Y_0 + \eta_{\text{channel}}\,\eta_{\text{det}}$ است. این رابطه در کلاس \lr{\texttt{Ma2005AsymptoticProof}} برای استخراج $\eta$ از روی مشاهدات و سپس محاسبه $Y_1$ استفاده می‌شود.
+
+\subsection{کران پایین بازده تک‌فوتونی در پروتکل \lr{Vacuum + Weak}}
+
+معادله (34) مقاله \lr{Ma 2005}، کران پایین $Y_1$ را برای پروتکل \lr{Vacuum + Weak} (با شدت‌های سیگنال $\mu$، \lr{decoy} ضعیف $\nu$ و خلأ) ارائه می‌دهد:
+\begin{equation}
+	Y_1 \;\ge\; \frac{\mu}{\mu\nu - \nu^2}\left[Q_\nu\,e^{\nu} - Q_\mu\,e^{\mu}\,\frac{\nu^2}{\mu^2} - Y_0\,\frac{\mu^2 - \nu^2}{\mu^2}\right].
+\end{equation}
+در این فرمول، $Q_\nu$ و $Q_\mu$ به ترتیب \lr{Gain} مشاهده‌شده در شدت \lr{decoy} و سیگنال هستند. برای محافظه‌کاری، از کران‌های بالا و پایین آماری استفاده می‌شود: $Q_\nu$ با کران پایین $Q_\nu^L$ و $Q_\mu$ با کران بالا $Q_\mu^U$ جایگزین می‌شوند تا کران پایین $Y_1$ تا حد ممکن سخت‌گیرانه باشد. این انتخاب‌های جهت‌دار تضمین می‌کنند که تخمین نهایی، در بدترین حالت نوسان آماری، همچنان یک کران پایین معتبر باشد.
+
+\subsection{کران بالای خطای تک‌فوتونی}
+
+معادله (37) مقاله \lr{Ma 2005}، کران بالای $e_1$ را ارائه می‌دهد:
+\begin{equation}
+	e_1 \;\le\; \frac{E_\nu\,Q_\nu\,e^{\nu} - e_0\,Y_0}{Y_1\,\nu},
+\end{equation}
+که در آن $e_0 = 0.5$ خطای آشکارسازی خلأ است (زیرا \lr{dark count} کاملاً تصادفی است و احتمال خطا برابر 50\% دارد). در این فرمول، $E_\nu\,Q_\nu$ با کران بالا $E_\nu^U\,Q_\nu^U$ جایگزین می‌شود تا کران بالای $e_1$ تا حد ممکن بزرگ (سخت‌گیرانه) باشد. در کد، شرط $Y_1 \cdot \nu > 10^{-20}$ بررسی می‌شود تا از تقسیم بر صفر جلوگیری شود؛ اگر این شرط نقض شود، $e_1 = 0.5$ تنظیم می‌شود که معادل بدترین حالت ممکن (کامل تصادفی) است.
+
+\subsection{کسر برچسب‌گذاری‌شده (\lr{Tagged Fraction})}
+
+یک مفهوم کلیدی دیگر در چارچوب \lr{Ma 2005}، کسر برچسب‌گذاری‌شده $\Delta$ است که نشان می‌دهد چه کسری از پالس‌های سیگنال به جای تک‌فوتونی، چندفوتونی هستند. معادله (36) مقاله، کران بالای $\Delta$ را به صورت زیر ارائه می‌دهد:
+\begin{equation}
+	\Delta \;\le\; \frac{\nu}{\mu - \nu}\left[\frac{\nu\,e^{-\nu}\,Q_\mu}{\mu\,e^{-\mu}\,Q_\nu} - 1\right] + \frac{\nu\,e^{-\nu}\,Y_0}{\mu\,Q_\nu}.
+\end{equation}
+این کران در متد \lr{\texttt{\_calculate\_weak\_gllp\_rate}} برای محاسبه نرخ کلید در حالت \lr{Weak GLLP} (معادله 43) استفاده می‌شود. اگر $\Delta \ge 1$ باشد، به این معناست که تمام پالس‌های سیگنال چندفوتونی هستند و هیچ امنیتی وجود ندارد؛ در این حالت، نرخ کلید به صفر برده می‌شود.
+
+\subsection{فرمول \lr{GLLP} برای نرخ کلید}
+
+چارچوب \lr{Gottesman-Lo-Lütkenhaus-Preskill (GLLP)} فرمول کلی نرخ کلید امن را به صورت زیر ارائه می‌دهد:
+\begin{equation}
+	R = q\left\{Q_1\left[1 - H_2(e_1)\right] - Q_\mu\,f(E_\mu)\,H_2(E_\mu)\right\},
+\end{equation}
+که در آن $q$ فاکتور پایه‌گذاری (برای \lr{BB84} برابر 0.5 است زیرا نیمی از پالس‌ها در پایه اشتباه دور ریخته می‌شوند)، $Q_1 = Y_1\,P(1 \mid \mu) = Y_1\,\mu\,e^{-\mu}$ \lr{Gain} تک‌فوتونی، $H_2(\cdot)$ آنتروپی باینری، $f(E_\mu)$ بازدهی تصحیح خطا و جمله اول ترم تقویت حریم خصوصی (\lr{PA}) و جمله دوم ترم نشت تصحیح خطا (\lr{EC leakage}) است. این فرمول در متد \lr{\texttt{\_calculate\_gllp\_rate}} پیاده‌سازی شده است. خروجی این متد یک شیء \lr{\texttt{KeyCalculationResult}} است که شامل طول کلید امن (به صورت صحیح)، کران بالای خطای فاز ($e_1$)، نشت تصحیح خطا و یک دیکشنری \lr{diagnostics} با تمام مقادیر میانی است.
+
+\subsection{فرمول \lr{Weak GLLP} (معادله 43)}
+
+علاوه بر فرمول استاندارد \lr{GLLP}، مقاله \lr{Ma 2005} یک فرمول جایگزین به نام \lr{Weak GLLP} (معادله 43) ارائه می‌دهد که از کسر برچسب‌گذاری‌شده $\Delta$ به جای $Y_1$ و $e_1$ استفاده می‌کند:
+\begin{equation}
+	R = q\,Q_\mu\left[-H_2(E_\mu) + (1 - \Delta)\left(1 - H_2\!\left(\frac{E_\mu}{1 - \Delta}\right)\right)\right].
+\end{equation}
+این فرمول در حالتی که تخمین دقیق $Y_1$ دشوار است اما کران $\Delta$ قابل محاسبه است، مفید است. در کد، اگر پرچم \lr{\texttt{use\_weak\_gllp}} در پیکربندی فعال باشد، این فرمول به جای فرمول استاندارد استفاده می‌شود. یک شرط فیزیکی در کد بررسی می‌شود: اگر $E_\mu / (1 - \Delta) \ge 0.5$ باشد، نرخ کلید به صفر برده می‌شود زیرا آنتروپی باینری در 0.5 بیشینه است و ترم \lr{PA} منفی می‌شود.
+
+\subsection{حد \lr{Asymptotic} با \lr{Infinite Decoy}}
+
+معادلات (27) و (28) مقاله \lr{Ma 2005}، حد نظری \lr{Infinite Decoy State} را ارائه می‌دهند که در آن تعداد \lr{decoy}‌ها به بی‌نهایت میل می‌کند و تمام $Y_n$ و $e_n$ به طور کامل قابل تخمین هستند:
+\begin{align}
+	Y_1 &= Y_0 + \eta, \\
+	e_1 &= \frac{e_0\,Y_0 + e_{\text{det}}\,\eta}{Y_1},
+\end{align}
+که در آن $\eta = \eta_{\text{channel}} \cdot \eta_{\text{det}}$ عبور کلی و $e_{\text{det}}$ خطای ذاتی آشکارساز است. در کلاس \lr{\texttt{Ma2005AsymptoticProof}}، $\eta$ به صورت غیرمستقیم از روی $Q_\mu$ استخراج می‌شود:
+\begin{equation}
+	Q_\mu = Y_0 + 1 - e^{-\eta\,\mu} \quad \Rightarrow \quad \eta = -\frac{\ln(1 + Y_0 - Q_\mu)}{\mu}.
+\end{equation}
+اگر $1 + Y_0 - Q_\mu \le 0$ (که یک ناهنجاری فیزیکی است و نشان می‌دهد $Q_\mu$ بیش از حد بزرگ است)، کد از مقدار تئوریک $\eta$ از پیکربندی به عنوان \lr{fallback} استفاده می‌کند. این کلاس به عنوان مرجع بالای عملکرد عمل می‌کند و اجازه می‌دهد کاربر ببیند در شرایط ایده‌آل، طول کلید چقدر می‌تواند باشد.
+
+\subsection{خطای منبع و چارچوب \lr{Wang 2008}}
+
+در چارچوب \lr{Wang 2008}، فرض می‌شود که شدت منبع به طور دقیق مشخص نیست بلکه در یک بازه $[\mu^L, \mu^U]$ قرار دارد. این مدل‌سازی برای منابع لیزر واقعی که دارای نوسان شدت هستند، ضروری است. کران‌های بالا و پایین شدت به صورت زیر تعریف می‌شوند:
+\begin{align}
+	\mu^U &= \mu\,(1 + \delta), \\
+	\mu^L &= \mu\,(1 - \delta), \\
+	\nu^U &= \nu\,(1 + \delta), \\
+	\nu^L &= \nu\,(1 - \delta),
+\end{align}
+که در آن $\delta$ کران خطای شدت است. در کد، این $\delta$ از دو منبع ممکن است به دست آید: یا مستقیماً از \lr{\texttt{intensity\_jitter}} پیکربندی منبع خوانده می‌شود، یا از طریق \lr{source fidelity} به صورت غیرمستقیم محاسبه می‌شود. اگر \lr{source fidelity} $F < 1$ باشد، یک \lr{mapping} محافظه‌کارانه به صورت $\delta = \max(\delta_{\text{jitter}}, 1 - F)$ انجام می‌شود. این \lr{mapping} فرض می‌کند که انحراف از حالت \lr{coherent} ایده‌آل، حداقل به اندازه $(1 - F)$ در شدت مؤثر اثر دارد.
+
+سپس فرمول کران پایین $Y_1$ در چارچوب \lr{Wang 2008} (معادله 56 مقاله) به صورت زیر بازنویسی می‌شود:
+\begin{equation}
+	Y_1 \;\ge\; \frac{\mu^L}{\mu^U \nu^L - (\nu^U)^2}\left[Q_\nu\,e^{\nu^L} - Q_\mu\,e^{\mu^U}\,\frac{(\nu^U)^2}{(\mu^L)^2} - Q_{\text{vac}}\,\frac{(\mu^U)^2 - (\nu^L)^2}{(\mu^L)^2}\right].
+\end{equation}
+تفاوت کلیدی با فرمول \lr{Ma 2005} این است که تمام شدت‌ها با کران‌های بدترین حالت جایگزین شده‌اند. به طور خاص، $\mu$ با $\mu^U$ در مخرج‌های جمله‌های کم‌شونده و با $\mu^L$ در ضریب پیشانی جایگزین شده است تا کران تا حد ممکن سخت‌گیرانه باشد. به طور متقابل، $\nu$ با $\nu^L$ در جملات مثبت و با $\nu^U$ در جملات منفی جایگزین شده است. این انتخاب‌های جهت‌دار تضمین می‌کنند که کران نهایی، در بدترین حالت نوسان منبع، همچنان معتبر باشد.
+
+کران بالای $e_1$ نیز به صورت مشابه بازنویسی می‌شود:
+\begin{equation}
+	e_1 \;\le\; \frac{E_\nu\,Q_\nu\,e^{\nu^U} - E_{\text{vac}}\,Q_{\text{vac}}}{Y_1\,\nu^L}.
+\end{equation}
+در این فرمول، $e^{\nu}$ با $e^{\nu^U}$ (کران بالا) جایگزین شده تا صورت کسر بزرگ‌تر و در نتیجه کران بالای $e_1$ سخت‌گیرانه‌تر شود. همچنین $Y_1$ و $\nu$ در مخرج با کران پایین $Y_1^L$ و $\nu^L$ جایگزین شده‌اند تا کران تا حد ممکن بزرگ باشد. در کد، اگر $Y_1 \cdot \nu^L \le 0$ باشد، $e_1 = 0.5$ تنظیم می‌شود که معادل بدترین حالت است.
+
+\subsection{نرخ کلید در چارچوب \lr{Wang 2008}}
+
+محاسبه نرخ کلید در چارچوب \lr{Wang 2008} از همان فرمول استاندارد \lr{GLLP} استفاده می‌کند اما با کران‌های $Y_1$ و $e_1$ که از فرمول‌های بالا به دست آمده‌اند:
+\begin{equation}
+	R = \frac{1}{2}\left[Y_1^L\,\mu\,e^{-\mu}\left(1 - H_2(e_1^U)\right) - Q_\mu\,f_{\text{EC}}\,H_2(E_\mu)\right].
+\end{equation}
+در اینجا $q = 0.5$ برای \lr{BB84} ثابت فرض شده و $f_{\text{EC}}$ از پیکربندی خوانده می‌شود. در کد، این محاسبه در متد \lr{\texttt{calculate\_key\_length}} کلاس \lr{\texttt{Wang2005Proof}} پیاده‌سازی شده است. خروجی نهایی یک شیء \lr{\texttt{KeyCalculationResult}} است که شامل طول کلید امن، نشت تصحیح خطا و کران بالای خطای فاز است.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+
+\subsection{سلسله‌مراتب کلاس در ماژول \lr{ma2005.py}}
+
+ماژول \lr{ma2005.py} از یک طراحی سلسله‌مراتبی استفاده می‌کند که در آن یک کلاس پایه به نام \lr{\texttt{Ma2005BaseProof}} تمام منطق مشترک را نگه می‌دارد و پنج کلاس مشتق، هر کدام یک پروتکل خاص را پیاده‌سازی می‌کنند. کلاس پایه از کلاس انتزاعی \lr{\texttt{FiniteKeyProof}} (که در \lr{\texttt{qkd/proofs/base.py}} تعریف شده) ارث می‌برد و متدهای انتزاعی \lr{\texttt{allocate\_epsilons}}، \lr{\texttt{get\_epsilon\_policy}}، \lr{\texttt{estimate\_yields\_and\_errors}}، \lr{\texttt{calculate\_key\_length}} و \lr{\texttt{notation\_map}} را پیاده‌سازی می‌کند. این طراحی از اصل \lr{DRY (Don't Repeat Yourself)} پیروی می‌کند و از تکرار کد در پنج کلاس مشتق جلوگیری می‌کند.
+
+در ادامه، ساختار کلاس پایه \lr{\texttt{Ma2005BaseProof}} را به صورت خلاصه نمایش می‌دهیم:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class Ma2005BaseProof(FiniteKeyProof):
+		"""Base class for Ma 2005 proofs sharing the GLLP rate formula."""
+		
+		def __init__(self, params: QKDParams, *args, **kwargs):
+		if params.ci_method != ConfidenceBoundMethod.CHERNOFF:
+		logger.warning(
+		f"Ma2005 proof requires CHERNOFF bounds for finite-key security. "
+		f"Overriding '{params.ci_method.name}' with CHERNOFF."
+		)
+		object.__setattr__(params, 'ci_method', ConfidenceBoundMethod.CHERNOFF)
+		
+		super().__init__(params, *args, **kwargs)
+		self.is_thermal = (self.p.source.statistics_type == SourceStatisticsType.THERMAL)
+	\end{lstlisting}
+\end{LTR}
+
+در این کد، سازنده کلاس ابتدا بررسی می‌کند که روش فاصله اطمینان (\lr{CI}) در پیکرببری برابر \lr{CHERNOFF} باشد. اگر کاربر روش دیگری (مانند \lr{Gaussian} یا \lr{Clopper-Pearson}) انتخاب کرده باشد، یک هشدار ثبت می‌شود و روش به صورت صریح به \lr{CHERNOFF} تغییر می‌یابد. دلیل این الزام امنیتی آن است که فرمول کران پایین $Y_1^L$ شامل تفریق جمله‌های تقویت‌شده با $e^\mu$ است؛ اگر کران‌های فاصله اطمینان بیش از حد پهن باشند (مانند کران‌های \lr{Gaussian} که با وابستگی $\mathcal{O}(1/\sqrt{N})$ همگرا می‌شوند)، این تفریق می‌تواند $Y_1^L$ را منفی کند که فیزیکی نیست و به معنای شکست تخمین است. در مقابل، کران‌های \lr{Chernoff} که از نوع \lr{multiplicative} هستند (یعنی $\hat{Q} \in [Q \cdot e^{-\delta}, Q \cdot e^{+\delta}]$ با $\delta = \sqrt{2\ln(2/\varepsilon)/N}$)، به اندازه کافی فشرده هستند تا $Y_1^L > 0$ را در رژیم کلید متناهی حفظ کنند.
+
+یک نکته فنی مهم در این پیاده‌سازی، استفاده از \lr{\texttt{object.\_\_setattr\_\_(params, ...)}} است. این الگو به این دلیل استفاده می‌شود که شیء \lr{\texttt{QKDParams}} در این فریم‌ورک به صورت \lr{frozen} (غیرقابل تغییر) تعریف شده است و تخصیص مستقیم \lr{\texttt{params.ci\_method = ...}} منجر به \lr{\texttt{FrozenInstanceError}} می‌شود. دور زدن این محدودیت با \lr{\texttt{object.\_\_setattr\_\_}} به ما اجازه می‌دهد در شرایط خاص (مانند الزام امنیتی به \lr{CHERNOFF}) مقدار فیلد را بازنویسی کنیم، در حالی که در شرایط عادی همچنان از مزایای \lr{immutability} مانند جلوگیری از تغییرات ناخواسته و قابلیت \lr{hashing} بهره می‌بریم. این یک الگوی شناخته‌شده در پایتون برای \lr{frozen dataclass}‌هاست که در آن نیاز به بازنویسی موقت یک فیلد وجود دارد. سپس پرچم \lr{\texttt{is\_thermal}} از پیکربندی منبع استخراج می‌شود که تعیین می‌کند کدام توزیع آماری (\lr{Poisson} یا \lr{Thermal}) در محاسبات استفاده شود.
+
+\subsection{متد \lr{\texttt{\_get\_prob\_n}} و انتخاب توزیع آماری}
+
+این متد کلیدی‌ترین تابع مشترک در کلاس پایه است که احتمال ارسال $n$ فوتون با میانگین $\mu$ را بر اساس نوع آماری منبع محاسبه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _get_prob_n(self, mu: float, n: int) -> float:
+		"""Calculates P(n|mu) handling both Poisson and Thermal cases."""
+		if self.is_thermal:
+		return (mu**n) / ((1.0 + mu)**(n + 1))
+		else:
+		return math.exp(-mu) * (mu**n) / math.factorial(n)
+	\end{lstlisting}
+\end{LTR}
+
+این متد در دو مسیر اصلی استفاده می‌شود: نخست، در متد \lr{\texttt{\_calculate\_gllp\_rate}} برای محاسبه $P(1 \mid \mu) = \mu\,e^{-\mu}$ که برای محاسبه $Q_1 = Y_1\,P(1 \mid \mu)$ ضروری است؛ دوم، در کلاس \lr{\texttt{Ma2005GeneralMultiDecoyProof}} برای ساخت ماتریس \lr{LP} که در آن هر سطر معادله $Q_\mu = \sum_n Y_n\,P(n \mid \mu)$ را نشان می‌دهد. این متد به صورت \lr{polymorphic} عمل می‌کند: با تغییر پرچم \lr{\texttt{is\_thermal}}، کل رفتار سیستم بدون تغییر کد قابل تغییر است. این طراحی از اصل \lr{Open-Closed Principle} پیروی می‌کند: کد برای توسعه باز اما برای تغییر بسته است.
+
+
+\subsection{نرمال‌سازی کلیدهای \lr{stats\_map} با \lr{\texttt{\_normalize\_stats\_map}}}
+
+یکی از چالش‌های عملی در اتصال لایه شبیه‌سازی به لایه اثبات امنیتی، تنوع فرمت‌های ورودی است. لایه شبیه‌ساز ممکن است کلیدهای دیکشنری \lr{\texttt{stats\_map}} را به سه شکل مختلف ارائه دهد: نام‌های رشته‌ای پالس (مانند “\lr{signal}”، “\lr{decoy}”، “\lr{vacuum}”)، کلیدهای عددی رشته‌ای (مانند “\lr{0}”، “\lr{1}”، “\lr{2}”) یا کلیدهای عدد صحیح (مانند \lr{0}، \lr{1}، \lr{2}). متد \lr{\texttt{\_normalize\_stats\_map}} این سه فرمت را به یک فرمت استاندارد با کلیدهای نامی تبدیل می‌کند تا تمام کد داخلی ماژول \lr{Ma 2005} بتواند با اطمینان از کلیدهای نامی استفاده کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _normalize_stats_map(
+		self,
+		stats_map: Mapping[Union[str, int], TallyCounts],
+		pulse_names: List[str],
+		) -> Dict[str, TallyCounts]:
+		"""Normalize stats_map keys to use pulse name strings."""
+		# Try #1: name keys already present
+		if all(name in stats_map for name in pulse_names):
+		return {name: stats_map[name] for name in pulse_names}
+		
+		# Try #2: string-integer keys ("0", "1", "2")
+		if all(str(i) in stats_map for i in range(len(pulse_names))):
+		return {pulse_names[i]: stats_map[str(i)]
+			for i in range(len(pulse_names))}
+		
+		# Try #3: integer keys (0, 1, 2)
+		if all(i in stats_map for i in range(len(pulse_names))):
+		return {pulse_names[i]: stats_map[i]
+			for i in range(len(pulse_names))}
+		
+		raise ParameterValidationError(
+		f"stats_map keys do not match pulse names or positional indices. "
+		f"Expected names {pulse_names!r}; got {list(stats_map.keys())!r}."
+		)
+		
+		def _get_pulse_names(self) -> List[str]:
+		"""Return the ordered list of pulse names from the source config."""
+		return [pc.name for pc in self.p.source.pulse_configs]
+	\end{lstlisting}
+\end{LTR}
+
+این متد با سه تلاش متوالی کار می‌کند: نخست، فرض می‌کند که کلیدها از قبل نام‌های پالس هستند و اگر این فرض درست باشد، همان دیکشنری را با فیلتراسیون به نام‌های معتبر برمی‌گرداند. دوم، اگر کلیدها رشته‌های عددی باشند، آن‌ها را به نام‌های پالس بر اساس ترتیب موقعیتی نگاشت می‌کند. سوم، اگر کلیدها اعداد صحیح باشند، همان کار را انجام می‌دهد. اگر هیچ یک از این سه حالت منطبق نباشد، استثنای \lr{\texttt{ParameterValidationError}} با پیام تشخیصی مشخص \lr{raise} می‌شود. این طراحی از اصل \lr{Postel‌s Law} (در سخاوتمندی باشید، در محافظه‌کاری سخت‌گیرانه) پیروی می‌کند: ورودی‌های متنوع پذیرفته می‌شوند، اما خروجی همیشه یک فرمت ثابت و معتبر است. تمام پنج کلاس مشتق از \lr{\texttt{Ma 2005}} در ابتدای متد \lr{\texttt{estimate\_yields\_and\_errors}} خود، این نرمال‌سازی را فراخوانی می‌کنند تا از سازگاری ورودی اطمینان حاصل شود.
+
+\subsection{تخصیص بودجه \lr{$\varepsilon$} در چارچوب \lr{Ma 2005}}
+
+متد \lr{\texttt{allocate\_epsilons}} در کلاس پایه، بودجه امنیتی کلی $\varepsilon_{\text{sec}}$ را میان اجزای مختلف تقسیم می‌کند. چارچوب \lr{Ma 2005} از معادله زیر برای تقسیم بودجه استفاده می‌کند:
+\begin{equation}
+	\varepsilon_{\text{sec}} \;\ge\; \varepsilon_{\text{PE}} + 2\,\varepsilon_{\text{smooth}} + \varepsilon_{\text{PA}} + \varepsilon_{\text{cor}} + \varepsilon_{\text{phase\_est}}.
+\end{equation}
+در این معادله، $\varepsilon_{\text{PE}}$ بودجه تخمین پارامتر، $\varepsilon_{\text{smooth}}$ بودجه هموارسازی، $\varepsilon_{\text{PA}}$ بودجه تقویت حریم خصوصی، $\varepsilon_{\text{cor}}$ بودجه تصحیح خطا و $\varepsilon_{\text{phase\_est}}$ بودجه تخمین خطای فاز است. در کد، $\varepsilon_{\text{phase\_est}} = \varepsilon_{\text{PE}} / 10$ تنظیم می‌شود که یک تقسیم محافظه‌کارانه است. اگر مجموع بودجه‌های استفاده‌شده از $\varepsilon_{\text{sec}}$ بیشتر یا مساوی شود (که ناسازگاری پیکرببری را نشان می‌دهد)، به جای جایگزینی صریح با $\varepsilon_{\text{sec}}/8$ (که قصد کاربر را به طور خام نادیده می‌گیرد)، کد از \lr{Gap [A] fix v2} استفاده می‌کند: مقادیر به صورت \emph{متناسب} نرمال می‌شوند تا مجموعشان دقیقاً برابر $\varepsilon_{\text{sec}}$ شود. این رویکرد وزن‌دهی نسبی که کاربر مشخص کرده را حفظ می‌کند و فقط مقیاس کلی را تعدیل می‌کند. فرمول نرمال‌سازی به صورت زیر است:
+
+\begin{equation}
+	\text{scale} = \frac{\varepsilon_{\text{sec}}}{\text{used\_budget}}, \qquad \varepsilon_k^{\text{norm}} = \varepsilon_k \cdot \text{scale}, \quad \forall k \in \{\text{PE}, \text{smooth}, \text{cor}\}.
+\end{equation}
+
+سپس $\varepsilon_{\text{phase\_est}}^{\text{norm}} = \varepsilon_{\text{PE}}^{\text{norm}} / 10$ و $\varepsilon_{\text{PA}}^{\text{norm}} = \varepsilon_{\text{sec}} - (\varepsilon_{\text{PE}}^{\text{norm}} + 2\,\varepsilon_{\text{smooth}}^{\text{norm}} + \varepsilon_{\text{cor}}^{\text{norm}} + \varepsilon_{\text{phase\_est}}^{\text{norm}})$ محاسبه می‌شوند. اگر $\varepsilon_{\text{PA}}^{\text{norm}} < 0$ شود، به صفر تنظیم می‌شود. در شرایط عادی (زمانی که بودجه کافی است)، $\varepsilon_{\text{PA}}$ به صورت باقی‌مانده $\varepsilon_{\text{sec}} - \text{used\_budget}$ محاسبه می‌شود تا کل بودجه به طور کامل استفاده شود. پیاده‌سازی کامل این متد در ادامه ارائه شده است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def allocate_epsilons(self) -> EpsilonAllocation:
+		# Full constraint: eps_pe + 2*eps_smooth + eps_pa + eps_cor + eps_phase_est <= eps_sec
+		eps_phase_est = self.p.eps_pe / 10.0
+		used_budget = (self.p.eps_pe + 2.0 * self.p.eps_smooth
+		+ self.p.eps_cor + eps_phase_est)
+		
+		if used_budget >= self.p.eps_sec:
+		# Gap [A] fix (v2): normalize proportionally so they sum to eps_sec
+		scale = self.p.eps_sec / used_budget if used_budget > 0 else 1.0
+		eps_cor_n   = self.p.eps_cor * scale
+		eps_pe_n    = self.p.eps_pe * scale
+		eps_smooth_n = self.p.eps_smooth * scale
+		eps_phase_est_n = eps_pe_n / 10.0
+		eps_pa_n = (self.p.eps_sec
+		- (eps_pe_n + 2.0 * eps_smooth_n
+		+ eps_cor_n + eps_phase_est_n))
+		if eps_pa_n < 0.0:
+		eps_pa_n = 0.0
+		return EpsilonAllocation(
+		eps_sec=self.p.eps_sec,
+		eps_cor=eps_cor_n,
+		eps_pe=eps_pe_n,
+		eps_smooth=eps_smooth_n,
+		eps_pa=eps_pa_n,
+		eps_phase_est=eps_phase_est_n
+		)
+		
+		eps_pa = self.p.eps_sec - used_budget
+		return EpsilonAllocation(
+		eps_sec=self.p.eps_sec,
+		eps_cor=self.p.eps_cor,
+		eps_pe=self.p.eps_pe,
+		eps_smooth=self.p.eps_smooth,
+		eps_pa=eps_pa,
+		eps_phase_est=eps_phase_est
+		)
+	\end{lstlisting}
+\end{LTR}
+
+این پیاده‌سازی دو ویژگی مهم دارد: نخست، در مسیر نرمال‌سازی متناسب، تمام اجزا (به جز $\varepsilon_{\text{PA}}$) با همان ضریب $\text{scale}$ کوچک می‌شوند تا نسبت‌های نسبی حفظ شوند؛ دوم، $\varepsilon_{\text{PA}}$ به عنوان باقی‌مانده محاسبه می‌شود تا تضمین شود مجموع دقیقاً برابر $\varepsilon_{\text{sec}}$ است. این رویکرد نسبت به روش قبلی (جایگزینی همه با $\varepsilon_{\text{sec}}/8$) برتری دارد زیرا اگر کاربر مثلاً $\varepsilon_{\text{PE}}$ را سه برابر $\varepsilon_{\text{cor}}$ تنظیم کرده باشد، این نسبت پس از نرمال‌سازی نیز حفظ می‌شود و معنای فیزیکی پیکربندی حفظ می‌گردد.
+
+\subsection{ساختار \lr{dataclass} در ماژول \lr{wang2005.py}}
+
+ماژول \lr{wang2005.py} یک \lr{dataclass} جدید به نام \lr{\texttt{DecoyEstimatesWang2005}} معرفی می‌کند که از \lr{\texttt{DecoyEstimates}} پایه ارث می‌برد و فیلد اضافی \lr{\texttt{intensity\_error\_bound}} را اضافه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass(frozen=True)
+		class DecoyEstimatesWang2005(DecoyEstimates):
+		"""Decoy estimates including source error bounds."""
+		intensity_error_bound: float = 0.0  # delta in Wang 2008
+	\end{lstlisting}
+\end{LTR}
+
+استفاده از دکوراتور \lr{\texttt{@dataclass(frozen=True)}} دو مزیت دارد: نخست، شیء پس از ساخت غیرقابل تغییر (\lr{immutable}) می‌شود که از تغییرات ناخواسته در طول محاسبات جلوگیری می‌کند و امنیت نوع داده را تضمین می‌کند؛ دوم، شیء به طور خودکار \lr{hashable} می‌شود که اجازه می‌دهد در مجموعه‌ها یا به عنوان کلید دیکشنری استفاده شود. این ویژگی برای \lr{caching} و \lr{memoization} در محاسبات تکراری مفید است. مقدار پیش‌فرض 0.0 برای \lr{\texttt{intensity\_error\_bound}} به این معناست که در صورت عدم تنظیم صریح، فرض می‌شود منبع ایده‌آل است ($\delta = 0$).
+
+\subsection{اعتبارسنجی پیکرببری در \lr{Wang2005Proof}}
+
+کلاس \lr{\texttt{Wang2005Proof}} در سازنده خود، پیکرببری منبع را اعتبارسنجی می‌کند تا اطمینان حاصل شود که سه نوع پالس \lr{signal}، \lr{decoy} و \lr{vacuum} همگی موجود هستند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _verify_pulse_configs(self):
+		required = {"signal", "decoy", "vacuum"}
+		current = {p.name for p in self.p.source.pulse_configs}
+		if not required.issubset(current):
+		raise ConfigurationError(
+		f"Wang2005Proof requires pulse types: {required}. Found: {current}"
+		)
+	\end{lstlisting}
+\end{LTR}
+
+این اعتبارسنجی در زمان ساخت شیء انجام می‌شود (نه در زمان محاسبه) تا خطا در همان مراحل اولیه شناسایی شود. اگر پیکرببری ناقص باشد، استثنای \lr{\texttt{ConfigurationError}} \lr{raise} می‌شود که یک استثنای سفارشی در ماژول \lr{\texttt{qkd.exceptions}} است. این طراحی \lr{fail-fast} از اجرای طولانی شبیه‌سازی و شکست در مراحل بعدی جلوگیری می‌کند. استفاده از \lr{set} برای مقایسه مورد نیاز و موجود، ترتیب پالس‌ها را نادیده می‌گیرد و فقط حضور آن‌ها را بررسی می‌کند.
+
+\subsection{مدیریت خطای تطبیقی (\lr{Adaptive Error Correction})}
+
+یکی از ویژگی‌های پیشرفته کلاس پایه \lr{\texttt{Ma2005BaseProof}}، پشتیبانی از مدل خطای تطبیقی است. متد \lr{\texttt{\_calculate\_f\_ec}} بر اساس نرخ خطای مشاهده‌شده، بازدهی تصحیح خطا را به صورت پویا تنظیم می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _calculate_f_ec(self, error_rate: float) -> float:
+		"""Calculates adaptive error correction efficiency if configured."""
+		config = self.p.f_ec_dynamic_config
+		if config and config.get("model") == "linear":
+		base = config.get("base", 1.1)
+		slope = config.get("slope", 0.0)
+		return base + slope * error_rate
+		return self.p.f_error_correction
+	\end{lstlisting}
+\end{LTR}
+
+در این کد، اگر پیکرببری \lr{\texttt{f\_ec\_dynamic\_config}} تنظیم شده باشد و مدل آن \lr{linear} باشد، بازدهی به صورت $f_{\text{EC}} = \text{base} + \text{slope} \cdot E_\mu$ محاسبه می‌شود. این مدل‌سازی برای شبیه‌سازی واقع‌بینانه‌تر از سیستم‌های واقعی ضروری است زیرا در عمل، کدهای تصحیح خطا در نرخ‌های خطای بالا کارایی کمتری دارند. مقادیر پیش‌فرض \lr{base = 1.1} و \lr{slope = 0.0} معادل یک مدل ثابت است که در صورت عدم تنظیم پیکرببری پویا، استفاده می‌شود. این طراحی انعطاف‌پذیر اجازه می‌دهد کاربر بدون تغییر کد، مدل‌های مختلف تصحیح خطا را آزمایش کند.
+
+\subsection{نقشه‌ی نمادها (\lr{Notation Map})}
+
+هر دو ماژول متد \lr{\texttt{notation\_map}} را پیاده‌سازی می‌کنند که یک دیکشنری از نمادهای ریاضی به نام متغیرهای کد ارائه می‌دهد. این نقشه برای ترجمه بین فرمول‌های مقاله و کد، و برای تولید گزارش‌های قابل فهم توسط انسان استفاده می‌شود. به عنوان مثال، نقشه \lr{Ma 2005} شامل موارد زیر است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def notation_map(self) -> Dict[str, str]:
+		return {
+			"Y_1": "yield_1_lower_bound",
+			"e_1": "error_rate_1_upper_bound",
+			"Q_mu": "Gain of signal state",
+			"E_mu": "QBER of signal state",
+			"\\Delta": "tagged_fraction (Delta)",
+			"f(e)": "f_error_correction",
+			"Y_1^L": "yield_1_lower_bound",
+			"e_ph": "error_rate_1_upper_bound",
+			"s_z_1^L": "Calculated as Q_1 * N_sent (single-photon count)"
+		}
+	\end{lstlisting}
+\end{LTR}
+
+این نقشه به ابزارهای بصری‌سازی و گزارش‌گیری اجازه می‌دهد به طور خودکار نمادهای ریاضی را در خروجی‌ها نمایش دهند و در عین حال، در کد از نام‌های توصیفی استفاده کنند. این جداسازی لایه نمایش از لایه محاسبه، از اصول کلیدی مهندسی نرم‌افزار است و قابلیت نگهداری کد را به طور قابل توجهی افزایش می‌دهد.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+
+\subsection{محاسبه نرخ \lr{GLLP} استاندارد}
+
+متد \lr{\texttt{\_calculate\_gllp\_rate}} در کلاس پایه، هسته اصلی محاسبه نرخ کلید در چارچوب \lr{Ma 2005} است. این متد دو حالت دارد: حالت استاندارد \lr{GLLP} و حالت \lr{Weak GLLP}. در ادامه، نسخه کامل این متد را با توضیح خط به خط ارائه می‌دهیم:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _calculate_gllp_rate(
+		self,
+		decoy_estimates: DecoyEstimates,
+		stats_map: Dict[str, TallyCounts]
+		) -> KeyCalculationResult:
+		signal_stats = stats_map.get("signal")
+		if not signal_stats or signal_stats.sent == 0:
+		return KeyCalculationResult(0, 0.0, 0.0, 0.5,
+		error_codes=[ErrorCode.INSUFFICIENT_STATISTICS])
+		
+		mu = self.p.source.get_pulse_config_by_name("signal").mean_photon_number
+		q_factor = 0.5
+		
+		Q_mu = signal_stats.sifted / signal_stats.sent
+		E_mu = signal_stats.errors_sifted / signal_stats.sifted \
+		if signal_stats.sifted > 0 else 0.5
+		f_ec = self._calculate_f_ec(E_mu)
+		
+		Y1_L = decoy_estimates.yield_1_lower_bound
+		e1_U = decoy_estimates.error_rate_1_upper_bound
+		
+		prob_1_mu = self._get_prob_n(mu, 1)
+		Q_1 = Y1_L * prob_1_mu
+	\end{lstlisting}
+\end{LTR}
+
+در خطوط ابتدایی، آمار سیگنال از \lr{\texttt{stats\_map}} استخراج می‌شود. اگر آمار موجود نباشد یا تعداد پالس‌های ارسالی صفر باشد، یک نتیجه با طول کلید صفر و کد خطای \lr{\texttt{INSUFFICIENT\_STATISTICS}} بازگردانده می‌شود. سپس شدت سیگنال $\mu$ از پیکرببری خوانده می‌شود و \lr{$q$-factor} برابر \lr{0.5} (برای \lr{BB84}) تنظیم می‌شود. مقادیر قابل مشاهده $Q_\mu$ و $E_\mu$ از آمار محاسبه می‌شوند. در صورتی که \lr{sifted = 0} (هیچ آشکارسازی در پایه درست نباشد)، $E_\mu = 0.5$ فرض می‌شود که بدترین حالت است. در نهایت، $Q_1 = Y_1 \cdot P(1 \mid \mu)$ محاسبه می‌شود که \lr{Gain} تک‌فوتونی است.
+
+در ادامه، کد بررسی می‌کند که آیا حالت \lr{Weak GLLP} فعال است یا خیر:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		weak_rate = self._calculate_weak_gllp_rate(decoy_estimates, stats_map)
+		delta_bound = decoy_estimates.diagnostics.numeric_diagnostics.get(
+		"Delta_tagged_bound_Eq36", None)
+		
+		if getattr(self.p, 'use_weak_gllp', False):
+		key_len = max(0, int(weak_rate * signal_stats.sent))
+		return KeyCalculationResult(
+		secure_key_length=key_len,
+		privacy_amplification_term=0.0,
+		error_correction_leakage=Q_mu * f_ec *
+		binary_entropy(E_mu) * signal_stats.sent,
+		phase_error_rate_upper_bound=E_mu / (1.0 - delta_bound)
+		if delta_bound and delta_bound < 1.0 else 0.5,
+		diagnostics={"mode": "WEAK_GLLP_EQ_43",
+			"rate_per_pulse": weak_rate, "Delta": delta_bound},
+		weak_gllp_rate=weak_rate,
+		tagged_fraction_bound=delta_bound
+		)
+	\end{lstlisting}
+\end{LTR}
+
+در این بخش، ابتدا نرخ \lr{Weak GLLP} محاسبه می‌شود (حتی اگر استفاده نشود، برای گزارش‌گیری \lr{diagnostics} مفید است). سپس اگر پرچم \lr{\texttt{use\_weak\_gllp}} فعال باشد، نتیجه بر اساس فرمول \lr{Weak GLLP} (معادله 43) ساخته می‌شود. طول کلید به صورت $N_{\text{sent}} \cdot R_{\text{weak}}$ محاسبه می‌شود و کران بالای خطای فاز به صورت $E_\mu / (1 - \Delta)$ تنظیم می‌شود. این تناظر با فرمول \lr{Weak GLLP} که در بخش تئوری توضیح داده شد، دقیق است.
+
+در غیر این صورت، مسیر استاندارد \lr{GLLP} اجرا می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		h2_E_mu = binary_entropy(E_mu)
+		term_ec_cost = Q_mu * f_ec * h2_E_mu
+		
+		h2_e1 = binary_entropy(e1_U)
+		term_pa_gain = Q_1 * (1.0 - h2_e1)
+		
+		rate = q_factor * (term_pa_gain - term_ec_cost)
+		key_len = max(0, int(rate * signal_stats.sent))
+		
+		diag = {
+			"Q_mu": Q_mu, "E_mu": E_mu, "Q_1": Q_1,
+			"Y1_L": Y1_L, "e1_U": e1_U, "rate_per_pulse": rate,
+			"f_ec_used": f_ec, "weak_gllp_rate": weak_rate,
+			"asym_retry_used": False,  # always False after paper-faithful removal
+		}
+		if decoy_estimates.diagnostics.numeric_diagnostics:
+		diag.update(decoy_estimates.diagnostics.numeric_diagnostics)
+		
+		return KeyCalculationResult(
+		secure_key_length=key_len,
+		privacy_amplification_term=term_pa_gain * signal_stats.sent,
+		error_correction_leakage=term_ec_cost * signal_stats.sent,
+		phase_error_rate_upper_bound=e1_U,
+		diagnostics=diag,
+		weak_gllp_rate=weak_rate,
+		tagged_fraction_bound=delta_bound
+		)
+	\end{lstlisting}
+\end{LTR}
+
+در این مسیر، ابتدا آنتروپی باینری $H_2(E_\mu)$ محاسبه می‌شود و ترم نشت تصحیح خطا به صورت $Q_\mu \cdot f_{\text{EC}} \cdot H_2(E_\mu)$ به دست می‌آید. سپس آنتروپی باینری $H_2(e_1^U)$ محاسبه می‌شود و ترم تقویت حریم خصوصی به صورت $Q_1 \cdot (1 - H_2(e_1^U))$ محاسبه می‌شود. نرخ نهایی برابر $q \cdot (\text{PA} - \text{EC})$ است و طول کلید به صورت $\max(0, \lfloor R \cdot N_{\text{sent}} \rfloor)$ محاسبه می‌شود. تابع \lr{\texttt{max}} تضمین می‌کند که طول کلید هرگز منفی نشود (که در صورت $\text{PA} < \text{EC}$ ممکن است رخ دهد). در نهایت، یک دیکشنری \lr{diagnostics} غنی شامل تمام مقادیر میانی ساخته می‌شود و در شیء نتیجه قرار می‌گیرد. یک فیلد مهم در این دیکشنری \lr{\texttt{asym\_retry\_used}} است که پس از حذف منطق \lr{asymptotic retry} غیروفادارانه به مقاله، همواره مقدار \lr{False} دارد؛ این فیلد برای حفظ سازگاری با کدهای گزارش‌گیری موجود و برای انطباق آینده در صورت فعال‌سازی مجدد نگه داشته شده است.
+
+\subsection{پیاده‌سازی پروتکل \lr{Vacuum + Weak}}
+
+کلاس \lr{\texttt{Ma2005VacuumWeakProof}} پروتکل کلاسیک \lr{Vacuum + Weak} را با بهبود مقاومت در برابر نوسان شدت پیاده‌سازی می‌کند. در ادامه، بخش کلیدی متد \lr{\texttt{estimate\_yields\_and\_errors}} این کلاس را بررسی می‌کنیم:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def estimate_yields_and_errors(self, stats_map: Dict[str, TallyCounts]) -> DecoyEstimates:
+		stats_map = self._normalize_stats_map(stats_map, self._get_pulse_names())
+		if self.is_thermal:
+		raise ConfigurationError("Ma2005VacuumWeakProof supports only Poisson statistics.")
+		
+		try:
+		cfg_sig = self.p.source.get_pulse_config_by_name("signal")
+		cfg_decoy = self.p.source.get_pulse_config_by_name("decoy")
+		cfg_vac = self.p.source.get_pulse_config_by_name("vacuum")
+		except Exception as e:
+		return DecoyEstimates(0.0, 0.5, False, 1.0,
+		SolverDiagnostics("Ma2005", False, str(e)))
+		
+		mu_base = cfg_sig.mean_photon_number
+		nu_base = cfg_decoy.mean_photon_number
+		
+		delta = self.p.source.intensity_jitter
+		n_total = sum(s.sent for s in stats_map.values())
+		if n_total > 0:
+		stat_fluc = 1.0 / math.sqrt(n_total)
+		delta += stat_fluc
+		
+		mu_min, mu_max = mu_base * (1 - delta), mu_base * (1 + delta)
+		nu_min, nu_max = nu_base * (1 - delta), nu_base * (1 + delta)
+	\end{lstlisting}
+\end{LTR}
+
+در خطوط ابتدایی، ابتدا بررسی می‌شود که منبع از نوع \lr{Poisson} باشد (این کلاس از \lr{Thermal} پشتیبانی نمی‌کند). سپس سه پیکرببری پالس (سیگنال، \lr{decoy} و خلأ) از پیکرببری منبع استخراج می‌شوند. اگر هر کدام موجود نباشند، یک \lr{DecoyEstimates} با طول صفر و \lr{diagnostics} خطا بازگردانده می‌شود. سپس شدت پایه $\mu$ و $\nu$ خوانده می‌شوند و کران خطای منبع $\delta$ از پیکرببری استخراج می‌شود. یک نکته کلیدی در این کد، افزودن نوسان آماری به $\delta$ است: $\delta_{\text{total}} = \delta_{\text{jitter}} + 1/\sqrt{N_{\text{total}}}$ که در آن $N_{\text{total}}$ کل پالس‌های ارسالی است. این نوسان آماری مدل می‌کند که برای یک $N$ متناهی، توزیع فوتون‌های مشاهده‌شده دقیقاً با توزیع تئوریک همخوانی ندارد. در نهایت، کران‌های بالا و پایین شدت به صورت $\mu_{\min} = \mu(1 - \delta)$ و $\mu_{\max} = \mu(1 + \delta)$ محاسبه می‌شوند.
+
+سپس کران‌های آماری برای $Q_\mu$، $Q_\nu$ و $Q_{\text{vac}}$ محاسبه می‌شوند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		alpha = self.eps_alloc.eps_pe
+		
+		Q_mu_L, Q_mu_U, E_mu_L, E_mu_U = self._get_bounds_stats(
+		stats_map, "signal", alpha)
+		Q_nu_L, Q_nu_U, E_nu_L, E_nu_U = self._get_bounds_stats(
+		stats_map, "decoy", alpha)
+		Q_vac_L, Q_vac_U, E_vac_L, E_vac_U = self._get_bounds_stats(
+		stats_map, "vacuum", alpha)
+		
+		Y0_U = Q_vac_U
+		Y0_L = Q_vac_L
+		e0 = 0.5
+	\end{lstlisting}
+\end{LTR}
+
+در این بخش، $\alpha = \varepsilon_{\text{PE}}$ به عنوان سطح اطمینان استفاده می‌شود و کران‌های دوطرفه برای $Q$ و $E$ در هر سه شدت محاسبه می‌شوند. بازده خلأ $Y_0$ به صورت مستقیم از آمار \lr{vacuum} استخراج می‌شود: $Y_0^U = Q_{\text{vac}}^U$ و $Y_0^L = Q_{\text{vac}}^L$. این یک ویژگی متمایزکننده پروتکل \lr{Vacuum + Weak} است که در آن یک \lr{decoy} خلأ به طور مستقیم $Y_0$ را اندازه می‌گیرد. $e_0 = 0.5$ ثابت فرض می‌شود زیرا \lr{dark count} کاملاً تصادفی است.
+
+سپس فرمول کران پایین $Y_1$ با کران‌های بدترین حالت اعمال می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		# [Paper Eq 34] Lower Bound on Y1
+		term_Q_nu = Q_nu_L * math.exp(nu_min)
+		term_Q_mu = Q_mu_U * math.exp(mu_max) * (nu_max**2 / mu_min**2)
+		term_Y0 = Y0_U * (mu_max**2 - nu_min**2) / (mu_min**2)
+		
+		denom = mu_max * nu_min - nu_max**2
+		if denom <= 0:
+		prefactor = 0.0
+		else:
+		prefactor = mu_min / denom
+		
+		Y1_L = prefactor * (term_Q_nu - term_Q_mu - term_Y0)
+		Y1_L = max(0.0, Y1_L)
+		
+		# [Paper Eq 37] Upper Bound on e1
+		if Y1_L * nu_min <= 1e-20:
+		e1_U = 0.5
+		else:
+		numerator_e1 = (E_nu_U * Q_nu_U * math.exp(nu_max)) - (e0 * Y0_L)
+		e1_U = numerator_e1 / (Y1_L * nu_min)
+		e1_U = min(0.5, max(0.0, e1_U))
+		
+		# [Paper Eq 36] Tagged Fraction Delta Upper Bound
+		if Q_nu_L > 0:
+		term1 = (nu_max / (mu_min - nu_max))
+		term2 = (nu_max * math.exp(-nu_min) * Q_mu_U) / \\
+		(mu_min * math.exp(-mu_max) * Q_nu_L) - 1.0
+		term3 = (nu_max * math.exp(-nu_min) * Y0_U) / (mu_min * Q_nu_L)
+		delta_bound_strict = term1 * term2 + term3
+		else:
+		delta_bound_strict = 1.0
+		
+		# Asymptotic Reference
+		eta = self.p.channel.transmittance * self.p.detector.det_eff_d0
+		y0_val = 2.0 * self.p.detector.dark_rate   # Gap [B] fix: two-detector BB84
+		e_det = self.p.detector.qber_intrinsic
+		
+		y1_asymptotic = y0_val + eta
+		e1_asymptotic = (0.5 * y0_val + e_det * eta) / y1_asymptotic \\
+		if y1_asymptotic > 0 else 0.5
+		
+		beta_y1 = (y1_asymptotic - Y1_L) / y1_asymptotic \\
+		if y1_asymptotic > 0 else 0.0
+		beta_e1 = (e1_U - e1_asymptotic) / e1_asymptotic \\
+		if e1_asymptotic > 0 else 0.0
+		
+		diag_data = {
+			"Y0_L": Y0_L, "Y0_U": Y0_U,
+			"Delta_tagged_bound_Eq36": delta_bound_strict,
+			"beta_Y1_deviation": beta_y1,
+			"beta_e1_deviation": beta_e1,
+			"used_asymptotic_fallback": False,  # always False after paper-faithful removal
+			"Y1_asymptotic": y1_asymptotic,
+			"e1_asymptotic": e1_asymptotic,
+		}
+		
+		return DecoyEstimates(
+		yield_1_lower_bound=Y1_L,
+		error_rate_1_upper_bound=e1_U,
+		is_feasible=True,
+		failure_prob_used=0.0,
+		diagnostics=SolverDiagnostics("Ma2005_VacWeak_Robust", True, "OK",
+		numeric_diagnostics=diag_data)
+		)
+	\end{lstlisting}
+\end{LTR}
+
+این پیاده‌سازی معادلات (34)، (37) و (36) مقاله را با کران‌های بدترین حالت اعمال می‌کند. در ادامه، بخش‌های کلیدی این کد را به تفصیل توضیح می‌دهیم:
+
+\textbf{کران پایین $Y_1$ (معادله 34):} هر شدت در هر جایگاه فرمول با کران مناسب (بالا یا پایین) جایگزین شده است تا کران نهایی تا حد ممکن سخت‌گیرانه باشد. به طور خاص، $Q_\nu$ با کران پایین $Q_\nu^L$ و $Q_\mu$ با کران بالا $Q_\mu^U$ جایگزین می‌شوند و $Y_0$ با کران بالا $Y_0^U$. اگر مخرج $\mu_{\max} \nu_{\min} - \nu_{\max}^2 \le 0$ باشد (که در پیکرببری‌های غیرفیزیکی ممکن است رخ دهد)، ضریب پیشانی به صفر تنظیم می‌شود و در نتیجه $Y_1 = 0$ می‌شود. در نهایت، $\max(0, \cdot)$ تضمین می‌کند که $Y_1$ هرگز منفی نشود.
+
+\textbf{کران بالای $e_1$ (معادله 37):} این فرمول کران بالای خطای تک‌فوتونی را بر اساس مشاهدات \lr{decoy} ضعیف محاسبه می‌کند. صورت کسر شامل $E_\nu^U \cdot Q_\nu^U \cdot e^{\nu_{\max}}$ (با کران‌های بالا برای محافظه‌کاری) منهای $e_0 \cdot Y_0^L$ است. مخرج شامل $Y_1^L \cdot \nu_{\min}$ است که با کران‌های پایین محافظه‌کارانه انتخاب شده. اگر $Y_1^L \cdot \nu_{\min} \le 10^{-20}$ باشد (تقریباً صفر)، $e_1 = 0.5$ تنظیم می‌شود که معادل بدترین حالت (کامل تصادفی) است. در نهایت، $e_1$ با $\min(0.5, \max(0, \cdot))$ در بازه $[0, 0.5]$ محدود می‌شود.
+
+\textbf{کران بالای کسر برچسب‌گذاری‌شده $\Delta$ (معادله 36):} این کران نشان می‌دهد چه کسری از پالس‌های سیگنال می‌توانند چندفوتونی باشند. اگر $Q_\nu^L > 0$ باشد، فرمول کامل اعمال می‌شود؛ در غیر این صورت، $\Delta = 1.0$ تنظیم می‌شود که به معنای عدم امکان تخمین است. این مقدار $\Delta$ در دیکشنری \lr{diagnostics} با کلید \lr{\texttt{Delta\_tagged\_bound\_Eq36}} ذخیره می‌شود و توسط متد \lr{\texttt{\_calculate\_weak\_gllp\_rate}} برای محاسبه نرخ \lr{Weak GLLP} استفاده می‌شود.
+
+\textbf{مرجع حد \lr{Asymptotic}:} پس از محاسبه کران‌های متناهی، کد یک مرجع \lr{asymptotic} محاسبه می‌کند تا انحراف کران متناهی از حد ایده‌آل قابل اندازه‌گیری باشد. در این محاسبات، $\eta$ از پارامترهای کانال و آشکارساز خوانده می‌شود ($\eta = \eta_{\text{channel}} \cdot \eta_{\text{det}}$) و $y_0$ به صورت $2 \cdot \text{dark\_rate}$ تنظیم می‌شود که \lr{Gap [B] fix} برای پشتیبانی از \lr{BB84} دو آشکارساز است. در \lr{BB84} استاندارد، آلیس در دو پایه $Z$ و $X$ ارسال می‌کند و باب نیز در دو پایه اندازه‌گیری می‌کند، بنابراین نرخ کلی \lr{dark count} مؤثر دو برابر نرخ تک‌آشکارساز است. سپس $Y_1^{\text{asym}} = y_0 + \eta$ و $e_1^{\text{asym}} = (0.5 \cdot y_0 + e_{\text{det}} \cdot \eta) / Y_1^{\text{asym}}$ محاسبه می‌شوند.
+
+\textbf{ضریب انحراف $\beta$:} دو کمیت تشخیصی $\beta_{Y_1}$ و $\beta_{e_1}$ به صورت زیر محاسبه می‌شوند:
+\begin{equation}
+	\beta_{Y_1} = \frac{Y_1^{\text{asym}} - Y_1^L}{Y_1^{\text{asym}}}, \qquad
+	\beta_{e_1} = \frac{e_1^U - e_1^{\text{asym}}}{e_1^{\text{asym}}}.
+\end{equation}
+این ضرایب نشان می‌دهند که کران متناهی چقدر از حد ایده‌آل فاصله دارد. اگر $\beta_{Y_1}$ نزدیک به صفر باشد، یعنی کران متناهی تقریباً به حد ایده‌آل رسیده است و اندازه بلوک کافی است. اگر $\beta_{Y_1}$ بزرگ باشد، یعنی افزایش اندازه بلوک می‌تواند کران را به طور قابل توجهی بهبود بخشد. این اطلاعات برای بهینه‌سازی طراحی آزمایش حیاتی است. فیلد \lr{\texttt{used\_asymptotic\_fallback}} همواره \lr{False} است زیرا پس از حذف منطق \lr{fallback} غیروفادارانه به مقاله، کد همواره مسیر تخمین اصلی را طی می‌کند و فقط مقادیر \lr{asymptotic} را برای مقایسه در \lr{diagnostics} گزارش می‌کند.
+
+\subsection{پیاده‌سازی پروتکل \lr{General Two-Decoy}}
+
+کلاس \lr{\texttt{Ma2005GeneralTwoDecoyProof}} پروتکل دو \lr{decoy} تعمیم‌یافته را پیاده‌سازی می‌کند که بر خلاف \lr{Vacuum + Weak}، فرض خلأ بودن یکی از \lr{decoy}‌ها را ندارد. این کلاس نیز مانند سایر کلاس‌های \lr{Ma 2005}، در ابتدای متد \lr{\texttt{estimate\_yields\_and\_errors}} فراخوانی \lr{\texttt{\_normalize\_stats\_map}} را انجام می‌دهد تا کلیدهای دیکشنری ورودی به فرمت استاندارد نام پالس تبدیل شوند. سپس بررسی می‌کند که منبع از نوع \lr{Poisson} باشد (این کلاس از \lr{Thermal} پشتیبانی نمی‌کند) و در صورت عدم تطابق، استثنای \lr{\texttt{ConfigurationError}} \lr{raise} می‌شود. در ادامه، دو پیکرببری \lr{decoy} با کوچکترین و بزرگترین شدت انتخاب می‌شوند ($\nu_2 < \nu_1$). این کلاس از معادلات (18)، (21) و (25) مقاله استفاده می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		# Eq 18: Y0 lower bound
+		term_num = nu1 * Q_nu2_L * math.exp(nu2) - nu2 * Q_nu1_U * math.exp(nu1)
+		Y0_L = max(0.0, term_num / (nu1 - nu2))
+		
+		# Eq 21: Y1 lower bound
+		denom_Y1 = (mu * nu1) - (mu * nu2) - (nu1**2) + (nu2**2)
+		term_Q_diff = Q_nu1_L * math.exp(nu1) - Q_nu2_U * math.exp(nu2)
+		term_mu_sub = (Q_mu_U * math.exp(mu) - Y0_L)
+		factor_sq = (nu1**2 - nu2**2) / (mu**2)
+		
+		Y1_L = max(0.0, (mu / denom_Y1) * (term_Q_diff - (factor_sq * term_mu_sub)))
+		
+		# Eq 25: e1 upper bound
+		if Y1_L * (nu1 - nu2) <= 1e-20:
+		e1_U = 0.5
+		else:
+		num_e1 = (E_nu1_U * Q_nu1_U * math.exp(nu1)) - (E_nu2_L * Q_nu2_L * math.exp(nu2))
+		e1_U = min(0.5, max(0.0, num_e1 / ((nu1 - nu2) * Y1_L)))
+	\end{lstlisting}
+\end{LTR}
+
+این پیاده‌سازی چند ویژگی مهم دارد: نخست، $Y_0$ به جای اندازه‌گیری مستقیم (که در \lr{Vacuum + Weak} با \lr{decoy} خلأ انجام می‌شد)، از ترکیب دو \lr{decoy} ضعیف تخمین زده می‌شود (معادله 18). این تخمین با استفاده از کران پایین $Q_{\nu_2}$ و کران بالا $Q_{\nu_1}$ انجام می‌شود تا کران پایین $Y_0$ محافظه‌کارانه باشد. دوم، در معادله (21)، $Y_0^L$ به جای $Y_0$ استفاده می‌شود تا جمله کم‌شونده بزرگ‌تر و کران $Y_1$ سخت‌گیرانه‌تر شود. سوم، در معادله (25)، $E_{\nu_1} Q_{\nu_1}$ با کران بالا و $E_{\nu_2} Q_{\nu_2}$ با کران پایین جایگزین می‌شوند تا صورت کسر بزرگ‌تر و کران $e_1$ سخت‌گیرانه‌تر شود. این انتخاب‌های جهت‌دار در سراسر کد، تضمین می‌کنند که تمام کران‌ها در بدترین حالت نوسان آماری معتبر باشند.
+
+\subsection{پیاده‌سازی پروتکل \lr{One-Decoy}}
+
+کلاس \lr{\texttt{Ma2005OneDecoyProof}} پروتکل تک‌‌‌decoy را با دو حالت (\lr{zero-background} یا \lr{standard}) پیاده‌سازی می‌کند. مانند سایر کلاس‌های \lr{Ma 2005}، این کلاس نیز در ابتدای متد \lr{\texttt{estimate\_yields\_and\_errors}} فراخوانی \lr{\texttt{\_normalize\_stats\_map}} را انجام می‌دهد تا کلیدهای دیکشنری ورودی به فرمت استاندارد نام پالس تبدیل شوند. سپس بررسی می‌کند که منبع از نوع \lr{Poisson} باشد (این کلاس از \lr{Thermal} پشتیبانی نمی‌کند) و در صورت عدم تطابق، استثنای \lr{\texttt{ConfigurationError}} \lr{raise} می‌شود. در حالت \lr{zero-background}، فرض می‌شود $Y_0 = 0$ که یک تقریب محافظه‌کارانه برای کانال‌های با \lr{dark count} بسیار پایین است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if self.assume_zero_background:
+		# Eq. 41: Tighter Bound (Y0=0 implicitly)
+		prefactor = mu / (mu * nu - nu**2)
+		term_Q_nu = Q_nu_L * math.exp(nu)
+		term_Q_mu = Q_mu_U * math.exp(mu) * (nu**2 / mu**2)
+		Y1_L = max(0.0, prefactor * (term_Q_nu - term_Q_mu))
+		
+		if Y1_L * nu <= 1e-20:
+		e1_U = 0.5
+		else:
+		e1_U = min(0.5, max(0.0,
+		(E_nu_U * Q_nu_U * math.exp(nu)) / (Y1_L * nu)))
+		diag_msg = "Ma2005_OneDecoy_ZeroBackground"
+	\end{lstlisting}
+\end{LTR}
+
+در حالت \lr{zero-background}، فرمول کران $Y_1$ ساده‌تر می‌شود زیرا جمله $Y_0$ حذف می‌شود. این فرمول معادله (41) مقاله را پیاده‌سازی می‌کند. در حالت استاندارد (با $Y_0$ غیر صفر)، فرمول کامل معادلات (38) تا (40) استفاده می‌شود که در آن $Y_0$ از روی $E_\mu Q_\mu$ تخمین زده می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		else:
+		# Standard One-Decoy Bound (Eq. 38-40)
+		Y0_U = (E_mu_U * Q_mu_U * math.exp(mu)) / e0
+		
+		term1 = Q_nu_L * math.exp(nu)
+		term2 = Q_mu_U * math.exp(mu) * (nu**2 / mu**2)
+		term3 = (Y0_U) * ((mu**2 - nu**2) / mu**2)
+		Y1_L = max(0.0, (mu / (mu * nu - nu**2)) * (term1 - term2 - term3))
+		
+		if Y1_L * mu <= 1e-20:
+		e1_U = 0.5
+		else:
+		e1_U = min(0.5, max(0.0,
+		(E_mu_U * Q_mu_U * math.exp(mu)) / (Y1_L * mu)))
+		diag_msg = "Ma2005_OneDecoy_Simple"
+	\end{lstlisting}
+\end{LTR}
+
+در حالت استاندارد، $Y_0^U$ از روی خطای سیگنال تخمین زده می‌شود: $Y_0^U = E_\mu^U Q_\mu^U e^\mu / e_0$. این تخمین بر اساس این فرض است که تمام خطاهای مشاهده‌شده در سیگنال از \lr{dark count} ناشی می‌شوند (که یک فرض محافظه‌کارانه است). سپس این $Y_0^U$ در فرمول کران $Y_1$ استفاده می‌شود.
+
+\subsection{پیاده‌سازی پروتکل چند \lr{Decoy} با \lr{LP}}
+
+کلاس \lr{\texttt{Ma2005GeneralMultiDecoyProof}} برای حالت چند \lr{decoy} (بیش از دو) از برنامه‌ریزی خطی (\lr{LP}) برای یافتن کران‌های بهینه $Y_1$ و $e_1$ استفاده می‌کند. این تنها کلاس در ماژول است که از توزیع \lr{Thermal} پشتیبانی می‌کند. مانند سایر کلاس‌های \lr{Ma 2005}، این کلاس نیز در ابتدای متد \lr{\texttt{estimate\_yields\_and\_errors}} فراخوانی \lr{\texttt{\_normalize\_stats\_map}} را انجام می‌دهد. سپس ماتریس \lr{LP} با استفاده از تمام پیکرببری‌های پالس موجود ساخته می‌شود. مسأله \lr{LP} به صورت زیر فرمول‌بندی می‌شود:
+
+\begin{equation}
+	\min_{\{Y_n\}} Y_1 \quad \text{s.t.} \quad Q_k^L \le \sum_{n=0}^{N_{\text{cap}}} Y_n\,P(n \mid \mu_k) \le Q_k^U, \quad \forall k.
+\end{equation}
+
+در این فرمول‌بندی، $\{Y_n\}_{n=0}^{N_{\text{cap}}}$ متغیرهای تصمیم هستند، $Q_k^L$ و $Q_k^U$ کران‌های آماری \lr{Gain} در شدت $k$، و $P(n \mid \mu_k)$ احتمال ارسال $n$ فوتون با شدت $\mu_k$ است. این مسأله با استفاده از تابع \lr{\texttt{solve\_lp}} از ماژول \lr{\texttt{qkd.proofs.utils\_lp}} حل می‌شود. در ادامه، کد کلیدی این کلاس را ارائه می‌دهیم:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		c_y1 = np.zeros(n_cap + 1)
+		c_y1[1] = 1.0  # Minimize Y_1
+		
+		A_eq = np.zeros((k_intensities, n_cap + 1))
+		b_eq = np.zeros(k_intensities)
+		b_eq_L = np.zeros(k_intensities)
+		b_eq_U = np.zeros(k_intensities)
+		
+		valid_indices = []
+		for i, pc in enumerate(pulse_configs):
+		if pc.name not in stats_map or stats_map[pc.name].sent == 0:
+		continue
+		valid_indices.append(i)
+		mu = pc.mean_photon_number
+		
+		Q_L, Q_U, _, _ = self._get_bounds_stats(stats_map, pc.name, alpha)
+		b_eq_L[i] = Q_L
+		b_eq_U[i] = Q_U
+		
+		for n in range(n_cap + 1):
+		A_eq[i, n] = self._get_prob_n(mu, n)
+	\end{lstlisting}
+\end{LTR}
+
+در این کد، بردار هزینه $c$ به صورتی تنظیم می‌شود که $Y_1$ مینیمم شود (یعنی $c = [0, 1, 0, \ldots, 0]$). سپس ماتریس محدودیت $A_{\text{eq}}$ ساخته می‌شود که در آن سطر $i$ معادله $\sum_n Y_n P(n \mid \mu_i) = Q_i$ را نشان می‌دهد. کران‌های بالا و پایین $Q_i$ به صورت دو مجموعه از محدودیت‌های نامساوی اعمال می‌شوند: $\sum \le Q^U$ و $-\sum \le -Q^L$. این تبدیل استاندارد، مسأله با محدودیت‌های دوطرفه را به مسأله با محدودیت‌های یکطرفه تبدیل می‌کند که توسط \lr{solver}‌های استاندارد \lr{LP} قابل حل است.
+
+سپس مسأله \lr{LP} حل می‌شود و برای $e_1$ نیز یک مسأله مشابه حل می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		A_ub = np.vstack([A_eq, -A_eq])
+		b_ub = np.hstack([b_eq_U, -b_eq_L])
+		
+		sol_y1, diag_y1 = solve_lp(c_y1, A_ub, b_ub, n_cap + 1,
+		self.p.lp_solver_method)
+		Y1_L = max(0.0, sol_y1[1])
+		
+		# For e1: minimize -e1*Y1 (which maximizes e1*Y1)
+		c_ey1 = np.zeros(n_cap + 1)
+		c_ey1[1] = -1.0
+		
+		# ... build A_ub_err, b_ub_err similar to above ...
+		
+		sol_ey1, diag_ey1 = solve_lp(c_ey1, A_ub_err, b_ub_err, n_cap + 1,
+		self.p.lp_solver_method)
+		e1Y1_U = max(0.0, sol_ey1[1])
+		
+		if Y1_L <= 1e-20:
+		e1_U = 0.5
+		else:
+		e1_U = min(0.5, e1Y1_U / Y1_L)
+	\end{lstlisting}
+\end{LTR}
+
+در این بخش، مسأله \lr{LP} برای $Y_1$ حل می‌شود و سپس یک مسأله \lr{LP} دیگر برای $e_1 Y_1$ حل می‌شود (با مینیمم‌کردن $-e_1 Y_1$ که معادل ماکزیمم‌کردن $e_1 Y_1$ است). سپس $e_1 = (e_1 Y_1) / Y_1$ محاسبه می‌شود. این رویکرد دو مرحله‌ای ضروری است زیرا $e_1$ به صورت نسبتی تعریف می‌شود و نمی‌تواند مستقیماً در \lr{LP} مینیمم شود. اگر $Y_1 \le 10^{-20}$ باشد، $e_1 = 0.5$ تنظیم می‌شود که معادل بدترین حالت است. این طراحی اجازه می‌دهد کاربر هر تعداد \lr{decoy} را بدون محدودیت فرمول‌های تحلیلی استفاده کند.
+
+\subsection{پیاده‌سازی حد \lr{Asymptotic}}
+
+کلاس \lr{\texttt{Ma2005AsymptoticProof}} حد نظری \lr{Infinite Decoy State} را با معادلات (27) و (28) پیاده‌سازی می‌کند. این کلاس به عنوان مرجع بالای عملکرد عمل می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		# 1. Estimate Q_mu
+		Q_mu = signal_stats.sifted / signal_stats.sent
+		
+		# 2. Derive eta from Q_mu
+		Y0 = 2.0 * self.p.detector.dark_rate   # Gap [B] fix: two-detector BB84
+		e0 = 0.5
+		e_det = self.p.detector.qber_intrinsic
+		
+		if "vacuum" in stats_map and stats_map["vacuum"].sent > 0:
+		vac_stats = stats_map["vacuum"]
+		Y0 = vac_stats.sifted / vac_stats.sent
+		
+		mu = self.p.source.get_pulse_config_by_name("signal").mean_photon_number
+		
+		# Solve Q_mu = Y0 + 1 - exp(-eta * mu) for eta
+		arg = 1.0 + Y0 - Q_mu
+		if arg <= 0:
+		eta = self.p.channel.transmittance * self.p.detector.det_eff_d0
+		else:
+		eta_effective = -math.log(arg) / mu
+		eta = max(0.0, min(1.0, eta_effective))
+		
+		# 3. Calculate Asymptotic Limits (Eq 27 and 28)
+		Y1_asymptotic = Y0 + eta
+		
+		if Y1_asymptotic > 0:
+		numerator = (e0 * Y0) + (e_det * eta)
+		e1_asymptotic = numerator / Y1_asymptotic
+		else:
+		e1_asymptotic = 0.5
+		
+		e1_asymptotic = min(0.5, max(0.0, e1_asymptotic))
+	\end{lstlisting}
+\end{LTR}
+
+در این کد، ابتدا $Q_\mu$ از آمار محاسبه می‌شود. سپس $Y_0 = 2 \cdot \text{dark\_rate}$ تنظیم می‌شود که \lr{Gap [B] fix} برای پشتیبانی از \lr{BB84} دو آشکارساز است. در \lr{BB84} استاندارد، باب از دو آشکارساز (یکی برای پایه $Z$ و دیگری برای پایه $X$) استفاده می‌کند و هر دو آشکارساز در صورت عدم تطابق پایه، \lr{dark count} تولید می‌کنند. بنابراین نرخ مؤثر \lr{dark count} که در فرمول‌های تخمین ظاهر می‌شود، دو برابر نرخ تک‌آشکارساز است. عدم اعمال این ضریب 2 در نسخه‌های قبلی کد منجر به تخمین خوش‌بینانه $Y_1$ و در نتیجه طول کلید ناامن می‌شد. سپس $e_{\text{det}}$ از پیکرببری خوانده می‌شود. اگر آمار خلأ موجود باشد، $Y_0$ از آن استخراج می‌شود (که به واقعیت نزدیک‌تر است و مستقل از مقدار تئوریک \lr{dark\_rate} است). سپس $\eta$ به صورت غیرمستقیم از روی $Q_\mu$ با معکوس‌کردن رابطه $Q_\mu = Y_0 + 1 - e^{-\eta \mu}$ استخراج می‌شود. اگر $1 + Y_0 - Q_\mu \le 0$ (که ناهنجاری فیزیکی است و معمولاً ناشی از نویز بالا یا خطای کالیبراسیون است)، از مقدار تئوریک $\eta = \eta_{\text{channel}} \cdot \eta_{\text{det}}$ از پیکرببری به عنوان \lr{fallback} استفاده می‌شود. در نهایت، $Y_1$ و $e_1$ با معادلات (27) و (28) محاسبه می‌شوند. این مقادیر به عنوان کران‌های بالای تئوریک عمل می‌کنند و اجازه می‌دهند کاربر ببیند در شرایط ایده‌آل (تعداد نامتناهی \lr{decoy} و اندازه بلوک بی‌نهایت)، طول کلید چقدر می‌تواند باشد.
+
+\subsection{پیاده‌سازی چارچوب \lr{Wang 2008}}
+
+کلاس \lr{\texttt{Wang2005Proof}} چارچوب \lr{Wang 2008} را با مدیریت خطای منبع پیاده‌سازی می‌کند. در ادامه، بخش کلیدی متد \lr{\texttt{estimate\_yields\_and\_errors}} این کلاس را بررسی می‌کنیم:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		delta = getattr(self.p.source, 'intensity_jitter', 0.0)
+		source_fidelity = getattr(self.p.source, 'source_fidelity', 1.0)
+		
+		if source_fidelity < 1.0:
+		delta = max(delta, 1.0 - source_fidelity)
+		
+		# Bounds on intensities
+		mu_U = mu * (1 + delta)
+		mu_L = mu * (1 - delta)
+		nu_U = nu * (1 + delta)
+		nu_L = nu * (1 - delta)
+	\end{lstlisting}
+\end{LTR}
+
+در این بخش، $\delta$ از دو منبع ممکن است به دست آید: یا مستقیماً از \lr{\texttt{intensity\_jitter}} خوانده می‌شود، یا از طریق \lr{source\_fidelity} به صورت غیرمستقیم محاسبه می‌شود. اگر \lr{fidelity} $F < 1$ باشد، $\delta = \max(\delta_{\text{jitter}}, 1 - F)$ تنظیم می‌شود. این \lr{mapping} محافظه‌کارانه فرض می‌کند که انحراف از حالت \lr{coherent} ایده‌آل، حداقل به اندازه $(1 - F)$ در شدت مؤثر اثر دارد. سپس کران‌های بالا و پایین شدت به صورت $\mu^U = \mu(1 + \delta)$ و $\mu^L = \mu(1 - \delta)$ محاسبه می‌شوند. این کران‌ها در سراسر فرمول‌های تخمین $Y_1$ و $e_1$ استفاده می‌شوند تا در بدترین حالت نوسان منبع، امنیت حفظ شود.
+
+سپس فرمول کران پایین $Y_1$ با کران‌های بدترین حالت اعمال می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		term1 = Q_nu * math.exp(nu_L)
+		term2 = Q_mu * math.exp(mu_U) * (nu_U**2) / (mu_L**2)
+		term3 = (mu_U**2 - nu_L**2)/(mu_L**2) * Q_vac  # Y0 approx Q_vac
+		
+		numerator = term1 - term2 - term3
+		denominator = mu_U * nu_L - nu_U**2
+		
+		if denominator <= 0:
+		Y1_L = 0.0
+		else:
+		Y1_L = (mu_L / denominator) * numerator
+		
+		Y1_L = max(0.0, Y1_L)
+	\end{lstlisting}
+\end{LTR}
+
+این پیاده‌سازی معادله (56) مقاله \lr{Wang 2008} را با کران‌های بدترین حالت اعمال می‌کند. تفاوت کلیدی با فرمول \lr{Ma 2005} این است که تمام شدت‌ها با کران‌های بالا یا پایین جایگزین شده‌اند. اگر مخرج $\mu^U \nu^L - (\nu^U)^2 \le 0$ باشد، $Y_1 = 0$ تنظیم می‌شود. در نهایت، $\max(0, \cdot)$ تضمین می‌کند که $Y_1$ هرگز منفی نشود.
+
+سپس کران بالای $e_1$ محاسبه می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		term_err = E_nu * Q_nu * math.exp(nu_U)
+		term_vac = E_vac * Q_vac  # e0*Y0
+		
+		if Y1_L * nu_L <= 0:
+		e1_U = 0.5
+		else:
+		e1_U = (term_err - term_vac) / (Y1_L * nu_L)
+		
+		e1_U = min(0.5, max(0.0, e1_U))
+	\end{lstlisting}
+\end{LTR}
+
+در این فرمول، $e^{\nu}$ با $e^{\nu^U}$ (کران بالا) جایگزین شده تا صورت کسر بزرگ‌تر و کران $e_1$ سخت‌گیرانه‌تر شود. همچنین $Y_1$ و $\nu$ در مخرج با کران پایین $Y_1^L$ و $\nu^L$ جایگزین شده‌اند. اگر $Y_1^L \cdot \nu^L \le 0$ باشد، $e_1 = 0.5$ تنظیم می‌شود که معادل بدترین حالت است.
+
+در نهایت، نرخ کلید با فرمول استاندارد \lr{GLLP} محاسبه می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		mu = self.p.source.get_pulse_config_by_name("signal").mean_photon_number
+		p1 = mu * math.exp(-mu)
+		
+		Y1_L = decoy_estimates.yield_1_lower_bound
+		e1_U = decoy_estimates.error_rate_1_upper_bound
+		
+		Q_mu = stats.sifted / n_total
+		E_mu = stats.errors_sifted / stats.sifted if stats.sifted > 0 else 0.5
+		
+		gain_1 = Y1_L * p1
+		
+		from ..utils.math import binary_entropy
+		pa_factor = 1.0 - binary_entropy(e1_U)
+		secure_gain = gain_1 * pa_factor
+		
+		leakage = Q_mu * self.p.f_error_correction * binary_entropy(E_mu)
+		
+		rate = 0.5 * (secure_gain - leakage)  # q=0.5 for BB84
+		
+		key_len = max(0, int(rate * n_total))
+	\end{lstlisting}
+\end{LTR}
+
+در این بخش، ابتدا $P(1 \mid \mu) = \mu e^{-\mu}$ محاسبه می‌شود (با فرض \lr{Poisson}). سپس \lr{Gain} تک‌فوتونی $Q_1 = Y_1^L \cdot P(1 \mid \mu)$ محاسبه می‌شود. ترم تقویت حریم خصوصی به صورت $Q_1 \cdot (1 - H_2(e_1^U))$ و ترم نشت تصحیح خطا به صورت $Q_\mu \cdot f_{\text{EC}} \cdot H_2(E_\mu)$ محاسبه می‌شوند. نرخ نهایی $R = 0.5 \cdot (\text{PA} - \text{EC})$ (با $q = 0.5$ برای \lr{BB84}) و طول کلید به صورت $\max(0, \lfloor R \cdot N \rfloor)$ محاسبه می‌شود.
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+
+\subsection{ورودی‌های ماژول \lr{ma2005.py}}
+
+ماژول \lr{ma2005.py} برای انجام محاسبات خود به چندین ورودی از سایر ماژول‌های فریم‌ورک نیاز دارد. این ورودی‌ها به دو دسته پیکرببری و آمار زمان اجرا تقسیم می‌شوند. ورودی‌های پیکرببری در زمان ساخت شیء اثبات امنیتی خوانده می‌شوند و در طول اجرا ثابت می‌مانند، در حالی که ورودی‌های آمار در هر فراخوانی \lr{\texttt{calculate\_key\_length}} به روز می‌شوند.
+
+\begin{itemize}
+	\item \lr{\texttt{QKDParams}}: این شیء از ماژول \lr{\texttt{qkd.params}} وارد می‌شود و شامل تمام پارامترهای پیکرببری سیستم است. زیرشئه‌های کلیدی که این ماژول استفاده می‌کند عبارتند از: \lr{\texttt{p.source}} (شامل \lr{\texttt{pulse\_configs}}، \lr{\texttt{statistics\_type}}، \lr{\texttt{intensity\_jitter}} و \lr{\texttt{source\_fidelity}})، \lr{\texttt{p.detector}} (شامل \lr{\texttt{dark\_rate}}، \lr{\texttt{det\_eff\_d0}} و \lr{\texttt{qber\_intrinsic}})، \lr{\texttt{p.channel}} (شامل \lr{\texttt{transmittance}})، \lr{\texttt{p.eps\_sec}}، \lr{\texttt{p.eps\_pe}}، \lr{\texttt{p.eps\_smooth}}، \lr{\texttt{p.eps\_cor}}، \lr{\texttt{p.f\_error\_correction}}، \lr{\texttt{p.f\_ec\_dynamic\_config}}، \lr{\texttt{p.photon\_number\_cap}}، \lr{\texttt{p.lp\_solver\_method}} و \lr{\texttt{p.ci\_method}}.
+	\item \lr{\texttt{stats\_map}}: این یک دیکشنری از \lr{\texttt{str}} به \lr{\texttt{TallyCounts}} است که از لایه شبیه‌ساز آشکارساز به اثبات امنیتی داده می‌شود. کلیدهای این دیکشنری نام شدت‌ها (\lr{``signal''}، \lr{``decoy''}، \lr{``vacuum''} و در حالت چند \lr{decoy}، نام‌های اختصاصی) هستند و مقادیر، شیء \lr{\texttt{TallyCounts}} با فیلدهای \lr{\texttt{sent}} (تعداد پالس‌های ارسالی)، \lr{\texttt{sifted}} (تعداد آشکارسازی‌های پایه درست) و \lr{\texttt{errors\_sifted}} (تعداد خطاها در پایه درست) هستند.
+	\item \lr{\texttt{EpsilonAllocation}}: این شیء از ماژول \lr{\texttt{qkd.datatypes}} وارد می‌شود و شامل فیلدهای $\varepsilon_{\text{sec}}$، $\varepsilon_{\text{cor}}$، $\varepsilon_{\text{pe}}$، $\varepsilon_{\text{smooth}}$، $\varepsilon_{\text{pa}}$ و $\varepsilon_{\text{phase\_est}}$ است. این شیء از متد \lr{\texttt{allocate\_epsilons}} تولید می‌شود و در محاسبه کران‌های آماری استفاده می‌شود.
+\end{itemize}
+
+\subsection{ورودی‌های ماژول \lr{wang2005.py}}
+
+ماژول \lr{wang2005.py} ورودی‌های مشابهی با \lr{ma2005.py} دارد اما به دو فیلد اضافی در پیکرببری منبع وابسته است:
+
+\begin{itemize}
+	\item \lr{\texttt{p.source.intensity\_jitter}}: این فیلد کران نوسان شدت منبع را مشخص می‌کند. در ماژول \lr{wang2005.py}، این فیلد به صورت \lr{$\delta$} در فرمول‌های کران شدت ($\mu^U = \mu(1 + \delta)$ و $\mu^L = \mu(1 - \delta)$) استفاده می‌شود. اگر این فیلد تنظیم نشده باشد، مقدار پیش‌فرض 0.0 استفاده می‌شود که معادل منبع ایده‌آل است.
+	\item \lr{\texttt{p.source.source\_fidelity}}: این فیلد نشان می‌دهد که حالت واقعی منبع چقدر به یک \lr{coherent state} ایده‌آل نزدیک است. مقدار \lr{1.0} به معنای منبع ایده‌آل و مقدار کمتر از \lr{1.0} به معنای انحراف از حالت ایده‌آل است. اگر این فیلد کمتر از \lr{1.0} باشد، ماژول یک \lr{mapping} محافظه‌کارانه به صورت $\delta = \max(\delta_{\text{jitter}}, 1 - F)$ انجام می‌دهد.
+\end{itemize}
+
+این دو فیلد با استفاده از تابع \lr{\texttt{getattr}} با مقدار پیش‌فرض خوانده می‌شوند تا در صورت عدم وجود در پیکرببری، ماژول با خطا مواجه نشود. این طراحی انعطاف‌پذیر اجازه می‌دهد ماژول با نسخه‌های مختلف پیکرببری سازگار باشد.
+
+\subsection{خروجی‌های ماژول}
+
+خروجی اصلی هر دو ماژول یک شیء \lr{\texttt{KeyCalculationResult}} است که از کلاس پایه \lr{\texttt{FiniteKeyProof}} به ارث رسیده. این شیء شامل فیلدهای زیر است:
+
+\begin{enumerate}
+	\item \lr{\texttt{secure\_key\_length}}: طول کلید امن به صورت یک عدد صحیح غیرمنفی. این فیلد خروجی نهایی محاسبه است و توسط لایه بالایی برای تولید کلید واقعی استفاده می‌شود.
+	\item \lr{\texttt{privacy\_amplification\_term}}: ترم تقویت حریم خصوصی به صورت $Q_1 (1 - H_2(e_1)) \cdot N_{\text{sent}}$. این فیلد برای تحلیل و گزارش‌گیری مفید است.
+	\item \lr{\texttt{error\_correction\_leakage}}: نشت تصحیح خطا به صورت $Q_\mu f_{\text{EC}} H_2(E_\mu) \cdot N_{\text{sent}}$. این فیلد نشان می‌دهد چه مقدار اطلاعات در مرحله تصحیح خطا به مهاجم نشت کرده است.
+	\item \lr{\texttt{phase\_error\_rate\_upper\_bound}}: کران بالای خطای فاز $e_1^U$. این فیلد برای تحلیل امنیتی و مقایسه با آستانه امنیت \lr{BB84} (حدود 11\%) استفاده می‌شود.
+	\item \lr{\texttt{diagnostics}}: یک دیکشنری شامل تمام مقادیر میانی مانند $Q_\mu$، $E_\mu$، $Q_1$، $Y_1^L$، $e_1^U$، نرخ هر پالس، $f_{\text{EC}}$ استفاده‌شده، نرخ \lr{Weak GLLP}، $\Delta$ و اطلاعات \lr{solver}. این فیلد برای \lr{debugging} و بازبینی امنیتی ضروری است.
+	\item \lr{\texttt{error\_codes}}: لیستی از کدهای خطا (مانند \lr{\texttt{INSUFFICIENT\_STATISTICS}}) که در صورت بروز مشکل، علت آن را نشان می‌دهند.
+	\item \lr{\texttt{weak\_gllp\_rate}} و \lr{\texttt{tagged\_fraction\_bound}}: فیلدهای اضافی که در صورت استفاده از حالت \lr{Weak GLLP}، اطلاعات بیشتری ارائه می‌دهند.
+\end{enumerate}
+
+علاوه بر \lr{\texttt{KeyCalculationResult}}، متد \lr{\texttt{estimate\_yields\_and\_errors}} یک شیء \lr{\texttt{DecoyEstimates}} (یا \lr{\texttt{DecoyEstimatesWang2005}} در ماژول \lr{wang2005.py}) را برمی‌گرداند که شامل $Y_1^L$، $e_1^U$، \lr{\texttt{is\_feasible}}، \lr{\texttt{failure\_prob\_used}} و \lr{\texttt{diagnostics}} است. این شیء برای کاربرانی که می‌خواهند تخمین‌های میانی را بدون محاسبه کامل طول کلید بررسی کنند، مفید است.
+
+\subsection{وابستگی‌های داخلی و خارجی}
+
+هر دو ماژول وابستگی‌های داخلی و خارجی متعددی دارند. وابستگی‌های داخلی شامل موارد زیر است:
+
+\begin{itemize}
+	\item \lr{\texttt{qkd.proofs.base}}: کلاس پایه \lr{\texttt{FiniteKeyProof}}، \lr{\texttt{DecoyEstimates}}، \lr{\texttt{KeyCalculationResult}}، \lr{\texttt{SolverDiagnostics}} و \lr{\texttt{ErrorCode}} از این ماژول وارد می‌شوند. این کلاس پایه رابط عمومی و خدمات مشترک مانند آنتروپی باینری، \lr{clamp} عددی و گزارش‌گیری \lr{audit} را فراهم می‌سازد.
+	\item \lr{\texttt{qkd.proofs.utils\_lp}}: تابع \lr{\texttt{solve\_lp}} برای حل مسأله برنامه‌ریزی خطی در کلاس \lr{\texttt{Ma2005GeneralMultiDecoyProof}} وارد می‌شود. این تابع از \lr{scipy.optimize.linprog} یا \lr{cvxopt} به عنوان \lr{solver} زیرین استفاده می‌کند.
+	\item \lr{\texttt{qkd.datatypes}}: \lr{\texttt{TallyCounts}}، \lr{\texttt{EpsilonAllocation}}، \lr{\texttt{SourceStatisticsType}} و \lr{\texttt{ConfidenceBoundMethod}} از این ماژول وارد می‌شوند. \lr{\texttt{SourceStatisticsType}} یک \lr{enum} است که مقادیر \lr{POISSON} و \lr{THERMAL} را دارد و \lr{\texttt{ConfidenceBoundMethod}} یک \lr{enum} است که روش‌های فاصله اطمینان را مشخص می‌کند.
+	\item \lr{\texttt{qkd.exceptions}}: استثناهای سفارشی \lr{\texttt{ConfigurationError}}، \lr{\texttt{LPFailureError}} و \lr{\texttt{ParameterValidationError}} برای گزارش خطاهای ساختاریافته.
+	\item \lr{\texttt{qkd.utils.math}}: تابع \lr{\texttt{binary\_entropy}} برای محاسبه آنتروپی باینری $H_2(p) = -p \log_2 p - (1 - p) \log_2 (1 - p)$.
+	\item \lr{\texttt{qkd.params.QKDParams}}: کلاس پارامترهای QKD که شامل تمام پارامترهای پیکرببری سیستم است.
+\end{itemize}
+
+وابستگی‌های خارجی شامل \lr{\texttt{numpy}} برای محاسبات برداری در مسیر \lr{LP}، \lr{\texttt{math}} برای توابع ریاضی پایه (مانند \lr{\texttt{exp}}، \lr{\texttt{log}}، \lr{\texttt{factorial}}) و \lr{\texttt{logging}} برای ثبت رویدادها و هشدارها هستند.
+
+\subsection{جریان داده در سراسر فریم‌ورک}
+
+جریان داده کلی به این شکل است:
+\begin{enumerate}
+	\item لایه شبیه‌ساز پالس‌های نوری را با شدت‌های $\mu$ (سیگنال)، $\nu$ (\lr{decoy} ضعیف) و 0 (خلأ) تولید و از کانال کوانتومی عبور می‌دهد.
+	\item آشکارسازها در سمت باب، آشکارسازی‌ها و خطاها را برای هر شدت ثبت کرده و در \lr{\texttt{TallyCounts}} ذخیره می‌کنند.
+	\item این شمارش‌ها به صورت یک دیکشنری \lr{\texttt{stats\_map}} با کلیدهای نام شدت به اثبات امنیتی داده می‌شوند.
+	\item متد \lr{\texttt{allocate\_epsilons}} در زمان ساخت شیء فراخوانی می‌شود و بودجه $\varepsilon$ را میان اجزای مختلف تقسیم می‌کند.
+	\item متد \lr{\texttt{estimate\_yields\_and\_errors}} با دریافت \lr{\texttt{stats\_map}}، کران‌های $Y_1^L$ و $e_1^U$ را با استفاده از فرمول‌های تحلیلی یا \lr{LP} محاسبه می‌کند.
+	\item متد \lr{\texttt{calculate\_key\_length}} با دریافت تخمین‌ها و \lr{\texttt{stats\_map}}، نرخ کلید را با فرمول \lr{GLLP} محاسبه می‌کند و یک شیء \lr{\texttt{KeyCalculationResult}} برمی‌گرداند.
+	\item لایه بالایی می‌تواند با متدهای \lr{\texttt{explain\_key\_decision}} و \lr{\texttt{audit\_dump}} (از کلاس پایه) علت نتیجه را به صورت متنی دریافت کند و یک گزارش کامل برای بازبینی امنیتی تولید کند.
+\end{enumerate}
+
+این جداسازی مراحل به گونه‌ای طراحی شده که هر مرحله قابل آزمایش و بازبینی مستقل باشد. به عنوان مثال، می‌توان \lr{\texttt{DecoyEstimates}} را به صورت دستی ساخت و رفتار مرحله نهایی محاسبه کلید را در شرایط خاص بررسی کرد. این ماژول‌بندی از اصل \lr{Single Responsibility} پیروی می‌کند و قابلیت نگهداری و توسعه کد را به طور قابل توجهی افزایش می‌دهد. علاوه بر این، شفافیت کامل در \lr{diagnostics} به کاربر اجازه می‌دهد هر مرحله از محاسبه را ردیابی کرده و در صورت نیاز، فرضیات تئوریک را برای کاربرد خاص خود بازبینی کند.
+
+\subsection{انتخاب میان \lr{Ma 2005} و \lr{Wang 2008}}
+
+یکی از تصمیمات مهم در استفاده از این فریم‌ورک، انتخاب میان ماژول \lr{ma2005.py} و \lr{wang2005.py} است. این انتخاب بر اساس شرایط واقعی منبع نوری انجام می‌شود:
+
+\begin{itemize}
+	\item اگر منبع ایده‌آل باشد (یعنی \lr{coherent state} با شدت دقیقاً مشخص و بدون نوسان)، ماژول \lr{ma2005.py} با یکی از پنج کلاس (مثلاً \lr{\texttt{Ma2005VacuumWeakProof}}) کافی است و نرخ کلید بالاتری تولید می‌کند زیرا فرض‌های سخت‌گیرانه‌تری دارد.
+	\item اگر منبع دارای نوسان شدت یا انحراف از حالت \lr{coherent} باشد، ماژول \lr{wang2005.py} باید استفاده شود زیرا این نوسانات را در فرمول‌های کران لحاظ می‌کند. استفاده از \lr{ma2005.py} در این حالت می‌تواند منجر به کران‌های خوش‌بینانه (ناامن) شود.
+	\item اگر تعداد \lr{decoy}‌ها بیش از دو باشد، تنها \lr{\texttt{Ma2005GeneralMultiDecoyProof}} از ماژول \lr{ma2005.py} قابل استفاده است (زیرا \lr{wang2005.py} فقط پروتکل \lr{Vacuum + Weak} را پشتیبانی می‌کند).
+	\item اگر منبع از نوع \lr{Thermal} باشد، تنها \lr{\texttt{Ma2005GeneralMultiDecoyProof}} قابل استفاده است (سایر کلاس‌ها در صورت \lr{Thermal} بودن، استثنای \lr{\texttt{ConfigurationError}} \lr{raise} می‌کنند).
+	\item اگر کاربر بخواهد حد نظری \lr{Infinite Decoy} را به عنوان مرجع بالای عملکرد محاسبه کند، \lr{\texttt{Ma2005AsymptoticProof}} مناسب است.
+\end{itemize}
+
+این انعطاف‌پذیری در انتخاب، به کاربر اجازه می‌دهد تحلیل امنیتی متناسب با شرایط خاص سیستم خود را انتخاب کند و در عین حال، از کران‌های قابل اثبات ریاضی بهره‌مند شود. طراحی ماژولار همچنین اجازه می‌دهد در آینده، چارچوب‌های جدید (مانند \lr{Lim 2014} یا اثبات‌های مبتنی بر \lr{MDI-QKD}) به سادگی با ارث‌بری از \lr{\texttt{FiniteKeyProof}} اضافه شوند بدون آن‌که کد موجود تغییر کند.

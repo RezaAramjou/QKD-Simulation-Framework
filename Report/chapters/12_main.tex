@@ -1,0 +1,760 @@
+\sloppy
+\emergencystretch=5em
+\hbadness=10000
+\vbadness=10000
+\tolerance=2000
+
+\providecolor{codebg}{RGB}{248,248,248}
+\providecolor{codeframe}{RGB}{200,200,200}
+\providecolor{keyword}{RGB}{0,0,180}
+\providecolor{string}{RGB}{163,21,21}
+\providecolor{comment}{RGB}{0,128,0}
+
+\lstset{
+	backgroundcolor=\color{codebg},
+	frame=single,
+	rulecolor=\color{codeframe},
+	language=Python,
+	basicstyle=\ttfamily\scriptsize,
+	keywordstyle=\color{keyword}\bfseries,
+	stringstyle=\color{string},
+	commentstyle=\color{comment}\itshape,
+	showstringspaces=false,
+	breaklines=true,
+	breakatwhitespace=true,
+	numbers=left,
+	numberstyle=\tiny\color{gray},
+	numbersep=8pt,
+	tabsize=4,
+	literate=
+	{ف}{{{\bfseries\itshape ف}}}1
+	{ی}{{{\bfseries\itshape ی}}}1
+}
+
+\section{نمای کلی و هدف ماژول}
+
+ماژول \lr{\texttt{main\_optimized.py}} هسته‌ی مرکزی فریم‌ورک شبیه‌سازی \lr{QKD} است و نقش \emph{هماهنگ‌کننده‌ی سرتاسری} (\lr{end-to-end orchestrator}) را در معماری کلی ایفا می‌کند. این ماژول در نسخه‌ی فعلی (نسخه‌ی بازنویسی‌شده با نشانگرهای \lr{F-01} تا \lr{F-29}) از یک اسکریپت ساده‌ی پیمایش \lr{Monte-Carlo} به یک \lr{pipeline} بالغ با قابلیت‌های زیر ارتقا یافته است: پشتیبانی کامل از حالت \lr{DWDM} (\lr{Dense Wavelength Division Multiplexing}) با تزریق نویز \lr{Raman}، بهینه‌سازی خودکار پارامترهای پالس به ازای هر فاصله با \lr{SLSQP}، الگوی استاندارد \lr{SimParams} برای جداسازی داده‌های اعتبارسنجی‌شده از پیکربندی خام، و یک لایه‌ی خطا‌‌نگاری یکپارچه بر پایه‌ی سلسله‌مراتب استثناهای \lr{QKDException}.
+
+هدف اصلی این ماژول، پاسخ به پرسش بنیادین زیر است: \emph{چگونه می‌توان طیف وسیعی از پارامترهای فیزیکی (فاصله، شدت پالس، بازده آشکارساز، نویز دارک کانت، نویز \lr{Raman} در \lr{DWDM}، و...) را به‌صورت سیستماتیک در یک شبیه‌سازی موازی پویش (\lr{sweep}) نمود و نتایج را به‌صورت یک فایل \lr{CSV} ساختارمند با ستون‌های ثابت و قابل ممیزی ثبت کرد؟} این پرسش به سه دلیل اهمیت دارد. نخست، در شبیه‌سازی‌های علمی \lr{QKD}، نیاز به پیمایش صدها یا هزاران ترکیب پارامتر برای رسم منحنی‌های نرخ کلید-فاصله یا مقایسه‌ی پروتکل‌ها، امری روزمره است. دوم، موازی‌سازی با \lr{ProcessPoolExecutor} نیازمند مدیریت دقیق \lr{state} هر کارگر، بذرگیری مستقل آماری، و الگوی \lr{lazy rebuild} برای جلوگیری از بازسازی اشیای سنگین فیزیکی در هر تکرار است. سوم، خروجی \lr{CSV} باید ساختار یکسانی برای همه‌ی ردیف‌ها (چه موفق و چه خطا) داشته باشد تا ابزارهای تحلیل بعدی (\lr{pandas}، \lr{R}) بتوانند آن را به‌درستی پردازش کنند.
+
+ساختار کلی این ماژول در نسخه‌ی جدید شامل چندین لایه‌ی منطقی است. لایه‌ی پیکربندی شامل \lr{\texttt{DEFAULT\_CONFIG}} (دیکشنری تودرتوی پیش‌فرض) و \lr{\texttt{DEFAULT\_SWEEPS}} (تعریف پیمایش‌های رایج، اکثراً \lr{comment} شده) است. لایه‌ی \lr{adapter} توابع \lr{\texttt{build\_*}} را در بر می‌گیرد که از پیکربندی خام، اشیای \lr{dataclass} اعتبارسنجی‌شده می‌سازند. لایه‌ی \lr{SimParams} شامل \lr{\texttt{build\_channel\_sim\_params}}، \lr{\texttt{build\_source\_sim\_params}}، \lr{\texttt{build\_detector\_sim\_params}} است که داده‌های اعتبارسنجی‌شده‌ی \lr{frozen} را برای حلقه‌ی شبیه‌سازی فراهم می‌سازند. لایه‌ی \lr{worker} شامل کلاس \lr{\texttt{\_WorkerState}} و توابع \lr{\texttt{init\_worker}} و \lr{\texttt{run\_single\_simulation}} است. لایه‌ی \lr{orchestrator} تابع \lr{\texttt{run\_and\_save\_csv}} را در بر می‌گیرد که کارهای شبیه‌سازی را تولید کرده و آن‌ها را به \lr{\texttt{dispatch\_work\_items}} (در ماژول جداگانه‌ی \lr{\texttt{main\_optimized\_dispatch}}) ارسال می‌نماید.
+
+ویژگی‌های برجسته‌ی نسخه‌ی جدید عبارت‌اند از: (۱) الگوی \lr{SimParams} که خواندن مستقیم از \lr{config dict} در حلقه‌ی شبیه‌سازی را حذف کرده و داده‌های اعتبارسنجی‌شده را از اشیای \lr{frozen} می‌خواند؛ (۲) پشتیبانی کامل از \lr{DWDM} با تزریق نویز \lr{Raman} به دو مسیر مستقل (مسیر \lr{Monte-Carlo} آشکارساز و مسیر اثبات امنیتی \lr{Lim2014})؛ (۳) بهینه‌سازی خودکار پارامترهای پالس با کش per-(\lr{combo}, \lr{distance}) برای اشتراک پارامترهای بهینه بین ردیف‌های \lr{noise=True} و \lr{noise=False}؛ (۴) الگوی استاندارد خطا‌‌نگاری با \lr{\texttt{\_as\_qkd\_exception}} و \lr{\texttt{\_log\_qkd\_exception}} که همه‌ی \lr{catch-block}ها را به یک الگوی واحد تبدیل می‌کند؛ (۵) الگوی \lr{from\_config\_dict} برای آشکارساز که تمام پارامترها را در یک گام اعتبارسنجی می‌کند و نیاز به \lr{setattr} پس از ساخت را حذف می‌نماید؛ (۶) افزودن ستون \lr{analytic\_rogers\_sbr} به \lr{CSV} برای مقایسه‌ی مستقیم \lr{Monte-Carlo} با فرمول بسته‌ی \lr{Rogers et al. (2007)}؛ (۷) ستون‌های \lr{params\_*} برای ممیزی \lr{DWDM}؛ (۸) ستون‌های \lr{det\_override\_*} برای ممیزی \lr{override}های آشکارساز.
+
+در سطح عملیاتی، این ماژول به‌عنوان \lr{entry point} اصلی فریم‌ورک عمل می‌کند و از طریق \lr{argparse} یک \lr{CLI} غنی با بیش از ۳۰ گزینه ارائه می‌نماید. کاربر می‌تواند با خط فرمان، پروتکل (\lr{BB84Decoy}، \lr{B92}، \lr{MDI}، \lr{RedundantTransmission})، اثبات امنیتی (\lr{Lim2014}، \lr{Ma2005}، \lr{Wang2005}، \lr{Tight})، پارامترهای فیزیکی (فاصله، بازده، نویز)، پارامترهای امنیتی (\lr{epsilons})، حالت \lr{DWDM} (با تعداد کانال، توان لانچ، ضریب \lr{Raman})، و بهینه‌سازی خودکار پالس را پیکربندی نماید. خروجی در فایل \lr{\texttt{qkd\_results\_optimized\_sweep.csv}} ذخیره می‌شود و شامل ستون‌های ثابت برای مسیر موفق و مسیر خطا است (الگوی \lr{F-07}).
+
+\section{مبانی تئوری و فیزیکی}
+
+\subsection{ساختار پیکربندی سلسله‌مراتبی و اصل Single Source of Truth}
+
+پیکربندی فریم‌ورک در یک دیکشنری تودرتوی چهار سطحی سازماندهی شده است: \lr{\texttt{protocol\_params}} (نوع پروتکل و آشکارساز)، \lr{\texttt{protocol\_runtime}} (کلاس پروتکل، احتمال پایه، خط‌مشی کلیک دوگانه، پرچم‌های انکودر/دیکودر درهم‌تنیده)، \lr{\texttt{channel}} (کاهیدگی فیبر، پاشش)، \lr{\texttt{detector}} (بازده، نرخ دارک کانت، \lr{QBER} ذاتی، نامساوی، \lr{dead time}، \lr{jitter}، \lr{afterpulse}، دما، ولتاژ بایاس)، \lr{\texttt{source}} (کلاس منبع، توزیع آماری، مدل خطا، شدت پالس‌ها، \lr{MZM}، نویز الکتریکی، \lr{security\_metadata})، \lr{\texttt{protocol}} (تخصیص \lr{epsilon})، و \lr{\texttt{simulation}} (بذر، \lr{log-range} پالس، بازه فاصله). این سلسله‌مراتب امکان پیکربندی دقیق هر لایه‌ی فیزیکی را فراهم می‌سازد.
+
+با این حال، در نسخه‌ی جدید، اصل \emph{Single Source of Truth} به‌طور جدی اعمال شده است. به‌جای خواندن مستقیم از \lr{config dict} در حلقه‌ی شبیه‌سازی (که ممکن است ناسازگار با اشیای اعتبارسنجی‌شده باشد)، توابع \lr{\texttt{build\_*}} اشیای \lr{dataclass} می‌سازند و سپس توابع \lr{\texttt{build\_*\_sim\_params}} اشیای \lr{SimParams} \lr{frozen} را از آن‌ها استخراج می‌کنند. حلقه‌ی شبیه‌سازی فقط از \lr{SimParams} می‌خواند. این الگو تضمین می‌کند که اگر کاربر پیکربندی را با \lr{sweep} تغییر دهد، تمام مقادیر اعتبارسنجی شده و سپس به حلقه ارسال شوند.
+
+\subsection{تخصیص بودجه امنیتی $\varepsilon$ و Composable Security}
+
+در رمزنگاری کوانتومی مدرن، امنیت به‌صورت \lr{composable} تعریف می‌شود؛ یعنی مجموع احتمال شکست امنیتی باید کم‌تر از یک بودجه‌ی کل $\varepsilon_{\text{total}}$ باشد. این بودجه بین چندین مرحله تقسیم می‌شود:
+
+\begin{equation}
+	\varepsilon_{\text{total}} = \varepsilon_{\text{sec}} + \varepsilon_{\text{cor}} + \varepsilon_{\text{pe}} + \varepsilon_{\text{smooth}} + \varepsilon_{\text{pa}} + \varepsilon_{\text{phase\_est}}
+\end{equation}
+
+در این رابطه، $\varepsilon_{\text{sec}}$ امنیت کلی، $\varepsilon_{\text{cor}}$ تصحیح خطا، $\varepsilon_{\text{pe}}$ تخمین پارامتر، $\varepsilon_{\text{smooth}}$ هموارسازی، $\varepsilon_{\text{pa}}$ تقویت حریم خصوصی، و $\varepsilon_{\text{phase\_est}}$ تخمین خطای فاز است. تابع \lr{\texttt{build\_epsilon\_allocation}} این مقادیر را از پیکربندی می‌خواند و اعتبارسنجی می‌نماید که همگی مثبت باشند و مجموعشان کم‌تر از $1$ باشد. در صورت نقض، \lr{\texttt{ParameterValidationError}} پرتاب می‌شود.
+
+\subsection{فیزیک دارک کانت و فرض Appendix B مقالۀ Lim 2014}
+
+در مقاله‌ی \lr{Lim et al. 2014} (\lr{PhysRevA.89.022307})، \lr{Appendix B} به‌صراحت فرض می‌کند که \emph{«مشارکت‌های واکوئم هیچ اطلاعاتی درباره‌ی مقادیر بیت انتخابی ندارند و بیت‌ها به‌طور یکنواخت توزیع شده‌اند.»} این فرض، توجیه می‌کند که رویدادهای واکوئم در فرمول طول کلید (معادله‌ی ۱) اعتبار آنتروپی کامل دریافت می‌کنند بدون آنکه نیاز به کسر $h(\cdot)$ باشد.
+
+از نظر فیزیکی، آشکارسازی واکوئم در واقع دارک کانت است: آشکارساز به‌صورت خود به خودی کلیک می‌کند و مقدار بیت که \lr{Bob} تخصیص می‌دهد، به‌طور یکنواخت تصادفی در $\{0, 1\}$ است. بنابراین، \lr{QBER} \emph{اندازه‌گیری‌شده} روی پالس‌های واکوئم باید حدود $50\%$ باشد، نه \lr{QBER} ذاتی آشکارساز ($\sim 1\%$). در کد، دو بلاک توضیحی (در خطوط ۱۲۵۳–۱۲۹۶ و ۱۲۹۸–۱۳۲۶) این موضوع را به‌تفصیل شرح می‌دهند. باگ در \lr{qkd.detectors} باعث می‌شود \lr{QBER} واکوئم $\sim 1\%$ باشد که فرض \lr{Appendix B} را نقض می‌کند. در نسخه‌ی فعلی، اصلاح در سطح مرز \lr{stats-map} به‌صورت یک \lr{workaround} اعمال شده و توابع \lr{\texttt{correct\_vacuum\_qber\_for\_proof}} و \lr{\texttt{correct\_signal\_decoy\_qber\_for\_proof}} (که در نسخه‌ی قبلی وجود داشتند) به‌صورت comment یا placeholder باقی مانده‌اند. این موضوع در بخش \ref{sec:csv_row} به‌تفصیل بررسی می‌شود.
+
+\subsection{مدل فیزیکی QBER سیگنال و دکوی}
+
+\lr{QBER} (\lr{Quantum Bit Error Rate}) سیگنال و دکوی از ترکیب خطای ذاتی سیستم و نویز دارک کانت به دست می‌آید. در حالت ایده‌آل، \lr{QBER} متوسط برابر است با:
+
+\begin{equation}
+	E_\mu = \frac{e_d \cdot P_{\text{real}} + 0.5 \cdot P_{\text{dark}}}{P_{\text{real}} + P_{\text{dark}}}
+\end{equation}
+
+در این رابطه، $e_d$ خطای ذاتی (مجموع \lr{qber\_intrinsic} و \lr{misalignment})، $P_{\text{real}} = 1 - \exp(-\mu \cdot \eta_{\text{det}} \cdot \eta_{\text{channel}})$ احتمال کلیک فوتون واقعی (مدل \lr{Poisson} + بازده)، و $P_{\text{dark}} = 1 - (1 - Y_0 \cdot \Delta t)^2$ احتمال کلیک دارک کانت (دو آشکارساز) است. در کد، بلاک توضیحی در خطوط ۱۲۹۸–۱۳۲۶ این مدل را شرح می‌دهد و نشان می‌دهد که باگ \lr{qkd.detectors} باعث می‌شود \lr{QBER} سیگنال در فاصله‌ی صفر به‌جای $\sim 0.015$ به $\sim 0.235$ برسد.
+
+\subsection{تئوری Rogers et al. (2007) برای نرخ بیت sifted}
+
+\lr{Rogers, Bienfang, Nakassis, Xu \& Clark (2007)} فرمول بسته‌ای برای نرخ بیت \lr{sifted} در سیستم \lr{BB84} تحت اثر \lr{dead time} استخراج کرده‌اند. معادله‌ی کلیدی (معادله‌ی ۱۵ مقاله) به‌صورت زیر است:
+
+\begin{equation}
+	\text{SBR} = \rho_{\text{TX}} \cdot 8 \cdot p \cdot P_{00}(p, k) \cdot S(p, k)
+\end{equation}
+
+در این رابطه، $\rho_{\text{TX}}$ نرخ ارسال (هرتز)، $p = L/8$ احتمال کلیک به ازای هر آشکارساز در هر چرخه (که در آن $L$ احتمال آشکارسازی یک فوتون از \lr{Alice} در \lr{Bob} است)، $k = \rho_{\text{TX}} \cdot \tau$ تعداد دوره‌های ارسال در هر \lr{dead time} (که در آن $\tau$ زمان مرده است)، $P_{00}$ احتمال حالت پایدار که هر دو آشکارساز در یک پایه زنده باشند (معادله‌ی ۸)، و $S(p, k)$ احتمال \lr{sifting} (معادله‌ی ۹) است.
+
+تابع \lr{\texttt{\_compute\_rogers\_analytic\_sbr}} این فرمول را پیاده‌سازی می‌کند و از \lr{\texttt{link\_efficiency}} از \lr{qkd.channel} برای محاسبه‌ی $L = \eta_{\text{ch}} \cdot \eta_{\text{det}} \cdot \eta_{\text{coup}}$ استفاده می‌نماید. خروجی این تابع به‌عنوان ستون \lr{\texttt{analytic\_rogers\_sbr}} در \lr{CSV} ثبت می‌شود تا کاربر بتواند مستقیماً \lr{Monte-Carlo} را با منحنی بسته‌ی مقاله (شکل‌های ۳–۵) مقایسه کند.
+
+\subsection{تئوری Dead Time آشکارساز: Non-Paralyzable}
+
+مدل \lr{Non-Paralyzable} برای \lr{dead time} آشکارساز \lr{SPAD} به این معناست که پس از هر کلیک، آشکارساز برای مدت $\tau$ غیرفعال می‌شود و کلیک‌های در این بازه به‌طور کامل نادیده گرفته می‌شوند (نه این که زمان مرده را تمدید کنند). نرخ کلیک اندازه‌گیری‌شده $R_{\text{meas}}$ با نرخ واقعی $R_{\text{real}}$ رابطه‌ی زیر را دارد:
+
+\begin{equation}
+	R_{\text{meas}} = \frac{R_{\text{real}}}{1 + R_{\text{real}} \cdot \tau}
+\end{equation}
+
+در نسخه‌ی جدید، \lr{DeadTimeModel.PARALYZABLE} به‌عنوان \lr{deprecated} علامت‌گذاری شده (طبق \lr{Rogers et al.}) و \lr{ROGERS\_2007\_POLICY} به‌عنوان \lr{sentinel string} برای فعال‌سازی خط‌مشی \lr{sequence-collapsing sifting} معرفی شده است. این خط‌مشی در سطح پایه (نه آشکارساز) عمل می‌کند و حداکثر یک بیت \lr{sifted} به ازای هر دنباله‌ی آشکارسازی که \lr{dead time} را پوشش می‌دهد، تولید می‌کند.
+
+\subsection{مدل Afterpulse آشکارساز}
+
+\lr{Afterpulse} پدیده‌ای است که در آن یک کلیک واقعی باعث تولید کلیک‌های کاذب بعدی در آشکارساز می‌شود. دو مدل اصلی وجود دارد: \lr{Exponential} (که در آن احتمال \lr{afterpulse} با زمان به‌صورت نمایی کاهش می‌یابد) و \lr{Geometric} (که در آن احتمال در هر دوره‌ی ارسال ثابت است). در پیکربندی پیش‌فرض، مدل \lr{Exponential} با احتمال $0.001$ و طول عمر $10$ نانوثانیه به‌کار رفته است.
+
+\subsection{نویز Raman در DWDM و مدل فیزیکی}
+
+در حالت \lr{DWDM}، چندین کانال کلاسیک در کنار کانال کوانتومی در یک فیبر منتقل می‌شوند. پراکندگی \lr{Raman} باعث می‌شود فوتون‌های کانال‌های کلاسیک به طول‌موج کانال کوانتومی پخش شوند و نویز پس‌زمینه ایجاد نمایند. طبق \lr{Lim2014 Section IV}، نرخ فوتون‌های \lr{Raman} به‌صورت زیر مدل می‌شود:
+
+\begin{equation}
+	P_{\text{Raman}} = P_{\text{launch}} \cdot (N - 1) \cdot \gamma_{\text{Raman}} \cdot L_{\text{eff}}
+\end{equation}
+
+در این رابطه، $P_{\text{launch}} = 10^{P_{\text{dBm}}/10} \times 10^{-3}$ توان لانچ هر کانال (وات)، $N$ تعداد کانال‌های کلاسیک، $\gamma_{\text{Raman}}$ ضریب پراکندگی \lr{Raman}، و $L_{\text{eff}} = (1 - e^{-\alpha L}) / \alpha$ طول مؤثر غیرخطی است (که در آن $\alpha = \alpha_{\text{dB/km}} \cdot 0.23026$ نپر بر کیلومتر). نرخ فوتون به ازای هرتز با تقسیم بر انرژی فوتون $E_{\text{ph}} = hc/\lambda$ به دست می‌آید:
+
+\begin{equation}
+	R_{\text{Raman}} = \frac{P_{\text{Raman}}}{E_{\text{photon}}}
+\end{equation}
+
+تابع \lr{\texttt{\_compute\_raman\_dark\_rate\_hz}} این محاسبه را پیاده‌سازی می‌کند و خروجی را به‌صورت نرخ دارک کانت معادل (هرتز) برمی‌گرداند. این مقدار سپس به \lr{\texttt{detector\_run.dark\_rate}} و \lr{\texttt{params.detector.dark\_rate}} تزریق می‌شود.
+
+\subsection{بهینه‌سازی پارامترهای پالس با GLLP}
+
+هنگامی که پرچم \lr{\texttt{-{}-auto-optimize-pulses}} فعال است، به ازای هر (\lr{combo}, \lr{distance})، پارامترهای $\mu$ (شدت سیگنال)، $\nu$ (شدت دکوی)، $p_s$ (احتمال سیگنال)، $p_d$ (احتمال دکوی)، و $p_v$ (احتمال واکوئم) با \lr{SLSQP} بهینه می‌شوند. تابع هدف، نرخ کلید مجانبی \lr{GLLP} با جریمه‌ی متناهی است:
+
+\begin{equation}
+	R = q_{\text{sift}} \cdot \left[ Q_1 \cdot (1 - H_2(e_1)) - Q_\mu \cdot f_{\text{EC}} \cdot H_2(E_\mu) \right] - \text{finite-size penalty}
+\end{equation}
+
+این بهینه‌سازی در ماژول \lr{\texttt{qkd.proofs.optimization}} پیاده‌سازی شده و \lr{\texttt{main\_optimized}} فقط یک \lr{thin wrapper} به نام \lr{\texttt{\_optimize\_pulses\_for\_distance}} ارائه می‌دهد. پارامترهای بهینه در \lr{\texttt{\_ws.optimized\_params}} کش می‌شوند تا ردیف‌های \lr{noise=True} و \lr{noise=False} در همان (\lr{combo}, \lr{distance}) از پارامترهای یکسان استفاده کنند.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+
+\subsection{DEFAULT\_CONFIG و DEFAULT\_SWEEPS}
+
+\lr{\texttt{DEFAULT\_CONFIG}} یک دیکشنری تودرتوی با هفت بخش است که در خطوط ۱۱۸–۲۰۳ تعریف شده است. هر بخش مجموعه‌ای از پارامترهای پیش‌فرض را در بر می‌گیرد. در نسخه‌ی جدید، چندین تغییر کلیدی اعمال شده: \lr{\texttt{error\_correction\_efficiency}} از $1.1$ به $1.16$ افزایش یافته (مطابق مقادیر عملی \lr{LDPC})، \lr{\texttt{dark\_rate}} به $10^{-6}$ تنظیم شده، \lr{\texttt{dark\_rate\_d1}} به $2 \times 10^{-6}$ (نامتقارن)، \lr{\texttt{dead\_time\_ns}} به $10.0$ نانوثانیه، \lr{\texttt{jitter\_fwhm\_ns}} به $0.050$ نانوثانیه، و \lr{\texttt{afterpulse\_prob}} به $0.001$.
+
+\lr{\texttt{DEFAULT\_SWEEPS}} در خطوط ۲۰۹–۲۴۵ تعریف شده و اکثراً به‌صورت \lr{comment} است. این طراحی عمدی است: کاربر می‌تواند با \lr{uncomment} کردن خطوط مورد نظر، پیمایش‌های رایج را فعال کند. یک کامنت مهم در خطوط ۲۳۰–۲۳۶ توضیح می‌دهد که \lr{DeadTimeModel.PARALYZABLE} به‌عنوان \lr{deprecated} علامت‌گذاری شده و به‌جای آن، \lr{ROGERS\_2007\_POLICY} به sweep اضافه شده است.
+
+\subsection{الگوی Adapter: توابع build\_*}
+
+توابع \lr{\texttt{build\_*}} به‌عنوان \lr{adapter} بین پیکربندی خام (دیکشنری) و اشیای \lr{dataclass} اعتبارسنجی‌شده عمل می‌کنند. این الگو چندین مزیت دارد: نخست، جداسازی \lr{concern}ها (پیکربندی در برابر اعتبارسنجی در برابر ساخت شیء)؛ دوم، امکان \lr{test} مستقل هر \lr{adapter}؛ سوم، مهاجرت تدریجی از \lr{dict} به \lr{typed object} (طبق \lr{TODO F-25}). توابع کلیدی عبارت‌اند از:
+
+\lr{\texttt{build\_optical\_source\_config}}: از \lr{config["source"]} یک \lr{\texttt{OpticalSourceConfig}} می‌سازد. در نسخه‌ی جدید، \lr{\texttt{source\_rate}} از \lr{\texttt{pulse\_period\_ns}} استنتاج می‌شود (یا برعکس) چون \lr{\texttt{OpticalSourceConfig}} \lr{\texttt{pulse\_period\_ns}} را به‌عنوان \lr{@property} از \lr{\texttt{source\_rate}} محاسبه می‌کند. این استنتاج در خطوط ۵۲۲–۵۳۱ پیاده‌سازی شده و در صورت فقدان هر دو، \lr{\texttt{ConfigurationError}} پرتاب می‌شود.
+
+\lr{\texttt{build\_intensity\_config}}: یک \lr{adapter} قدیمی است که فرض می‌کند دقیقاً ۳ نوع پالس (\lr{signal}، \lr{decoy}، \lr{vacuum}) با نام‌های ثابت وجود دارد. در نسخه‌ی جدید، تابع \lr{\texttt{build\_intensity\_config\_from\_source}} به‌عنوان مسیر ترجیحی معرفی شده که از \lr{\texttt{source.intensity\_config}} استفاده می‌کند و از جستجوی مبتنی بر نقش (یافتن \lr{"signal"} با نام، نه ایندکس) پشتیبانی می‌نماید.
+
+\lr{\texttt{build\_detector}}: در نسخه‌ی جدید کاملاً بازنویسی شده است. رویکرد قدیمی (حذف شده) شامل دو مرحله بود: (۱) \lr{\texttt{build\_detection\_config}} که فقط ۳ فیلد داشت و (۲) \lr{\texttt{from\_config}} + ۱۰ \lr{setattr} برای پارامترهای از دست رفته. رویکرد جدید از \lr{\texttt{\_build\_detector\_config\_dict}} برای ساخت یک دیکشنری تخت با تمام پارامترها استفاده می‌کند و سپس \lr{\texttt{SinglePhotonDetector.from\_config\_dict}} را فراخوانی می‌نماید که در یک گام اعتبارسنجی کامل انجام می‌دهد.
+
+\subsection{تابع parse\_enum و یکپارچه‌سازی Enum}
+
+تابع \lr{\texttt{parse\_enum}} در خطوط ۳۳۲–۳۵۵ پیاده‌سازی شده و یک \lr{adapter} برای تبدیل رشته‌ها به اعضای \lr{Enum} است. این تابع ابتدا بررسی می‌کند که آیا مقدار از قبل عضو \lr{Enum} است (در این صورت بدون تغییر برمی‌گردد)، سپس رشته را با \lr{strip} و \lr{upper}/\lr{lower} نرمال‌سازی می‌کند و با نام و مقدار اعضای \lr{Enum} مقایسه می‌نماید. در صورت عدم تطابق، \lr{\texttt{ParameterValidationError}} با فهرست مقادیر معتبر پرتاب می‌شود.
+
+یک مورد خاص در \lr{\texttt{normalize\_detector\_config}} (خط ۳۵۷) وجود دارد: \lr{\texttt{ROGERS\_2007\_POLICY}} به‌عنوان \lr{sentinel string} (نه عضو \lr{Enum}) تعریف شده و در صورت مشاهده، بدون تغییر عبور می‌کند (\lr{pass through}). این طراحی به این دلیل است که \lr{DoubleClickPolicy} در \lr{qkd.datatypes} تعریف شده و ما عمداً آن را تغییر نمی‌دهیم.
+
+\subsection{کلاس \_WorkerState و الگوی State Encapsulation}
+
+کلاس \lr{\texttt{\_WorkerState}} در خطوط ۱۳۶۶–۱۴۰۵ تعریف شده و \lr{state} mutable هر کارگر را در یک شیء واحد کپسوله می‌کند. این الگو (طبق \lr{F-03}) جایگزین متغیرهای سراسری ماژول شده است. هر فرآیند کارگر نسخه‌ی خود را از طریق \lr{\texttt{init\_worker}} دریافت می‌کند و این شیء بین فرآیندها به اشتراک گذاشته نمی‌شود.
+
+\lr{\texttt{\_WorkerState}} از \lr{\texttt{\_\_slots\_\_}} استفاده می‌کند که در پایتون، حافظه‌ی کم‌تری مصرف می‌کند و دسترسی به ویژگی‌ها را سریع‌تر می‌سازد. اسلات‌های کلیدی عبارت‌اند از: \lr{\texttt{base\_config}}، \lr{\texttt{combo\_map}}، \lr{\texttt{last\_combo\_idx}} (برای \lr{lazy rebuild})، \lr{\texttt{source}}، \lr{\texttt{detector}}، \lr{\texttt{protocol}} (اشیای فیزیکی ساخته‌شده)، \lr{\texttt{source\_meta\_cache}} (کش metadata منبع برای جلوگیری از سریالی‌سازی مکرر، طبق \lr{F-14})، \lr{\texttt{detector\_overrides}} (ممیزی \lr{override}های آشکارساز)، \lr{\texttt{auto\_optimize\_pulses}}، \lr{\texttt{last\_optimized\_dist}}، \lr{\texttt{optimized\_params}} (کش بهینه‌ساز per-(\lr{combo}, \lr{distance}))، \lr{\texttt{dwdm}}، \lr{\texttt{wdm\_channel\_count}}، \lr{\texttt{wdm\_channel\_power\_dbm}}، \lr{\texttt{wdm\_raman\_coefficient}} (پارامترهای \lr{DWDM})، و \lr{\texttt{params}} (کش \lr{QKDParams} برای مسیر خطا).
+
+\subsection{ساختار داده‌ی TallyCounts}
+
+\lr{\texttt{TallyCounts}} یک \lr{dataclass} است که آمار شمارش پالس‌ها را در بر می‌گیرد: \lr{\texttt{sent}} (کل ارسال‌شده)، \lr{\texttt{sifted}} (کل \lr{sifted})، \lr{\texttt{errors\_sifted}} (خطاهای \lr{sifted})، \lr{\texttt{double\_clicks\_discarded}}، \lr{\texttt{sent\_z}}، \lr{\texttt{sent\_x}}، \lr{\texttt{sifted\_z}}، \lr{\texttt{sifted\_x}}، \lr{\texttt{errors\_sifted\_z}}، \lr{\texttt{errors\_sifted\_x}}. این ساختار امکان تفکیک پایه‌های $Z$ (مستقیم) و $X$ (قطری) را فراهم می‌سازد که در پروتکل \lr{BB84} برای تخمین خطای فاز ضروری است.
+
+تابع \lr{\texttt{tally\_counts\_from\_sifting\_results}} (خط ۱۲۰۴) این ساختار را از نتایج \lr{sifting} می‌سازد. این تابع با استفاده از \lr{\texttt{\_basis\_is\_z\_mask}} ماسک‌های پایه‌ی $Z$ را استخراج می‌کند و سپس برای هر نوع پالس (\lr{pulse\_type\_index})، شمارش‌های جداگانه برای پایه‌های $Z$ و $X$ را محاسبه می‌نماید. در صورت عدم دسترسی به ماسک پایه، از تقسیم برابر $50/50$ به‌عنوان fallback استفاده می‌کند.
+
+\subsection{SimulationResults به عنوان خروجی جامع}
+
+\lr{\texttt{SimulationResults}} یک \lr{dataclass} جامع است که خروجی کامل یک نقطه‌ی شبیه‌سازی را در بر می‌گیرد: \lr{\texttt{params}} (\lr{ProtocolParameters})، \lr{\texttt{metadata}}، \lr{\texttt{security\_certificate}}، \lr{\texttt{decoy\_estimates}}، \lr{\texttt{secure\_key\_length}}، \lr{\texttt{raw\_sifted\_key\_length}}، \lr{\texttt{simulation\_time\_seconds}}، \lr{\texttt{status}}، \lr{\texttt{tally\_stats}}، \lr{\texttt{weak\_gllp\_rate}}، \lr{\texttt{tagged\_fraction\_bound}}، \lr{\texttt{beta\_y1\_deviation}}، \lr{\texttt{beta\_e1\_deviation}}، و \lr{\texttt{success\_probability}}. تابع \lr{\texttt{build\_simulation\_results}} (خط ۱۳۳۹) این شیء را می‌سازد.
+
+\subsection{DETECTOR\_METADATA\_KEYS، DETECTOR\_OVERRIDE\_KEYS و PARAMS\_METADATA\_KEYS}
+
+در نسخه‌ی جدید، سه گروه ستون اضافی به \lr{CSV} اضافه شده‌اند. \lr{\texttt{DETECTOR\_METADATA\_KEYS}} (خط ۱۴۱۶) از \lr{\texttt{DetectionDiagnostics.metadata\_keys()}} استخراج می‌شود تا ستون‌های \lr{CSV} همیشه با \lr{dataclass} هماهنگ باشد. \lr{\texttt{DETECTOR\_OVERRIDE\_KEYS}} (خط ۱۴۲۳) شامل ۹ ستون برای ممیزی \lr{override}های آشکارساز است (مانند \lr{\texttt{det\_override\_det\_eff\_d0}}). \lr{\texttt{PARAMS\_METADATA\_KEYS}} (خط ۱۴۳۹) شامل ۷ ستون برای ممیزی \lr{DWDM} است (مانند \lr{\texttt{params\_wdm\_channel\_count}}، \lr{\texttt{params\_raman\_dark\_rate\_hz}}).
+
+\subsection{الگوی SimParams: ChannelSimParams، SourceSimParams، DetectorSimParams}
+
+در نسخه‌ی جدید، الگوی \lr{SimParams} معرفی شده است. سه تابع \lr{\texttt{build\_channel\_sim\_params}}، \lr{\texttt{build\_source\_sim\_params}}، و \lr{\texttt{build\_detector\_sim\_params}} اشیای \lr{frozen} می‌سازند که تمام مقادیر فیزیکی اعتبارسنجی‌شده را در بر دارند. حلقه‌ی شبیه‌سازی به‌جای خواندن از \lr{config dict}، از این اشیای \lr{frozen} می‌خواند. این الگو تضمین می‌کند که اگر کاربر پیکربندی را با \lr{sweep} تغییر دهد، تمام مقادیر اعتبارسنجی شده و سپس به حلقه ارسال شوند.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+
+\subsection{تابع set\_nested\_value: اعمال overrides روی پیکربندی تودرتو}
+
+تابع \lr{\texttt{set\_nested\_value}} (خط ۲۴۸) یک مقدار را در دیکشنری تودرتو با مسیر نقطه‌گذاری (\lr{dot-separated}) تنظیم می‌کند. این تابع از پارامتر \lr{\texttt{strict}} پشتیبانی می‌کند که در حالت \lr{True}، در صورت عدم وجود کلید میانی، \lr{\texttt{ConfigurationError}} پرتاب می‌کند (طبق \lr{F-10}).
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def set_nested_value(d: Dict, key_path: str, value: Any, *, strict: bool = False):
+		if not key_path or not isinstance(key_path, str):
+		raise ConfigurationError(
+		"Sweep override key_path must be a non-empty dotted string.",
+		context={"key_path": key_path},
+		)
+		keys = key_path.split('.')
+		current = d
+		for key in keys[:-1]:
+		if not isinstance(current, dict):
+		raise ConfigurationError(
+		"Cannot apply sweep override through a non-dictionary config node.",
+		context={"key_path": key_path, "blocked_at": key},
+		)
+		if strict and key not in current:
+		raise ConfigurationError(
+		"Sweep override key_path references a missing intermediate key.",
+		context={"key_path": key_path, "missing_key": key},
+		)
+		current = current.setdefault(key, {})
+		current[keys[-1]] = value
+	\end{lstlisting}
+\end{LTR}
+
+در خطوط ابتدایی، اعتبارسنجی \lr{key\_path} انجام می‌شود. سپس با \lr{\texttt{split('.')}} مسیر به فهرست کلیدها تجزیه می‌شود. حلقه‌ی \lr{\texttt{for}} تا کلید یکی‌مانده‌به‌آخر می‌چرخد و در هر مرحله، بررسی می‌کند که \lr{current} از نوع \lr{dict} باشد. در حالت \lr{strict}، عدم وجود کلید میانی باعث خطا می‌شود. در پایان، کلید آخر با مقدار مورد نظر تنظیم می‌گردد.
+
+\subsection{تابع build\_epsilon\_allocation: اعتبارسنجی بودجۀ امنیتی}
+
+تابع \lr{\texttt{build\_epsilon\_allocation}} (خط ۴۰۳) تخصیص \lr{epsilon} را از پیکربندی می‌خواند و اعتبارسنجی می‌نماید.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def build_epsilon_allocation(config: Dict[str, Any]) -> EpsilonAllocation:
+		eps = config["protocol"]["epsilons"]
+		allocation = EpsilonAllocation(
+		eps_sec=eps["eps_sec"], eps_cor=eps["eps_cor"], eps_pe=eps["eps_pe"],
+		eps_smooth=eps["eps_smooth"], eps_pa=eps["eps_pa"],
+		eps_phase_est=eps["eps_phase_est"],
+		)
+		total_eps = (
+		allocation.eps_sec + allocation.eps_cor + allocation.eps_pe +
+		allocation.eps_smooth + allocation.eps_pa + allocation.eps_phase_est
+		)
+		if total_eps >= 1.0:
+		raise ParameterValidationError(
+		f"Total epsilon allocation ({total_eps:.2e}) must be less than 1.",
+		param_name="protocol.epsilons",
+		param_value=total_eps,
+		context={"total_epsilon": total_eps},
+		)
+		for field_name in ("eps_sec", "eps_cor", "eps_pe", "eps_smooth", "eps_pa", "eps_phase_est"):
+		val = getattr(allocation, field_name)
+		if val <= 0:
+		raise ParameterValidationError(
+		f"Epsilon value {field_name}={val} must be positive.",
+		param_name=f"protocol.epsilons.{field_name}",
+		param_value=val,
+		)
+		return allocation
+	\end{lstlisting}
+\end{LTR}
+
+ابتدا \lr{EpsilonAllocation} از پیکربندی ساخته می‌شود. سپس مجموع \lr{epsilon} محاسبه می‌شود و در صورت بزرگ‌تر یا مساوی $1$، خطا پرتاب می‌گردد. در پایان، هر مقدار بررسی می‌شود که مثبت باشد. این اعتبارسنجی (طبق \lr{F-17}) تضمین می‌کند که بودجه‌ی امنیتی معتبر باشد.
+
+\subsection{تابع build\_optical\_source\_config: استنتاج source\_rate}
+
+تابع \lr{\texttt{build\_optical\_source\_config}} (خط ۵۱۳) یک \lr{\texttt{OpticalSourceConfig}} از پیکربندی می‌سازد. نکته‌ی کلیدی، استنتاج \lr{\texttt{source\_rate}} از \lr{\texttt{pulse\_period\_ns}} است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if "source_rate" in source_cfg and source_cfg["source_rate"] is not None:
+		source_rate = float(source_cfg["source_rate"])
+		elif "pulse_period_ns" in source_cfg and source_cfg["pulse_period_ns"] is not None:
+		pulse_period_ns = float(source_cfg["pulse_period_ns"])
+		source_rate = 1e9 / pulse_period_ns if pulse_period_ns > 0 else 1e8
+		else:
+		raise ConfigurationError(
+		"source config must contain either 'source_rate' or 'pulse_period_ns'.",
+		context={"section": "source", "available_keys": sorted(source_cfg.keys())},
+		)
+	\end{lstlisting}
+\end{LTR}
+
+در این بلاک، اولویت با \lr{\texttt{source\_rate}} مستقیم است. در صورت عدم وجود، \lr{\texttt{pulse\_period\_ns}} به \lr{\texttt{source\_rate}} تبدیل می‌شود. در صورت فقدان هر دو، خطا پرتاب می‌شود. این الگو به این دلیل ضروری است که \lr{\texttt{OpticalSourceConfig}} \lr{\texttt{pulse\_period\_ns}} را به‌عنوان \lr{@property} از \lr{\texttt{source\_rate}} محاسبه می‌کند و در نتیجه، فقط یکی از این دو باید در پیکربندی ارائه شود.
+
+\subsection{تابع build\_detector: الگوی from\_config\_dict}
+
+تابع \lr{\texttt{build\_detector}} (خط ۹۰۷) در نسخه‌ی جدید کاملاً بازنویسی شده است. رویکرد قدیمی (حذف شده) شامل دو مرحله بود: \lr{\texttt{build\_detection\_config}} (با ۳ فیلد) + \lr{\texttt{from\_config}} + ۱۰ \lr{setattr}. رویکرد جدید از \lr{\texttt{\_build\_detector\_config\_dict}} برای ساخت یک دیکشنری تخت با تمام پارامترها استفاده می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def build_detector(config: Dict[str, Any]) -> Tuple[SinglePhotonDetector, Dict[str, Any]]:
+		det_config_dict = _build_detector_config_dict(config)
+		detector = SinglePhotonDetector.from_config_dict(det_config_dict)
+		actual_config = detector.to_config_dict(include_experimental=True)
+		input_config = det_config_dict
+		_overrides_applied: Dict[str, Any] = {}
+		override_keys = (
+		"det_eff_d0", "det_eff_d1", "dark_rate", "dark_rate_d1",
+		"bias_voltage", "breakdown_voltage", "temperature_k",
+		"ref_temperature_k", "ref_bias_voltage",
+		)
+		for key in override_keys:
+		input_val = input_config.get(key)
+		actual_val = actual_config.get(key)
+		if actual_val is not None:
+		_overrides_applied[key] = actual_val
+		if input_val != actual_val:
+		logger.debug(
+		"Detector parameter %s: input=%s, actual=%s (default/fallback applied).",
+		key, input_val, actual_val,
+		)
+		return detector, _overrides_applied
+	\end{lstlisting}
+\end{LTR}
+
+ابتدا \lr{\texttt{\_build\_detector\_config\_dict}} دیکشنری تخت را با نرمال‌سازی \lr{Enum} و تبدیل نوع‌های عددی می‌سازد. سپس \lr{\texttt{from\_config\_dict}} آشکارساز را در یک گام اعتبارسنجی می‌کند. در پایان، با مقایسه‌ی \lr{\texttt{to\_config\_dict()}} با ورودی، \lr{overrides} واقعی استخراج می‌شود. این الگو تضمین می‌کند که \lr{CSV} همیشه مقادیر واقعی آشکارساز را نشان دهد، حتی اگر \lr{fallback} یا نرمال‌سازی داخلی اعمال شده باشد.
+
+\subsection{تابع tally\_counts\_from\_sifting\_results}
+
+تابع \lr{\texttt{tally\_counts\_from\_sifting\_results}} (خط ۱۲۰۴) آمار شمارش را از نتایج \lr{sifting} می‌سازد. این تابع از \lr{\texttt{\_basis\_is\_z\_mask}} برای استخراج ماسک پایه‌ی $Z$ استفاده می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _basis_is_z_mask(values) -> np.ndarray:
+		arr = np.asarray(values)
+		if arr.dtype == np.bool_:
+		return arr.astype(bool)
+		if np.issubdtype(arr.dtype, np.integer):
+		return arr == 0
+		out = np.zeros(arr.shape, dtype=bool)
+		flat = arr.ravel()
+		for i, v in enumerate(flat):
+		if isinstance(v, str):
+		s = v.strip().upper()
+		else:
+		name = getattr(v, "name", None)
+		s = str(name).strip().upper() if name is not None else str(v).strip().upper()
+		out.ravel()[i] = s in {"Z", "Z_BASIS", "RECTILINEAR", "STANDARD", "0"}
+		return out
+	\end{lstlisting}
+\end{LTR}
+
+این تابع با آرایه‌های بولی، صحیح و رشته‌ای کار می‌کند. در حالت رشته‌ای، نام پایه را با مجموعه‌ای از نام‌های متداول (\lr{Z}، \lr{Z\_BASIS}، \lr{RECTILINEAR}، \lr{STANDARD}، \lr{0}) مقایسه می‌نماید. این طراحی انعطاف‌پذیر، امکان پذیرش فرمت‌های مختلف ورودی را فراهم می‌سازد.
+
+\subsection{تابع \_compute\_raman\_dark\_rate\_hz: نویز Raman}
+
+تابع \lr{\texttt{\_compute\_raman\_dark\_rate\_hz}} (خط ۱۵۴۴) نرخ دارک کانت معادل \lr{Raman} را محاسبه می‌کند. این تابع در دو مسیر استفاده می‌شود: مسیر \lr{Monte-Carlo} (تزریق به \lr{\texttt{detector\_run.dark\_rate}}) و مسیر اثبات (تزریق به \lr{\texttt{params.detector.dark\_rate}}):
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _compute_raman_dark_rate_hz(params) -> float:
+		if params is None:
+		return 0.0
+		wdm_count = getattr(params, "wdm_channel_count", 1)
+		if wdm_count is None or wdm_count <= 1:
+		return 0.0
+		wdm_power_dbm = float(getattr(params, "wdm_channel_power_dbm", 0.0))
+		p_launch = (10.0 ** (wdm_power_dbm / 10.0)) * 1e-3  # Watts
+		ch = getattr(params, "channel", None)
+		if ch is None:
+		return 0.0
+		fiber_loss_db_km = float(getattr(params, "fiber_loss_db_km",
+		getattr(ch, "fiber_loss_db_km", 0.2)))
+		distance_km = float(getattr(ch, "distance_km", 0.0))
+		alpha = fiber_loss_db_km * 0.23026  # Np/km
+		if alpha > 1e-12:
+		l_eff = (1.0 - math.exp(-alpha * distance_km)) / alpha
+		else:
+		l_eff = distance_km
+		wdm_raman_coeff = float(getattr(params, "wdm_raman_coefficient", 0.0))
+		p_raman = p_launch * (wdm_count - 1) * wdm_raman_coeff * l_eff
+		lam_nm = float(getattr(params, "carrier_wavelength_nm", 1550.0))
+		photon_energy = (_const.h * _const.c) / (lam_nm * 1e-9)
+		rate_hz = p_raman / photon_energy
+		det = getattr(params, "detector", None)
+		det_eff_d0 = float(getattr(det, "det_eff_d0", 1.0)) if det is not None else 1.0
+		return rate_hz * det_eff_d0
+	\end{lstlisting}
+\end{LTR}
+
+در ابتدا، در صورت \lr{wdm\_count <= 1}، مقدار صفر بازگردانده می‌شود (حالت تک‌کانال). سپس $P_{\text{launch}}$ از \lr{dBm} به وات تبدیل می‌شود. $\alpha$ از \lr{dB/km} به \lr{Np/km} تبدیل می‌شود (با ضریب $0.23026 = \ln(10)/10$). $L_{\text{eff}}$ محاسبه می‌شود. سپس $P_{\text{Raman}}$ و $R_{\text{Raman}}$ محاسبه می‌گردند. در پایان، ضرب در \lr{\texttt{det\_eff\_d0}} باعث می‌شود که نرخ نهایی، نرخ کلیک پس از بازده آشکارساز باشد (مطابق با قرارداد \lr{\texttt{dark\_rate}} در \lr{qkd.detectors}).
+
+نکته‌ی مهم (طبق کامنت \lr{Option J}) این است که این تابع \lr{\texttt{params.fiber\_loss\_db\_km}} را به‌جای \lr{\texttt{channel.fiber\_loss\_km}} می‌خواند. در حالت \lr{DWDM}، کانال از \lr{\texttt{FiberChannel.from\_total\_loss}} بازسازی می‌شود که \lr{alpha} را از کل تلفات (فیبر + فیلتر \lr{AWG}) استنتاج می‌کند. استفاده از \lr{alpha} آلوده باعث می‌شود \lr{Raman} ۹–۱۹\% کم‌برآورد شود.
+
+\subsection{تابع \_compute\_rogers\_analytic\_sbr}
+
+تابع \lr{\texttt{\_compute\_rogers\_analytic\_sbr}} (خط ۱۷۴۲) نرخ بیت \lr{sifted} تحلیلی را طبق معادله‌ی ۱۵ مقاله‌ی \lr{Rogers et al. (2007)} محاسبه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _compute_rogers_analytic_sbr(
+		*, pulse_period_ns, dead_time_ns, channel_transmittance,
+		det_eff_d0, coupling_efficiency=1.0, eps=0.0,
+		) -> Optional[float]:
+		if dead_time_ns <= 0.0 or pulse_period_ns <= 0.0:
+		return None
+		L = link_efficiency(channel_transmittance, det_eff_d0, coupling_efficiency)
+		if L <= 0.0:
+		return None
+		L = min(L, 1.0)
+		rho_tx = 1e9 / float(pulse_period_ns)
+		tau_s = float(dead_time_ns) * 1e-9
+		try:
+		return float(rogers_sifted_bit_rate(
+		rho_tx=rho_tx, L=L, tau=tau_s, eps=eps,
+		))
+		except (ValueError, OverflowError, ArithmeticError) as exc:
+		logger.debug("Rogers analytic SBR computation failed: %s.", exc)
+		return None
+	\end{lstlisting}
+\end{LTR}
+
+در ابتدا، اعتبارسنجی \lr{dead\_time\_ns} و \lr{pulse\_period\_ns} انجام می‌شود. سپس $L$ با \lr{\texttt{link\_efficiency}} محاسبه می‌شود (این تابع از \lr{qkd.channel} وارد شده و $L = \eta_{\text{ch}} \cdot \eta_{\text{det}} \cdot \eta_{\text{coup}}$ را محاسبه می‌نماید). در پایان، \lr{\texttt{rogers\_sifted\_bit\_rate}} (که از \lr{qkd.detectors} وارد شده) فراخوانی می‌شود. در صورت بروز خطای محاسباتی، \lr{None} بازگردانده می‌شود تا در \lr{CSV} به‌صورت سلول خالی ثبت شود.
+
+\subsection{تابع \_balance\_decoy\_probabilities}
+
+تابع \lr{\texttt{\_balance\_decoy\_probabilities}} (خط ۱۷۹۰) احتمال‌های پالس را به‌صورت خودکار متعادل می‌کند. هنگامی که یک \lr{sweep} فقط یکی از احتمال‌ها (\lr{signal} یا \lr{decoy}) را override می‌کند، این تابع دیگری را محاسبه می‌نماید:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _balance_decoy_probabilities(overrides, config):
+		sig_p = overrides.get("source.pulses.signal.prob")
+		dec_p = overrides.get("source.pulses.decoy.prob")
+		vac_p = config["source"]["pulses"]["vacuum"]["prob"]
+		if sig_p is not None and dec_p is None:
+		balanced_dec = round(1.0 - sig_p - vac_p, 9)
+		if balanced_dec < 0:
+		raise ConfigurationError(
+		f"Probability balancing produced negative decoy probability ({balanced_dec}).",
+		context={"signal_prob": sig_p, "vacuum_prob": vac_p, "decoy_prob": balanced_dec},
+		)
+		overrides["source.pulses.decoy.prob"] = balanced_dec
+		elif dec_p is not None and sig_p is None:
+		balanced_sig = round(1.0 - dec_p - vac_p, 9)
+		if balanced_sig < 0:
+		raise ConfigurationError(
+		f"Probability balancing produced negative signal probability ({balanced_sig}).",
+		context={"decoy_prob": dec_p, "vacuum_prob": vac_p, "signal_prob": balanced_sig},
+		)
+		overrides["source.pulses.signal.prob"] = balanced_sig
+	\end{lstlisting}
+\end{LTR}
+
+این تابع (طبق \lr{F-11}) اعتبارسنجی می‌کند که احتمال‌های متعادل‌شده در بازه‌ی $[0, 1]$ باشند. در صورت منفی شدن، خطا پرتاب می‌شود. این الگو امکان \lr{sweep} فقط یک احتمال را فراهم می‌سازد و بقیه به‌صورت خودکار محاسبه می‌شوند.
+
+\subsection{تابع \_optimize\_pulses\_for\_distance: بهینه‌سازی پالس}
+
+تابع \lr{\texttt{\_optimize\_pulses\_for\_distance}} (خط ۱۸۴۵) یک \lr{thin wrapper} به \lr{\texttt{optimize\_pulses\_for\_distance}} در \lr{\texttt{qkd.proofs.optimization}} است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _optimize_pulses_for_distance(config, dist_km, total_pulses, proof_name):
+		return optimize_pulses_for_distance(config, dist_km, total_pulses, proof_name)
+	\end{lstlisting}
+\end{LTR}
+
+این تابع پارامترهای بهینه $(\mu, \nu, p_s, p_d, p_v)$ را برمی‌گرداند. در \lr{\texttt{run\_single\_simulation}}، این پارامترها در \lr{\texttt{\_ws.optimized\_params}} کش می‌شوند و کلید کش \lr{(combo\_idx, dist)} است. این طراحی تضمین می‌کند که ردیف‌های \lr{noise=True} و \lr{noise=False} در همان (\lr{combo}, \lr{distance}) از پارامترهای یکسان استفاده کنند که برای مقایسه‌ی منصفانه ضروری است.
+
+\subsection{تابع init\_worker و الگوی initializer}
+
+تابع \lr{\texttt{init\_worker}} (خط ۱۴۴۹) در نسخه‌ی جدید امضای گسترده‌ای دارد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def init_worker(base_config, combo_map, auto_optimize_pulses=False, dwdm=False,
+		wdm_channel_count=4, wdm_channel_power_dbm=None,
+		wdm_raman_coefficient=None):
+		logging.basicConfig(
+		level=logging.INFO,
+		format="%(levelname)s [%(name)s] %(message)s",
+		force=True,
+		)
+		_ws.base_config = base_config
+		_ws.combo_map = combo_map
+		_ws.last_combo_idx = -1
+		_ws.source_meta_cache = {}
+		_ws.detector_overrides = {}
+		_ws.auto_optimize_pulses = bool(auto_optimize_pulses)
+		_ws.last_optimized_dist = None
+		_ws.optimized_params = None
+		_ws.params = None
+		_ws.dwdm = bool(dwdm)
+		_ws.wdm_channel_count = int(wdm_channel_count) if wdm_channel_count is not None else None
+		_ws.wdm_channel_power_dbm = float(wdm_channel_power_dbm) if wdm_channel_power_dbm is not None else None
+		_ws.wdm_raman_coefficient = float(wdm_raman_coefficient) if wdm_raman_coefficient is not None else None
+	\end{lstlisting}
+\end{LTR}
+
+در ابتدا، \lr{\texttt{logging.basicConfig}} با \lr{force=True} فراخوانی می‌شود تا \lr{ERROR}-level در فرآیندهای کارگر قابل مشاهده باشد (بدون این، کارگران با \lr{WARNING}-level پیش‌فرض شروع می‌شوند و \lr{ERROR}-ها خاموش می‌شوند). سپس تمام فیلدهای \lr{\texttt{\_ws}} مقداردهی می‌شوند. نکته‌ی مهم این است که \lr{wdm\_channel\_count}، \lr{wdm\_channel\_power\_dbm} و \lr{wdm\_raman\_coefficient} با تبدیل نوع (\lr{int}/\lr{float}) و بررسی \lr{None} ذخیره می‌شوند (طبق \lr{FIX-WS-WDM-V2}).
+
+\subsection{تابع run\_single\_simulation: هستۀ اصلی}
+
+تابع \lr{\texttt{run\_single\_simulation}} (خط ۱۸۵۷) هسته‌ی اصلی شبیه‌سازی است. این تابع یک \lr{args\_tuple} شامل (\lr{dist}، \lr{total\_pulses}، \lr{apply\_noise}، \lr{worker\_seed}، \lr{combo\_idx}) می‌گیرد و یک دیکشنری \lr{row} برمی‌گرداند. جریان اصلی به چند مرحله تقسیم می‌شود:
+
+\textbf{مرحله‌ی ۱: Lazy rebuild.} در صورت تغییر \lr{combo\_idx}، پیکربندی با \lr{deepcopy} کپی شده، \lr{overrides} اعمال می‌شود، و اشیای \lr{source}، \lr{detector}، \lr{protocol} بازسازی می‌شوند. سپس \lr{metadata} در \lr{\texttt{\_ws.source\_meta\_cache}} کش می‌شود.
+
+\textbf{مرحله‌ی ۲: Auto-optimize pulses.} در صورت فعال بودن \lr{\texttt{\_ws.auto\_optimize\_pulses}} و تغییر (\lr{combo}, \lr{dist})، \lr{\texttt{\_optimize\_pulses\_for\_distance}} فراخوانی می‌شود، پارامترهای بهینه در \lr{config} نوشته می‌شوند، و \lr{source} و \lr{protocol} بازسازی می‌گردند.
+
+\textbf{مرحله‌ی ۳: بذرگیری.} با \lr{\texttt{SeedSequence.spawn}} (طبق \lr{F-05})، ۵ جریان \lr{RNG} مستقل از \lr{worker\_seed} استخراج می‌شوند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		seed_seq = np.random.SeedSequence(worker_seed)
+		child_seqs = seed_seq.spawn(5)
+		rng_prepare = np.random.default_rng(child_seqs[0])
+		rng_photons = np.random.default_rng(child_seqs[1])
+		rng_detect = np.random.default_rng(child_seqs[2])
+		rng_sift = np.random.default_rng(child_seqs[3])
+		rng_pe = np.random.default_rng(child_seqs[4])
+	\end{lstlisting}
+\end{LTR}
+
+این الگو (به‌جای \lr{seed+1}، \lr{seed+2} و...) تضمین می‌کند که جریان‌های \lr{RNG} از نظر آماری مستقل باشند.
+
+\textbf{مرحله‌ی ۴: بارگذاری QKDParams.} در نسخه‌ی جدید (طبق \lr{FIX-PARAMS-ORDER})، \lr{\texttt{load\_lim2014\_*\_params}} \emph{قبل} از بلاک \lr{apply\_noise} فراخوانی می‌شود تا تزریق \lr{Raman} از \lr{params} صحیح (مربوط به همین فاصله) استفاده کند. در حالت \lr{DWDM}، \lr{\texttt{load\_lim2014\_dwdm\_params}} با پارامترهای \lr{WDM} فراخوانی می‌شود.
+
+\textbf{مرحله‌ی ۵: تزریق Raman به params.} در حالت \lr{DWDM} و \lr{apply\_noise=True}، نرخ \lr{Raman} محاسبه شده و به \lr{\texttt{params.detector.dark\_rate}} تزریق می‌شود (با \lr{\texttt{dataclasses.replace}} چون \lr{params} \lr{frozen} است).
+
+\textbf{مرحله‌ی ۶: ساخت کانال.} \lr{\texttt{build\_channel\_from\_distance}} کانال را می‌سازد. در حالت \lr{DWDM}، تلفات فیلتر \lr{AWG} به کانال اضافه می‌شود.
+
+\textbf{مرحله‌ی ۷: ساخت SimParams.} \lr{\texttt{build\_channel\_sim\_params}}، \lr{\texttt{build\_source\_sim\_params}} و (بعداً) \lr{\texttt{build\_detector\_sim\_params}} اشیای \lr{frozen} می‌سازند. اعتبارسنجی \lr{pulse\_period\_ns} انجام می‌شود.
+
+\textbf{مرحله‌ی ۸: آماده‌سازی حالت‌ها و فوتون‌ها.} \lr{\texttt{protocol.prepare\_states}}، \lr{\texttt{generate\_photons\_for\_prepared\_states}}، و \lr{\texttt{infer\_ideal\_outcomes\_d0}} فراخوانی می‌شوند.
+
+\textbf{مرحله‌ی ۹: شبیه‌سازی آشکارساز.} در حالت \lr{apply\_noise=True}، \lr{\texttt{detector.clone()}} ساخته می‌شود و نویز \lr{Raman} به \lr{\texttt{detector\_run.dark\_rate}} تزریق می‌گردد. در حالت \lr{noise=False}، \lr{\texttt{detector.noiseless\_copy()}} استفاده می‌شود. سپس \lr{\texttt{simulate\_detection}} فراخوانی می‌شود.
+
+\textbf{مرحله‌ی ۱۰: Sifting و tally.} \lr{\texttt{detector\_result\_to\_protocol\_detection\_results}}، \lr{\texttt{protocol.sift\_results}}، \lr{\texttt{sample\_for\_parameter\_estimation}}، و \lr{\texttt{tally\_counts\_from\_sifting\_results}} فراخوانی می‌شوند.
+
+\textbf{مرحله‌ی ۱۱: محاسبه کلید امن.} این مرحله در بخش بعد به‌تفصیل بررسی می‌شود.
+
+\textbf{مرحله‌ی ۱۲: ساخت ردیف CSV.} با محاسبه‌ی \lr{QBER} اصلاح‌شده و فاصله‌ی اطمینان، ردیف نهایی ساخته می‌شود.
+
+\subsection{مدیریت API متفاوت کلاس‌های اثبات}
+
+در نسخه‌ی جدید، مدیریت اثبات‌های مختلف در خطوط ۲۲۹۳–۲۳۸۰ پیاده‌سازی شده است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		proof_name = config["source"].get("intended_proof", "LIM_2014").upper()
+		if proof_name != "LIM_2014":
+		import dataclasses
+		updates = {}
+		if hasattr(params, 'auto_optimize_lim2014'):
+		updates['auto_optimize_lim2014'] = False
+		if not hasattr(params, 'eps_pa'):
+		updates['eps_pa'] = 1e-10
+		if not hasattr(params, 'eps_sif'):
+		updates['eps_sif'] = 1e-10
+		if updates:
+		params = dataclasses.replace(params, **updates)
+		
+		if proof_name == "MA_2005":
+		from qkd.proofs.ma2005 import Ma2005VacuumWeakProof
+		proof = Ma2005VacuumWeakProof(params)
+		elif proof_name == "WANG_2005":
+		from qkd.proofs.wang2005 import Wang2005Proof
+		proof = Wang2005Proof(params)
+		elif proof_name == "TIGHT":
+		from qkd.proofs.tight import BB84TightProof
+		proof = BB84TightProof(params)
+		else:
+		proof = Lim2014Proof(params)
+	\end{lstlisting}
+\end{LTR}
+
+ابتدا نام اثبات از پیکربندی خوانده می‌شود. در صورت عدم استفاده از \lr{Lim2014}، پارامترهای \lr{auto\_optimize\_lim2014} به \lr{False} و \lr{eps\_pa}/\lr{eps\_sif} (در صورت فقدان) به مقادیر پیش‌فرض تنظیم می‌شوند. سپس کلاس اثبات مناسب \lr{import} و نمونه‌سازی می‌شود. \lr{import} به‌صورت \lr{lazy} (داخل \lr{if}) انجام می‌شود تا ماژول‌های غیرضروری در \lr{startup} بارگذاری نشوند.
+
+سپس فراخوانی اثبات به دو مسیر تقسیم می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if proof_name == "WANG_2005":
+		mapped_stats = {
+			"signal": stats.get("0", TallyCounts()),
+			"decoy": stats.get("1", TallyCounts()),
+			"vacuum": stats.get("2", TallyCounts())
+		}
+		decoy_estimates = proof.estimate_yields_and_errors(stats_map=mapped_stats)
+		key_result = proof.calculate_key_length(decoy_estimates, stats_map=mapped_stats)
+		elif proof_name == "MA_2005":
+		decoy_estimates = proof.estimate_yields_and_errors(stats_map=stats)
+		key_result = proof.calculate_key_length(decoy_estimates, stats_map=stats)
+		else:
+		key_result = proof.calculate_key_length(stats_map=stats)
+	\end{lstlisting}
+\end{LTR}
+
+\lr{Wang2005} به نقشه‌ی \lr{stats} با کلیدهای رشته‌ای (\lr{"signal"}، \lr{"decoy"}، \lr{"vacuum"}) نیاز دارد، در حالی که \lr{stats} از \lr{pulse\_type\_index} صحیح (\lr{"0"}، \lr{"1"}، \lr{"2"}) استفاده می‌کند. بنابراین، یک نگاشت انجام می‌شود. \lr{Ma2005} و \lr{Lim2014/Tight} مستقیماً از \lr{stats} استفاده می‌کنند. در پایان، \lr{\texttt{secure\_key\_length}} از \lr{key\_result} استخراج می‌شود.
+
+\subsection{مدیریت خطا و ساخت ردیف CSV خطا}
+
+در صورت بروز خطا در محاسبه‌ی کلید امن یا در جریان اصلی، الگوی خطای یکپارچه (طبق \lr{F-23}) اعمال می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		except (LPFailureError, ParameterValidationError, ConfigurationError) as exc:
+		qkd_exc = exc
+		_log_qkd_exception(qkd_exc, level=logging.WARNING)
+		status = f"{qkd_exc.code.value}: {qkd_exc.message[:80]}"
+		qkd_exc = QKDSimulationError(
+		f"{proof_name} secure-key calculation failed for this simulation point.",
+		context={"distance_km": dist, "total_pulses": total_pulses, "combo_idx": combo_idx},
+		cause=exc,
+		)
+		_log_qkd_exception(qkd_exc, level=logging.WARNING)
+		status = f"{qkd_exc.code.value}: {qkd_exc.message[:80]}"
+	\end{lstlisting}
+\end{LTR}
+
+در ابتدا، استثناهای \lr{LPFailureError}، \lr{ParameterValidationError}، \lr{ConfigurationError} گرفته می‌شوند و با \lr{\texttt{\_log\_qkd\_exception}} ثبت می‌گردند. سپس به \lr{\texttt{QKDSimulationError}} تبدیل می‌شوند تا در سطح بالاتر مدیریت شوند. \lr{status} برای ثبت در \lr{CSV} ساخته می‌شود.
+
+در بلاک \lr{except} بیرونی، خطاهای دیگر (\lr{ValueError}، \lr{TypeError} و...) با \lr{\texttt{\_as\_qkd\_exception}} به \lr{QKDException} مناسب تبدیل می‌شوند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		except (QKDException, ValueError, TypeError, KeyError, RuntimeError, ArithmeticError) as exc:
+		orig_exc_type = type(exc).__name__
+		orig_exc_msg = str(exc)
+		qkd_exc = _as_qkd_exception(
+		exc,
+		f"Simulation point failed ({orig_exc_type}: {orig_exc_msg[:200]})",
+		context={"distance_km": dist, "total_pulses": total_pulses,
+			"combo_idx": combo_idx, "original_exception_type": orig_exc_type},
+		)
+		_log_qkd_exception(qkd_exc, level=logging.ERROR)
+	\end{lstlisting}
+\end{LTR}
+
+تابع \lr{\texttt{\_as\_qkd\_exception}} (خط ۳۸۶) یک \lr{helper} استاندارد است که استثناهای خام را به \lr{QKDException} مناسب تبدیل می‌کند: \lr{TypeError}/\lr{ValueError}/\lr{KeyError} به \lr{ConfigurationError}، و بقیه به \lr{QKDSimulationError}. این الگو تضمین می‌کند که همه‌ی \lr{catch-block}ها از یک الگوی واحد پیروی کنند.
+
+سپس ردیف خطای \lr{CSV} ساخته می‌شود که همان ستون‌های ردیف موفق را دارد (با مقادیر صفر یا \lr{None}). این الگو (طبق \lr{F-07}) تضمین می‌کند که \lr{CSV} ساختار یکسانی برای همه‌ی ردیف‌ها داشته باشد.
+
+\subsection{تابع run\_and\_save\_csv: هماهنگ‌کننده اصلی}
+
+تابع \lr{\texttt{run\_and\_save\_csv}} (خط ۲۵۸۳) هماهنگ‌کننده‌ی اصلی است. این تابع در نسخه‌ی جدید امضای گسترده‌ای دارد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def run_and_save_csv(config, num_workers=None, sweeps=None,
+		auto_optimize_pulses=False, dwdm=False,
+		wdm_channel_count=4, wdm_channel_power_dbm=None,
+		wdm_raman_coefficient=None):
+	\end{lstlisting}
+\end{LTR}
+
+پارامترهای جدید شامل \lr{auto\_optimize\_pulses}، \lr{dwdm}، \lr{wdm\_channel\_count}، \lr{wdm\_channel\_power\_dbm}، و \lr{wdm\_raman\_coefficient} هستند. این پارامترها به \lr{\texttt{init\_worker}} ارسال می‌شوند.
+
+جریان اصلی شامل این مراحل است: (۱) پیکربندی \lr{logging}؛ (۲) اعتبارسنجی \lr{num\_workers} و بررسی \lr{RAM} (با \lr{psutil}، طبق \lr{F-27})؛ (۳) اعتبارسنجی پیکربندی شبیه‌سازی؛ (۴) ساخت \lr{source\_tmp} و \lr{protocol\_name}؛ (۵) اعتبارسنجی \lr{sweeps}؛ (۶) تولید ترکیب‌های \lr{Cartesian} با \lr{\texttt{itertools.product}} و هشدار در صورت تجاوز از $10000$ ترکیب (طبق \lr{F-15})؛ (۷) تولید \lr{work\_items} با پیمایش (\lr{combo}، \lr{noise}، \lr{pulses}، \lr{dist})؛ (۸) ساخت \lr{fieldnames} \lr{CSV} با ترکیب ستون‌های ثابت و ستون‌های پویا (\lr{sweep\_*})؛ (۹) فراخوانی \lr{\texttt{dispatch\_work\_items}} با \lr{on\_row} \lr{callback}.
+
+\subsection{محاسبۀ QBER اصلاح‌شده و فاصلۀ اطمینان}
+\label{sec:csv_row}
+
+در نسخه‌ی جدید، \lr{QBER} اصلاح‌شده و فاصله‌ی اطمینان از \lr{stats} (که ممکن است اصلاحات واکوئم/سیگنال/دکوی اعمال شده باشد) محاسبه می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		corrected_total_sifted = sum(tc.sifted for tc in stats.values())
+		corrected_total_errors = sum(tc.errors_sifted for tc in stats.values())
+		if corrected_total_sifted > 0:
+		corrected_qber = corrected_total_errors / corrected_total_sifted
+		else:
+		corrected_qber = 0.0
+		_raw_qber = float(summary.get("qber", 0.0) or 0.0)
+		_raw_ci_low = float(summary.get("qber_ci_low", 0.0) or 0.0)
+		_raw_ci_high = float(summary.get("qber_ci_high", 0.0) or 0.0)
+		_ci_half_width = max(_raw_qber - _raw_ci_low, _raw_ci_high - _raw_qber)
+		corrected_ci_low = max(0.0, corrected_qber - _ci_half_width)
+		corrected_ci_high = min(1.0, corrected_qber + _ci_half_width)
+	\end{lstlisting}
+\end{LTR}
+
+در این بلاک، \lr{QBER} از مجموع خطاها تقسیم بر مجموع \lr{sifted} محاسبه می‌شود. نیم‌عرض فاصله‌ی اطمینان از \lr{summary} پروتکل گرفته می‌شود (چون \lr{summary} از \lr{stats} خام محاسبه شده و ممکن است نادرست باشد، اما نیم‌عرض به‌عنوان تقریب عدم‌قطعیت آماری قابل قبول است). سپس فاصله‌ی اطمینان اصلاح‌شده با اعمال این نیم‌عرض روی \lr{QBER} اصلاح‌شده ساخته می‌شود.
+
+ردیف نهایی \lr{CSV} شامل تمام ستون‌های ثابت، \lr{metadata} آشکارساز، \lr{metadata} منبع، ستون‌های \lr{override} آشکارساز، ستون‌های \lr{DWDM}، و ستون‌های \lr{sweep} است. در پایان، \lr{overrides} به‌صورت ستون‌های \lr{sweep\_*} اضافه می‌شوند.
+
+\subsection{استفاده از dispatch\_work\_items}
+
+تابع \lr{\texttt{dispatch\_work\_items}} از ماژول \lr{\texttt{main\_optimized\_dispatch}} وارد شده است. این تابع مسیر تک‌کارگره (حلقه‌ی \lr{for} ترتیبی) و مسیر چندکارگره (\lr{mp.Pool.imap\_unordered}) را مدیریت می‌کند. \lr{on\_row} یک \lr{callback} است که هر ردیف را در \lr{CSV} می‌نویسد و پیشرفت را گزارش می‌دهد. این جداسازی (طبق کامنت در خط ۱۹) امکان \lr{test} \lr{synchronization} و \lr{ordering contract} با \lr{stub workers} را فراهم می‌سازد.
+
+\subsection{تابع build\_pn\_lookup\_table}
+
+تابع \lr{\texttt{build\_pn\_lookup\_table}} (خط ۱۶۷۵) یک جدول \lr{lookup} برای $P(n)$ می‌سازد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def build_pn_lookup_table(source, max_n=PN_TRUNCATION_DIM):
+		pulse_names = source.pulse_names()
+		n_pulses = len(pulse_names)
+		table = np.zeros((n_pulses, max_n), dtype=np.float64)
+		for i, name in enumerate(pulse_names):
+		mu = source.get_mean_photon_number_by_name(name)
+		table[i, :] = photon_number_distribution(
+		mu, source.statistics_type, max_n=max_n
+		)
+		return table
+	\end{lstlisting}
+\end{LTR}
+
+این تابع یک آرایه‌ی \lr{NumPy} به شکل \lr{(n\_pulse\_types, max\_n)} می‌سازد که در آن \lr{table[i, n]} مقدار $P(n)$ برای نوع پالس $i$ را نگه می‌دارد. این جدول می‌تواند توسط حلقه‌های \lr{Numba} یا محاسبات \lr{vectorized} بدون \lr{overhead} شیء \lr{Python} مصرف شود. این طراحی مستقیماً به معیار بازآوری «افشایش آرایه‌های خام \lr{NumPy}» پاسخ می‌دهد.
+
+\subsection{توابع log\_source\_details و log\_detector\_details}
+
+این دو تابع (در خطوط ۷۴۴ و ۹۸۱) برای ثبت اطلاعات تشخیصی در سطح \lr{DEBUG} طراحی شده‌اند. تابع \lr{\texttt{log\_source\_details}} همهٔ ویژگی‌های منبع را با استفاده از متدهای پرس‌وجو (\lr{query})، مانند \lr{\texttt{source.pulse\_names()}} و \lr{\texttt{source.base\_mean\_photon\_numbers()}}، در لاگ ثبت می‌کند. تابع \lr{\texttt{log\_detector\_details}} نیز به‌طور مشابه برای آشکارساز عمل می‌کند و با استفاده از \lr{\texttt{to\_config\_dict()}}، یک نمایهٔ کامل از پیکربندی آن را ثبت می‌نماید. این الگو، مطابق با \lr{F-26}، تضمین می‌کند که مقادیر ثبت‌شده در لاگ با حالت داخلیِ اعتبارسنجی‌شدهٔ سامانه سازگار باشند.
+
+
+\subsection{توابع کمکی pipeline}
+
+چندین تابع کمکی برای \lr{pipeline} شبیه‌سازی وجود دارند:
+
+\lr{\texttt{build\_channel\_from\_distance}} (خط ۱۰۵۱): یک \lr{\texttt{FiberChannel}} اعتبارسنجی‌شده می‌سازد و در صورت \lr{lossless} بودن، لاگ می‌کند.
+
+\lr{\texttt{build\_protocol}} (خط ۱۰۷۴): یک شیء \lr{Protocol} می‌سازد. این تابع از \lr{dispatch} بر اساس \lr{protocol\_class} استفاده می‌کند و در صورت عدم تطابق، \lr{ConfigurationError} با فهرست کلاس‌های معتبر پرتاب می‌نماید.
+
+\lr{\texttt{get\_pulse\_indices\_from\_prepared\_states}}، \lr{\texttt{generate\_photons\_for\_prepared\_states}}، \lr{\texttt{infer\_ideal\_outcomes\_d0}}، \lr{\texttt{extract\_detection\_arrays}}، \lr{\texttt{detector\_result\_to\_protocol\_detection\_results}}: این توابع برای استخراج و تبدیل داده‌ها بین مراحل مختلف \lr{pipeline} طراحی شده‌اند.
+
+\lr{\texttt{get\_source\_metadata\_row}} (خط ۱۴۸۸) و \lr{\texttt{get\_params\_metadata\_row}} (خط ۱۶۲۰): این توابع برای استخراج \lr{metadata} از اشیای \lr{source} و \lr{params} به ستون‌های \lr{CSV} طراحی شده‌اند. \lr{\texttt{get\_source\_metadata\_row}} از متدهای \lr{query} منبع استفاده می‌کند (نه \lr{to\_dict()}) تا تضمین کند \lr{metadata} با حالت داخلی هماهنگ باشد. \lr{\texttt{get\_params\_metadata\_row}} فیلدهای \lr{DWDM} را استخراج می‌کند و \lr{\texttt{\_compute\_raman\_dark\_rate\_hz}} را برای محاسبه‌ی نرخ \lr{Raman} فراخوانی می‌نماید.
+
+\subsection{الگوی \_\_main\_\_ و CLI}
+
+نقطه‌ی ورود \lr{\texttt{\_\_main\_\_}} در خطوط ۲۷۳۲–۳۰۰۳ پیاده‌سازی شده است. این بلاک از \lr{\texttt{argparse}} با بیش از ۳۰ گزینه استفاده می‌کند. پارامترهای کلیدی عبارت‌اند از: \lr{\texttt{-{}-protocol-class}}، \lr{\texttt{-{}-fiber-loss}}، \lr{\texttt{-{}-min/max-pulses-log}}، \lr{\texttt{-{}-rng-seed}}، \lr{\texttt{-{}-workers}}، پارامترهای آشکارساز (\lr{\texttt{-{}-det-eff-d0}}، \lr{\texttt{-{}-dark-rate}}، \lr{\texttt{-{}-qber-intrinsic}}، ...)، پارامترهای منبع (\lr{\texttt{-{}-statistics-type}}، \lr{\texttt{-{}-error-model}}، \lr{\texttt{-{}-intended-proof}}، ...)، پارامترهای \lr{DWDM} (\lr{\texttt{-{}-dwdm}}، \lr{\texttt{-{}-wdm-channel-count}}، \lr{\texttt{-{}-wdm-channel-power-dbm}}، \lr{\texttt{-{}-wdm-raman-coefficient}})، پارامترهای امنیتی (\lr{\texttt{-{}-eps-sec}}، \lr{\texttt{-{}-eps-cor}}، \lr{\texttt{-{}-eps-pe}}، \lr{\texttt{-{}-eps-smooth}}، \lr{\texttt{-{}-f-error-correction}})، و \lr{\texttt{-{}-auto-optimize-pulses}}.
+
+در صورت \lr{KeyboardInterrupt}، \lr{\texttt{SimulationInterruptedError}} ساخته می‌شود و با کد خروج $130$ (کد استاندارد \lr{POSIX} برای \lr{SIGINT}) خارج می‌شود. در صورت \lr{QKDException}، خطا با کد خروج $1$ خارج می‌شود. در صورت خطاهای دیگر، \lr{\texttt{\_as\_qkd\_exception}} اعمال می‌شود و سپس با کد خروج $1$ خارج می‌گردد.
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+
+\subsection{ورودی‌های اصلی ماژول}
+
+ورودی‌های اصلی این ماژول عبارت‌اند از: (۱) \lr{\texttt{DEFAULT\_CONFIG}} به‌عنوان پیکربندی پایه؛ (۲) آرگومان‌های \lr{CLI} که روی پیکربندی پایه اعمال می‌شوند؛ (۳) \lr{\texttt{-{}-sweep-json}} به‌عنوان \lr{JSON} تعریف پیمایش؛ (۴) پارامترهای \lr{DWDM} و \lr{Raman} از \lr{CLI}.
+
+\subsection{خروجی‌های اصلی ماژول}
+
+خروجی‌های اصلی عبارت‌اند از: (۱) فایل \lr{\texttt{qkd\_results\_optimized\_sweep.csv}} با ساختار ستون‌های ثابت؛ (۲) لاگ‌های \lr{stdout}/\lr{stderr} برای پیشرفت و خطاها؛ (۳) کد خروج \lr{POSIX} برای \lr{CI/CD}.
+
+\subsection{تعامل با ماژول qkd.sources}
+
+این ماژول از \lr{\texttt{qkd.sources}} کلاس‌های \lr{OpticalSource}، \lr{PoissonSource}، \lr{DensityMatrixSource} و توابع \lr{\texttt{photon\_number\_distribution}}، \lr{\texttt{poisson\_pn\_array}}، \lr{\texttt{thermal\_pn\_array}}، \lr{\texttt{PN\_TRUNCATION\_DIM}}، \lr{\texttt{SourceSimParams}}، \lr{\texttt{build\_source\_sim\_params}} را وارد می‌کند. تابع \lr{\texttt{build\_source}} از \lr{\texttt{OpticalSource.create}} استفاده می‌کند که \lr{dispatch} بین \lr{PoissonSource} و \lr{DensityMatrixSource} را مدیریت می‌نماید و اعتبارسنجی ماتریس چگالی و \lr{security metadata} را داخلی انجام می‌دهد.
+
+\subsection{تعامل با ماژول qkd.detectors}
+
+این ماژول از \lr{\texttt{qkd.detectors}} کلاس‌های \lr{SinglePhotonDetector}، \lr{AfterpulseModel}، \lr{DeadTimeModel}، \lr{EntanglingDecoder}، \lr{DetectionDiagnostics}، \lr{DetectionResult}، \lr{DetectorSimParams}، \lr{\texttt{build\_detector\_sim\_params}} و \lr{ROGERS\_2007\_POLICY} و توابع تحلیلی \lr{Rogers} را وارد می‌کند. تابع \lr{\texttt{build\_detector}} از \lr{\texttt{from\_config\_dict}} استفاده می‌کند که تمام پارامترها را در یک گام اعتبارسنجی می‌نماید.
+
+\subsection{تعامل با ماژول qkd.channel}
+
+این ماژول از \lr{\texttt{qkd.channel}} کلاس \lr{FiberChannel}، توابع \lr{\texttt{build\_attenuation\_config\_from\_sim\_config}}، \lr{\texttt{transmittance\_scalar}}، \lr{\texttt{transmittance\_array}}، \lr{\texttt{link\_efficiency}}، \lr{\texttt{ChannelSimParams}}، \lr{\texttt{build\_channel\_sim\_params}} و ثابت‌های \lr{MAX\_DISTANCE\_KM}، \lr{MAX\_FIBER\_LOSS\_DB\_KM} را وارد می‌کند. تابع \lr{\texttt{build\_attenuation\_config}} به‌عنوان \lr{thin wrapper} به \lr{\texttt{build\_attenuation\_config\_from\_sim\_config}} تفویض می‌کند تا تمام اعتبارسنجی در یک ماژول متمرکز باشد.
+
+\subsection{تعامل با ماژول qkd.protocols}
+
+این ماژول از \lr{\texttt{qkd.protocols}} کلاس‌های \lr{Protocol}، \lr{BB84DecoyProtocol}، \lr{B92Protocol}، \lr{MDIQKDProtocol}، \lr{RedundantTransmissionProtocol}، \lr{DetectionResults}، \lr{SiftingResults}، \lr{BB84PreparedStates}، \lr{B92PreparedStates}، \lr{MDIPreparedStates} و توابع \lr{\texttt{make\_worker\_rngs}}، \lr{\texttt{sample\_for\_parameter\_estimation}} را وارد می‌کند. تابع \lr{\texttt{build\_protocol}} بر اساس \lr{protocol\_class} کلاس مناسب را نمونه‌سازی می‌کند.
+
+\subsection{تعامل با ماژول‌های اثبات امنیتی}
+
+این ماژول با چهار ماژول اثبات در تعامل است: \lr{\texttt{qkd.proofs.lim2014}} (\lr{Lim2014Proof})، \lr{\texttt{qkd.proofs.ma2005}} (\lr{Ma2005VacuumWeakProof})، \lr{\texttt{qkd.proofs.wang2005}} (\lr{Wang2005Proof})، \lr{\texttt{qkd.proofs.tight}} (\lr{BB84TightProof}) و \lr{\texttt{qkd.proofs.optimization}} (\lr{optimize\_pulses\_for\_distance}). \lr{import} به‌صورت \lr{lazy} (داخل \lr{if}) انجام می‌شود. مدیریت \lr{API} متفاوت این کلاس‌ها در بخش پیاده‌سازی بررسی شد.
+
+\subsection{تعامل با ماژول main\_optimized\_dispatch}
+
+این ماژول تابع \lr{\texttt{dispatch\_work\_items}} را از \lr{\texttt{main\_optimized\_dispatch}} وارد می‌کند. این جداسازی امکان \lr{test} \lr{synchronization} و \lr{ordering contract} را با \lr{stub workers} فراهم می‌سازد، بدون نیاز به بارگذاری \lr{qkd.*} در زمان \lr{import}.
+
+\subsection{تعامل با qkd.params، qkd.io، qkd.exceptions و qkd.datatypes}
+
+این ماژول از \lr{\texttt{qkd.params}} توابع \lr{\texttt{load\_lim2014\_dedicated\_params}} و \lr{\texttt{load\_lim2014\_dwdm\_params}} را وارد می‌کند. از \lr{\texttt{qkd.io}} توابع \lr{\texttt{safe\_json\_dumps}}، \lr{\texttt{parse\_json\_strict}}، \lr{\texttt{open\_atomic\_text}} را وارد می‌نماید. از \lr{\texttt{qkd.exceptions}} سلسله‌مراتب \lr{QKDException} را وارد می‌کند. از \lr{\texttt{qkd.datatypes}} تمام \lr{dataclass}ها و \lr{Enum}ها را وارد می‌نماید.
+
+\subsection{مدیریت خطا و تبدیل استثنا}
+
+الگوی یکپارچه‌ی خطا با \lr{\texttt{\_as\_qkd\_exception}} و \lr{\texttt{\_log\_qkd\_exception}} (طبق \lr{F-23}) در تمام \lr{catch-block}ها اعمال می‌شود. این الگو تضمین می‌کند که خطاها به‌صورت یکپارچه ثبت شوند و \lr{CSV} ساختار یکسانی برای همه‌ی ردیف‌ها داشته باشد.
+
+\subsection{مدیریت KeyboardInterrupt}
+
+در صورت \lr{KeyboardInterrupt}، \lr{\texttt{SimulationInterruptedError}} ساخته می‌شود و با کد خروج $130$ خارج می‌شود. این کد، استاندارد \lr{POSIX} برای \lr{SIGINT} است و به \lr{shell} اجازه می‌دهد تشخیص دهد که کاربر اجرا را لغو کرده است.
+
+\subsection{نقش ماژول در اکوسیستم کلی}
+
+در اکوسیستم کلی فریم‌ورک، \lr{\texttt{main\_optimized.py}} به‌عنوان \lr{entry point} اصلی عمل می‌کند و تمام ماژول‌های تخصصی (\lr{sources}، \lr{detectors}، \lr{channel}، \lr{protocols}، \lr{proofs}، \lr{params}، \lr{io}، \lr{exceptions}، \lr{datatypes}) را در یک \lr{pipeline} یکپارچه هماهنگ می‌نماید. خروجی \lr{CSV} این ماژول، ورودی ابزارهای تحلیل بعدی (\lr{pandas}، \lr{R}، \lr{matplotlib}) است. این معماری، جداسازی واضحی بین لایه‌ی هماهنگ‌کننده و لایه‌های تخصصی برقرار می‌سازد و امکان توسعه‌ی مستقل هر ماژول را فراهم می‌نماید.

@@ -1,0 +1,414 @@
+\sloppy
+\emergencystretch=5em
+\hbadness=10000
+\vbadness=10000
+\tolerance=2000
+
+\providecolor{codebg}{RGB}{248,248,248}
+\providecolor{codeframe}{RGB}{200,200,200}
+\providecolor{keyword}{RGB}{0,0,180}
+\providecolor{string}{RGB}{163,21,21}
+\providecolor{comment}{RGB}{0,128,0}
+
+\lstset{
+	backgroundcolor=\color{codebg},
+	frame=single,
+	rulecolor=\color{codeframe},
+	language=Python,
+	basicstyle=\ttfamily\scriptsize,
+	keywordstyle=\color{keyword}\bfseries,
+	stringstyle=\color{string},
+	commentstyle=\color{comment}\itshape,
+	showstringspaces=false,
+	breaklines=true,
+	breakatwhitespace=true,
+	numbers=left,
+	numberstyle=\tiny\color{gray},
+	numbersep=8pt,
+	tabsize=4,
+	literate=
+	{ف}{{{\bfseries\itshape ف}}}1
+	{ی}{{{\bfseries\itshape ی}}}1
+}
+
+\section{نمای کلی و هدف ماژول}
+
+ماژول \lr{\texttt{pulse\_tracking\_trace.py}} یک اسکریپت \emph{ممیزی و ردیابی سرتاسری} (\lr{end-to-end audit}) است که نقش یک \lr{forensic tracer} را در فریم‌ورک شبیه‌سازی \lr{QKD} ایفا می‌کند. این ماژول به‌طور خاص برای پاسخ به پرسش بنیادین زیر طراحی شده است: \emph{وقتی هزاران پالس نوری از طریق خط لوله چهارمرحله‌ای شبیه‌سازی (\lr{dispatch}، \lr{worker}، \lr{receipt}، \lr{row}) عبور می‌کنند، آیا هویت فیزیکی هر پالس — شامل بیت ارسالی \lr{Alice}، پایه انتخابی، پایه گیرنده \lr{Bob} و حالت کوانتومی — به‌طور سالم و بدون تغییر از مرحله‌ای به مرحله بعد منتقل می‌شود، یا این که در طول مسیر به‌دلیل \lr{reordering} موازی، \lr{race condition}، یا خطاهای پیاده‌سازی دچار فساد (\lr{corruption}) می‌گردد؟} این پرسش در شبیه‌سازی‌های موازی که در آن \lr{ProcessPoolExecutor} با چند کارگر روی هم‌زمان (\lr{concurrency}) اجرا می‌شود، حیاتی است؛ زیرا ترتیب خروجی (\lr{arrival order}) با ترتیب ورودی (\lr{input order}) لزوماً یکسان نیست و این ناهماهنگی می‌تواند به‌طور پنهانی منجر به جابجایی هویت پالس‌ها شود.
+
+هدف اصلی این ماژول، تولید یک \emph{رد Tracks قابل ممیزی} (\lr{auditable trace}) است که برای ۱۰۰ پالس تصادفی — از جمعیت ۱۰۰۰ پالس — نشان می‌دهد که دقیقاً چه بر سر هر پالس در هر یک از چهار مرحله می‌آید. چهار مرحله عبارت‌اند از: مرحله \lr{S1} (\lr{Pre-Dispatch Snapshot}) که هویت اصلی پالس پیش از ارسال به کارگران را ثبت می‌کند؛ مرحله \lr{S2} (\lr{Receipt Snapshot}) که هویت پالس پس از دریافت در کارگر را نشان می‌دهد؛ مرحله \lr{S3} (\lr{Worker Output}) که نتیجه اندازه‌گیری کارگر را در بر دارد؛ و مرحله \lr{S4} (\lr{Final Row}) که ردیف نهایی \lr{CSV} را نمایش می‌دهد. اگر هر چهار مرحله بر سر تمام \lr{identity fields} توافق کنند، یعنی هویت پالس به‌طور کامل حفظ شده است؛ در غیر این صورت، خطای فساد رخ داده است.
+
+ساختار کلی این ماژول شامل چندین بخش است. بخش اول، توابع قالب‌بندی (\lr{formatting helpers}) شامل \lr{\texttt{\_format\_table}}، \lr{\texttt{\_short\_identity}}، \lr{\texttt{\_identity\_match}} و \lr{\texttt{\_measurement\_match}} است که مسئول تولید خروجی متنی خوانا هستند. بخش دوم، تابع اصلی \lr{\texttt{run\_trace}} است که جریان کامل آزمون را هماهنگ می‌کند: ساخت جمعیت پالس، انتخاب پالس‌های ردیابی‌شده، اجرای \lr{dispatch}، محاسبه اثبات \lr{reordering}، تولید جدول ممیزی چهارمرحله‌ای، و محاسبه آمار سطح-مرحله‌ای. بخش سوم، تابع \lr{\texttt{main}} و \lr{CLI} است که از \lr{\texttt{argparse}} برای پیکربندی پارامترها (تعداد کارگران، اندازه جمعیت، تعداد پالس‌های ردیابی‌شده، بذر تصادفی، تعداد ردیف‌های نمایش‌داده‌شده، فایل خروجی) استفاده می‌کند.
+
+ویژگی برجسته این ماژول، الگوی \lr{reuse-by-import} آن است؛ یعنی به‌جای بازنویسی ماشین‌آلات آزمون، مستقیماً از توابع کمکی در ماژول \lr{\texttt{tests/test\_main\_optimized\_pulse\_tracking.py}} استفاده می‌کند. این توابع شامل \lr{\texttt{\_make\_pulse\_population}} برای ساخت جمعیت، \lr{\texttt{\_select\_tracked\_pids}} برای انتخاب تصادفی پالس‌های ردیابی‌شده با بذر قابل بازتولید، \lr{\texttt{\_run\_tracking\_dispatch}} برای اجرای \lr{dispatch} با ردیابی، \lr{\texttt{\_expected\_measurement}} برای پیش‌بینی نتیجه اندازه‌گیری بر اساس هویت پالس، و \lr{\texttt{\_tracking\_slow\_worker}} که یک کارگر با تأخیر دوجمله‌ای (\lr{bimodal delay}) است. این الگو، اصل \lr{DRY} (\lr{Don't Repeat Yourself}) را رعایت می‌کند و تضمین می‌نماید که اسکریپت ممیزی و آزمون واحد، از همان ماشین‌آلات استفاده کنند و در نتیجه، نتایج آن‌ها همیشه هم‌خوان باشند.
+
+در سطح عملیاتی، این ماژول به‌عنوان یک \lr{diagnostic tool} عمل می‌کند؛ یعنی در صورت بروز مشکلات مربوط به حفظ هویت پالس (مثلاً پس از \lr{refactor} موتور \lr{dispatch} یا تغییر مدل کارگر)، توسعه‌دهنده می‌تواند این اسکریپت را اجرا کند و به‌سرعت علت فساد را شناسایی کند. خروجی آن به دو شکل است: چاپ به \lr{stdout} برای مشاهده زنده، و ذخیره به فایل \lr{\texttt{pulse\_tracking\_trace.txt}} در مسیر \lr{\texttt{/home/z/my-project/download/}} برای بازبینی بعدی. این الگو در مهندسی نرم‌افزار علمی به‌عنوان \lr{shift-left forensics} شناخته می‌شود و به توسعه‌دهنده اجازه می‌دهد خطاهای ظریف را پیش از انتشار نتایج شناسایی کند.
+
+نکته مهم دیگر آن است که این ماژول \emph{اثبات \lr{reordering}} (\lr{reordering proof}) را به‌صورت صریح و قابل مشاهده ارائه می‌دهد. در شبیه‌سازی موازی، خروجی کارگران به ترتیب ورودی نیست؛ بلکه ترتیب ورودی به ترتیب اتمام کارگران بستگی دارد. این ماژول با محاسبه تعداد \lr{pairwise inversions} (یعنی زوج‌های پالسی که ترتیب ورودی‌شان با ترتیب خروجی متفاوت است)، نشان می‌دهد که \lr{reordering} رخ داده اما هیچ هویتی فاسد نشده است. این تمایز بنیادینی است: \lr{reordering} یک ویژگی ذاتی و قابل‌قبول شبیه‌سازی موازی است، در حالی که \lr{corruption} یک باگ است که باید برطرف شود.
+
+\section{مبانی تئوری و فیزیکی}
+
+\subsection{پروتکل BB84 و مفهوم هویت پالس}
+
+پروتکل \lr{BB84} که توسط \lr{Bennett} و \lr{Brassard} در سال ۱۹۸۴ پیشنهاد شد، ساده‌ترین و پرکاربردترین پروتکل \lr{QKD} است. در این پروتکل، فرستنده (\lr{Alice}) یک بیت کلاسیک را با انتخاب تصادفی یکی از دو پایه (\lr{basis}) — پایه مستطیلی (\lr{rectilinear}) $\{|0\rangle, |1\rangle\}$ یا پایه قطری (\lr{diagonal}) $\{|+\rangle, |-\rangle\}$ — به گیرنده (\lr{Bob}) ارسال می‌کند. \lr{Bob} نیز به‌طور تصادفی یکی از این دو پایه را برای اندازه‌گیری انتخاب می‌کند. در صورتی که پایه‌های \lr{Alice} و \lr{Bob} یکسان باشند، نتیجه اندازه‌گیری \lr{Bob} با بیت ارسالی \lr{Alice} هم‌خوان است (به جز خطاهای ناشی از نویز کانال و آشکارساز)؛ در غیر این صورت، نتیجه تصادفی است.
+
+هویت هر پالس در شبیه‌سازی \lr{BB84} با چندین فیلد کلیدی مشخص می‌شود که در مجموع \emph{identity fields} نامیده می‌شوند. این فیلدها در ثابت \lr{\texttt{IDENTITY\_FIELDS}} در ماژول آزمون تعریف شده‌اند و شامل موارد زیر هستند: \lr{\texttt{alice\_bit}} (بیت ارسالی \lr{Alice}، صفر یا یک)، \lr{\texttt{alice\_basis}} (پایه انتخابی \lr{Alice}، مستطیلی یا قطری)، \lr{\texttt{bob\_basis}} (پایه انتخابی \lr{Bob}، مستطیلی یا قطری)، \lr{\texttt{state\_label}} (برچسب حالت کوانتومی مانند \lr{|0⟩}، \lr{|1⟩}، \lr{|+⟩}، \lr{|−⟩})، \lr{\texttt{mu}} (شدت میانگین پالس) و \lr{\texttt{intensity\_label}} (برچسب شدت مانند \lr{signal}، \lr{decoy} یا \lr{vacuum}). حفظ یکپارچگی این فیلدها در طول خط لوله شبیه‌سازی، شرط لازم برای صحت نتایج است.
+
+\subsection{پیش‌بینی نتیجه اندازه‌گیری و قانون Born}
+
+نتیجه اندازه‌گیری یک پالس \lr{BB84} توسط \lr{Bob} را می‌توان بر اساس هویت پالس پیش‌بینی کرد. این پیش‌بینی بر اساس قانون \lr{Born} و قواعد پروتکل \lr{BB84} انجام می‌شود. در صورتی که پایه‌های \lr{Alice} و \lr{Bob} یکسان باشند (\lr{basis\_match = True}) و پالس به‌طور موفقیت‌آمیزی شناسایی شود (\lr{detected = True})، بیت اندازه‌گیری‌شده با بیت ارسالی هم‌خوان است (\lr{measured\_bit = alice\_bit}). در صورتی که پایه‌ها متفاوت باشند، نتیجه اندازه‌گیری کاملاً تصادفی است و احتمال آن $0.5$ برای هر بیت است. در شبیه‌سازی قطعی با بذر مشخص، این تصادفی بودن از یک \lr{PRNG} قابل بازتولید به دست می‌آید.
+
+پیش‌بینی نتیجه اندازه‌گیری در تابع \lr{\texttt{\_expected\_measurement}} پیاده‌سازی شده است. این تابع یک \lr{dict} شامل سه کلید \lr{\texttt{basis\_match}}، \lr{\texttt{measured\_bit}} و \lr{\texttt{detected}} برمی‌گرداند که مقادیر پیش‌بینی‌شده را در بر دارد. مقایسه این مقادیر با مقادیر گزارش‌شده توسط کارگر (\lr{S3})، امکان تشخیص خطاهای پیاده‌سازی را فراهم می‌سازد. به‌عنوان مثال، اگر کارگر \lr{\texttt{basis\_match = True}} و \lr{\texttt{detected = True}} را گزارش دهد اما \lr{\texttt{measured\_bit}} با \lr{\texttt{alice\_bit}} متفاوت باشد، این یک ناسازگاری است که نشان‌دهنده باگ در منطق اندازه‌گیری کارگر است.
+
+\subsection{تأخیر دوجمله‌ای و شبیه‌سازی کارگر واقعی}
+
+یکی از چالش‌های کلیدی در آزمون شبیه‌سازی موازی، ایجاد شرایط واقعی برای آشکار کردن \lr{race condition} و \lr{reordering} است. اگر همه کارگران با تأخیر یکسان اجرا شوند، خروجی به‌طور قطعی به ترتیب ورودی است و \lr{reordering} رخ نمی‌دهد. برای غلبه بر این مشکل، تابع \lr{\texttt{\_tracking\_slow\_worker}} با تأخیر دوجمله‌ای (\lr{bimodal delay}) پیاده‌سازی شده است:
+
+\begin{equation}
+	T_{\text{worker}} = \begin{cases} 100 \text{ ms} & \text{با احتمال } 0.10 \\ U(0, 5) \text{ ms} & \text{با احتمال } 0.90 \end{cases}
+\end{equation}
+
+در این رابطه، $T_{\text{worker}}$ زمان اجرای کارگر است و $U(0, 5)$ توزیع یکنواخت در بازه $[0, 5]$ میلی‌ثانیه است. این مدل، دو رژیم را شبیه‌سازی می‌کند: $10\%$ کارگران \emph{کند} هستند (تأخیر ۱۰۰ میلی‌ثانیه که شبیه‌سازی بار \lr{CPU} سنگین یا \lr{I/O} است) و $90\%$ کارگران \emph{سریع} هستند (تأخیر تصادفی ۰ تا ۵ میلی‌ثانیه). این توزیع غیریکنواخت، احتمال \lr{reordering} را به‌طور قابل‌توجهی افزایش می‌دهد و امکان آشکارسازی باگ‌های مربوط به حفظ ترتیب را فراهم می‌سازد.
+
+\subsection{ Kendall-Tau و معیار ناهماهنگی}
+
+برای اندازه‌گیری کمی میزان \lr{reordering}، از معیار \lr{Kendall-Tau inversion count} استفاده می‌شود. این معیار، تعداد زوج‌های (\lr{i, j}) با $i < j$ را می‌شمارد که در آن ترتیب خروجی برعکس ترتیب ورودی است:
+
+\begin{equation}
+	\text{inv}(\pi) = \left| \{(i, j) : i < j \land \pi(i) > \pi(j)\} \right|
+\end{equation}
+
+در این رابطه، $\pi$ جایگشت خروجی نسبت به ورودی است. حداکثر تعداد وارونگی‌ها برای $n$ پالس برابر با $\binom{n}{2} = \frac{n(n-1)}{2}$ است که در صورت جایگشت معکوس کامل رخ می‌دهد. درصد وارونگی به‌صورت زیر تعریف می‌شود:
+
+\begin{equation}
+	\text{reorder\%} = \frac{\text{inv}(\pi)}{\binom{n}{2}} \times 100
+\end{equation}
+
+این معیار، یک اندازه عاری از مقیاس (\lr{scale-free}) برای سنجش شدت \lr{reordering} فراهم می‌سازد. در شبیه‌سازی با ۱۰۰ پالس ردیابی‌شده و چند کارگر با تأخیر دوجمله‌ای، مقدار معمول این معیار در محدوده $30\%$ تا $50\%$ است که نشان‌دهنده \lr{reordering} قابل‌توجه اما نه کامل است.
+
+\subsection{مفهوم Identity-Bound-to-ID و Position-Independent Integrity}
+
+مفهوم کلیدی که این ماژول آن را به‌اثبات می‌رساند، \emph{یکپارچگی وابسته به شناسه، نه به موقعیت} (\lr{identity bound to pulse\_id, not to row position}) است. در یک طراحی ساده اما خطاکار، ممکن است هویت پالس بر اساس موقعیت ردیف در خروجی استنتاج شود؛ یعنی فرض شود که ردیف $i$ در خروجی، مربوط به پالس $i$ در ورودی است. این فرض در حضور \lr{reordering} نادرست است و منجر به تخصیص اشتباه هویت به ردیف‌ها می‌شود.
+
+طراحی صحیح، هویت را به \lr{\texttt{pulse\_id}} (یک شناسه یکتا که در زمان ساخت پالس تخصیص می‌یابد) می‌بندد. این شناسه به‌صورت یکتا در کل جمعیت است و در طول خط لوله بدون تغییر منتقل می‌شود. هر مرحله از خط لوله، این شناسه را در خروجی خود شامل می‌شود و امکان بازسازی هویت پالس را فراهم می‌سازد. این الگو در ادبیات مهندسی نرم‌افزار به‌عنوان \lr{correlation ID} یا \lr{trace ID} شناخته می‌شود و در سیستم‌های توزیع‌شده (\lr{distributed systems}) برای ردیابی درخواست‌ها به‌کررات به‌کار می‌رود.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+
+\subsection{ساختار کلی ماژول و الگوی Script-with-Helpers}
+
+این ماژول از الگوی \lr{script-with-helpers} پیروی می‌کند؛ یعنی یک تابع اصلی \lr{\texttt{run\_trace}} که جریان اجرا را هماهنگ می‌کند، و چندین تابع کمکی برای قالب‌بندی و مقایسه. این الگو برای اسکریپت‌های \lr{CLI} مناسب است که نیاز به خوانایی بالا و قابلیت آزمون دارند. تابع \lr{\texttt{run\_trace}} خروجی را به‌صورت یک رشته متنی بزرگ برمی‌گرداند (نه چاپ مستقیم)، که امکان نوشتن آن در \lr{stdout} یا فایل را فراهم می‌سازد. این جداسازی بین تولید خروجی و چاپ، الگوی \lr{separation of concerns} را رعایت می‌کند.
+
+\subsection{ثابت IDENTITY\_FIELDS و فیلدهای هویتی}
+
+ثابت \lr{\texttt{IDENTITY\_FIELDS}} که از ماژول آزمون وارد می‌شود، فهرست فیلدهایی است که برای تعیین هم‌خوانی هویت در چهار مرحله بررسی می‌شوند. این فیلدها در ساختار \lr{dict} هر پالس وجود دارند و شامل \lr{\texttt{alice\_bit}}، \lr{\texttt{alice\_basis}}، \lr{\texttt{bob\_basis}}، \lr{\texttt{state\_label}} و سایر فیلدهای هویتی هستند. استفاده از یک ثابت متمرکز برای این فیلدها، تضمین می‌کند که تمام بخش‌های ماژول از همان فهرست استفاده کنند و در صورت افزودن فیلد جدید، فقط یک نقطه نیاز به به‌روزرسانی دارد.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		from tests.test_main_optimized_pulse_tracking import (
+		IDENTITY_FIELDS,
+		_make_pulse_population,
+		_select_tracked_pids,
+		_run_tracking_dispatch,
+		_expected_measurement,
+		_tracking_slow_worker,
+		)
+		from main_optimized_dispatch import dispatch_work_items
+	\end{lstlisting}
+\end{LTR}
+
+این الگوی \lr{import} چندین نکته دارد. نخست، \lr{\texttt{IDENTITY\_FIELDS}} به‌عنوان یک ثابت وارد می‌شود تا در تمام ماژول قابل استفاده باشد. دوم، توابع کمکی با پیشوند \lr{\_} (مانند \lr{\texttt{\_make\_pulse\_population}}) وارد می‌شوند که در پایتون نشان‌دهنده \lr{private API} است؛ اما چون در همان پروژه هستیم، این واردسازی مجاز است. سوم، \lr{\texttt{dispatch\_work\_items}} از ماژول \lr{\texttt{main\_optimized\_dispatch}} وارد می‌شود که این نشان‌دهنده وابستگی مستقیم به موتور \lr{dispatch} اصلی فریم‌ورک است.
+
+\subsection{تابع \_format\_table و قالب‌بندی متنی}
+
+تابع \lr{\texttt{\_format\_table}} یک ابزار قالب‌بندی متنی است که لیستی از سطرها را به جدولی با ستون‌های هم‌تراز تبدیل می‌کند. این تابع دو پارامتر اصلی دارد: \lr{\texttt{headers}} (فهرست عناوین ستون‌ها) و \lr{\texttt{rows}} (لیست سطرها، که هر سطر یک لیست از مقادیر است). پارامتر سوم \lr{\texttt{col\_widths}} اختیاری است و در صورت عدم ارائه، به‌صورت خودکار بر اساس حداکثر طول مقدار در هر ستون محاسبه می‌شود.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _format_table(headers: List[str], rows: List[List[Any]],
+		col_widths: List[int] = None) -> str:
+		"""Format a list of rows as an aligned text table."""
+		if not rows:
+		return "(no rows)"
+		if col_widths is None:
+		col_widths = []
+		for i, h in enumerate(headers):
+		w = max(len(str(h)), *(len(str(r[i])) for r in rows))
+		col_widths.append(w)
+		lines = []
+		lines.append("  ".join(str(h).ljust(w) for h, w in zip(headers, col_widths)))
+		lines.append("  ".join("-" * w for w in col_widths))
+		for r in rows:
+		lines.append("  ".join(str(c).ljust(w) for c, w in zip(r, col_widths)))
+		return "\n".join(lines)
+	\end{lstlisting}
+\end{LTR}
+
+در خط اول، شرط \lr{\texttt{not rows}} بررسی می‌شود و در صورت خالی بودن، رشته \lr{"(no rows)"} بازگردانده می‌شود. این الگو، الگوی \lr{graceful handling of empty input} است. در حلقه بعدی، عرض هر ستون بر اساس حداکثر طول مقدار در آن ستون محاسبه می‌شود؛ این کار با ترکیب \lr{\texttt{max}} و \lr{\texttt{generator expression}} انجام می‌شود که یک الگوی پایتونیک برای محاسبه حداکثر در یک مجموعه است. سپس خط عنوان، خط جداکننده (با \lr{-}‌ها) و سطرهای داده به‌ترتیب به خطوط اضافه می‌شوند. استفاده از \lr{\texttt{ljust(w)}} تضمین می‌کند که تمام مقادیر در یک ستون، عرض یکسان داشته باشند و جدول هم‌تراز باشد.
+
+\subsection{تابع \_short\_identity و نمایش فشرده هویت}
+
+تابع \lr{\texttt{\_short\_identity}} یک \lr{dict} هویت پالس را به یک رشته فشرده به فرمت \lr{bit/basis/bob/state} تبدیل می‌کند. این نمایش، خوانایی جدول ممیزی را به‌طور قابل‌توجهی افزایش می‌دهد؛ زیرا یک رشته کوتاه به‌جای چهار فیلد جداگانه نمایش داده می‌شود.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _short_identity(d: Dict[str, Any]) -> str:
+		"""Compact representation of an identity dict: 'bit/basis/bob/state'."""
+		return (f"{d['alice_bit']}/{d['alice_basis']}/"
+		f"{d['bob_basis']}/{d['state_label']}")
+	\end{lstlisting}
+\end{LTR}
+
+این تابع با استفاده از \lr{f-string} و \lr{/} به‌عنوان جداکننده، یک رشته به فرمت \lr{0/0/1/|+⟩} تولید می‌کند که در آن اولین مقدار \lr{alice\_bit}، دومین \lr{alice\_basis}، سومین \lr{bob\_basis} و چهارمین \lr{state\_label} است. این فرمت، مشابه نمایش \lr{CSV} است اما با جداکننده \lr{/} که در خروجی متنی خواناتر است.
+
+\subsection{تابع \_identity\_match و منطق مقایسه چهارمرحله‌ای}
+
+تابع \lr{\texttt{\_identity\_match}} چهار \lr{dict} هویتی (\lr{s1}، \lr{s2}، \lr{s3}، \lr{s4}) را می‌گیرد و در صورتی که همه فیلدهای \lr{IDENTITY\_FIELDS} در هر چهار مرحله برابر باشند، مقدار \lr{"OK"} و در غیر این صورت، \lr{"FAIL"} برمی‌گرداند.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _identity_match(s1, s2, s3, s4) -> str:
+		"""Return 'OK' if all four stage views agree on every identity field."""
+		for f in IDENTITY_FIELDS:
+		if not (s1[f] == s2[f] == s3[f] == s4[f]):
+		return "FAIL"
+		return "OK"
+	\end{lstlisting}
+\end{LTR}
+
+در این پیاده‌سازی، عبارت \lr{\texttt{s1[f] == s2[f] == s3[f] == s4[f]}} یک الگوی پایتونیک برای مقایسه زنجیره‌ای است که در آن، همه چهار مقدار باید برابر باشند. این عبارت معادل \lr{\texttt{s1[f] == s2[f] and s2[f] == s3[f] and s3[f] == s4[f]}} است اما خواناتر و کوتاه‌تر است. در صورت عدم تطابق در هر فیلد، تابع بلافاصله \lr{"FAIL"} برمی‌گرداند که الگوی \lr{early exit} است و از پردازش غیرضروری جلوگیری می‌کند.
+
+\subsection{تابع \_measurement\_match و اعتبارسنجی پیش‌بینی}
+
+تابع \lr{\texttt{\_measurement\_match}} دو پارامتر \lr{s1} (هویت پیش از \lr{dispatch}) و \lr{s3} (خروجی کارگر) را می‌گیرد و در صورتی که نتیجه اندازه‌گیری گزارش‌شده توسط کارگر با پیش‌بینی بر اساس \lr{s1} هم‌خوان باشد، \lr{"OK"} برمی‌گرداند.
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _measurement_match(s1, s3) -> str:
+		"""Return 'OK' if the worker's measurement matches the S1 prediction."""
+		exp = _expected_measurement(s1)
+		if (s3["basis_match"] == exp["basis_match"] and
+		s3["measured_bit"] == exp["measured_bit"] and
+		s3["detected"] == exp["detected"]):
+		return "OK"
+		return "FAIL"
+	\end{lstlisting}
+\end{LTR}
+
+در این تابع، ابتدا \lr{\texttt{\_expected\_measurement(s1)}} فراخوانی می‌شود تا پیش‌بینی نتیجه اندازه‌گیری بر اساس هویت پالس به دست آید. سپس سه فیلد کلیدی — \lr{\texttt{basis\_match}}، \lr{\texttt{measured\_bit}} و \lr{\texttt{detected}} — بین گزارش کارگر و پیش‌بینی مقایسه می‌شوند. این اعتبارسنجی، خطاهای احتمالی در منطق اندازه‌گیری کارگر را آشکار می‌سازد. به‌عنوان مثال، اگر کارگر به‌اشتباه \lr{\texttt{basis\_match = True}} را در حالی که پایه‌ها متفاوت هستند گزارش دهد، این تابع خطا را شناسایی می‌کند.
+
+\subsection{تابع run\_trace و الگوی Closure برای خروجی}
+
+تابع \lr{\texttt{run\_trace}} اصلی‌ترین تابع ماژول است. این تابع یک \lr{closure} به نام \lr{\texttt{out}} تعریف می‌کند که رشته‌ها را به لیست \lr{\texttt{lines}} اضافه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def run_trace(args) -> str:
+		"""Run the 100-pulse trace and return the full text output."""
+		lines: List[str] = []
+		def out(s: str = ""):
+		lines.append(s)
+	\end{lstlisting}
+\end{LTR}
+
+این الگو چندین مزیت دارد: نخست، تمام خروجی در یک لیست جمع‌آوری می‌شود و در پایان به یک رشته با \lr{\texttt{"\textbackslash n".join(lines)}} تبدیل می‌گردد. این کار، از هزینه \lr{string concatenation} مکرر (که در پایتون از مرتبه $O(n^2)$ است) جلوگیری می‌کند. دوم، تابع \lr{\texttt{out}} به‌عنوان یک \lr{closure} به \lr{\texttt{lines}} دسترسی دارد و نیازی به ارسال \lr{\texttt{lines}} به عنوان پارامتر نیست. سوم، این الگو امکان تغییر آینده به \lr{file-like object} یا \lr{stream} را فراهم می‌سازد.
+
+\subsection{تنظیم مسیر و الگوی Path Bootstrap}
+
+در ابتدای ماژول، الگوی \lr{path bootstrap} پیاده‌سازی شده است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+		PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+		for candidate in (
+		PROJECT_ROOT,
+		os.path.join(PROJECT_ROOT, "src"),
+		os.path.join(PROJECT_ROOT, "tests"),
+		):
+		if candidate not in sys.path:
+		sys.path.insert(0, candidate)
+	\end{lstlisting}
+\end{LTR}
+
+این الگو، تضمین می‌کند که ماژول بدون توجه به محل اجرای آن (از \lr{project root} یا از مسیر دیگر)، بتواند ماژول‌های \lr{\texttt{tests}} و \lr{\texttt{src}} را وارد کند. \lr{\texttt{SCRIPT\_DIR}} مسیر دایرکتوری حاوی اسکریپت است و \lr{\texttt{PROJECT\_ROOT}} یک سطح بالاتر است. سپس سه مسیر (ریشه پروژه، \lr{src}، \lr{tests}) به \lr{\texttt{sys.path}} اضافه می‌شوند. این الگو در اسکریپت‌هایی که به‌صورت مستقل اجرا می‌شوند و نیاز به واردسازی ماژول‌های پروژه دارند، استاندارد است.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+
+\subsection{الگوریتم انتخاب تصادفی پالس‌های ردیابی‌شده}
+
+انتخاب ۱۰۰ پالس از جمعیت ۱۰۰۰ پالس، با بذر تصادفی مشخص، توسط تابع \lr{\texttt{\_select\_tracked\_pids}} انجام می‌شود. این تابع از \lr{\texttt{random.Random(seed)}} برای تولید یک \lr{PRNG} قابل بازتولید استفاده می‌کند و سپس با \lr{\texttt{random.sample}}، $k$ شناسه از جمعیت $N$ انتخاب می‌نماید. این الگوریتم، الگوریتم \lr{Fisher-Yates partial shuffle} است که در آن، فقط $k$ جایگشت اول محاسبه می‌شود:
+
+\begin{equation}
+	P(\text{pid } i \text{ selected}) = \frac{k}{N}, \quad \forall i \in \{0, 1, \ldots, N-1\}
+\end{equation}
+
+این الگوریتم تضمین می‌نماید که هر پالس با احتمال یکسان $k/N$ انتخاب شود و انتخاب‌ها مستقل باشند. با بذر مشخص، انتخاب قابل بازتولید است که برای آزمون‌های \lr{regression} حیاتی است.
+
+\subsection{الگوریتم محاسبه Pairwise Inversions}
+
+محاسبه تعداد \lr{pairwise inversions} در لیست ورودی، با الگوریتم ساده $O(n^2)$ انجام می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		n = len(tracked_arrival_order)
+		inversions = 0
+		for i in range(n):
+		ai = tracked_arrival_order[i]
+		for j in range(i + 1, n):
+		if ai > tracked_arrival_order[j]:
+		inversions += 1
+		max_inv = n * (n - 1) // 2
+	\end{lstlisting}
+\end{LTR}
+
+در این الگوریتم، برای هر زوج (\lr{i, j}) با $i < j$، بررسی می‌شود که آیا \lr{ai > arrival[j]} است. در صورت مثبت بودن، یک وارونگی شمرده می‌شود. حداکثر تعداد وارونگی‌ها برابر با $\binom{n}{2} = \frac{n(n-1)}{2}$ است که با عملگر \lr{//} (تقسیم صحیح) محاسبه می‌شود. این الگوریتم برای $n = 100$ کافی است ($10^4$ عملیات)، اما برای $n$ بزرگ‌تر، الگوریتم \lr{merge-sort-based} با پیچیدگی $O(n \log n)$ ترجیح داده می‌شود.
+
+\subsection{الگوریتم یافتن Concrete Swap Examples}
+
+برای نمایش شهودی \lr{reordering}، الگوریتمی برای یافتن نمونه‌های ملموس جابجایی پیاده‌سازی شده است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		swap_examples = []
+		for i in range(len(tracked_arrival_order) - 1):
+		a = tracked_arrival_order[i]
+		b = tracked_arrival_order[i + 1]
+		if a > b:  # inversion: larger pid arrived before smaller
+		swap_examples.append((i, i + 1, a, b))
+		if len(swap_examples) >= 5:
+		break
+	\end{lstlisting}
+\end{LTR}
+
+این الگوریتم، زوج‌های مجاور (\lr{adjacent pairs}) را بررسی می‌کند و در صورتی که \lr{pid} بزرگ‌تر قبل از \lr{pid} کوچک‌تر آمده باشد، آن را به‌عنوان یک جابجایی ثبت می‌نماید. این الگوریتم، فقط \lr{adjacent inversions} را شناسایی می‌کند که زیرمجموعه‌ای از \lr{pairwise inversions} هستند. هدف از این الگوریتم، ارائه نمونه‌های ملموس و قابل درک برای کاربر است؛ زیرا مشاهده دو \lr{pid} که جابجا شده‌اند، شهودی‌تر از عدد انتزاعی \lr{inversion count} است. حداکثر ۵ نمونه نمایش داده می‌شود تا خروجی بیش از حد طولانی نشود.
+
+\subsection{الگوریتم محاسبه Position Shifts}
+
+برای تحلیل کمی جابجایی هر پالس، الگوریتم محاسبه \lr{position shifts} پیاده‌سازی شده است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		sorted_idx = {pid: i for i, pid in enumerate(tracked_pids)}
+		arrived_idx = {pid: i for i, pid in enumerate(tracked_arrival_order)}
+		shifts = [(pid, sorted_idx[pid], arrived_idx[pid], arrived_idx[pid] - sorted_idx[pid])
+		for pid in tracked_pids]
+		max_up = max(shifts, key=lambda x: x[3])
+		max_down = min(shifts, key=lambda x: x[3])
+	\end{lstlisting}
+\end{LTR}
+
+در این الگوریتم، ابتدا دو دیکشنری \lr{\texttt{sorted\_idx}} و \lr{\texttt{arrived\_idx}} ساخته می‌شوند که برای هر \lr{pid}، موقعیت آن در لیست مرتب (ورودی) و در لیست ورودی (خروجی) را نگه می‌دارند. سپس برای هر پالس، اختلاف این دو موقعیت (\lr{shift}) محاسبه می‌شود. \lr{shift} مثبت به این معناست که پالس در خروجی زودتر از ورودی آمده (حرکت به بالا) و \lr{shift} منفی به این معناست که پالس دیرتر آمده (حرکت به پایین). \lr{\texttt{max\_up}} و \lr{\texttt{max\_down}} به‌ترتیب بیشترین حرکت به بالا و بیشترین حرکت به پایین را نشان می‌دهند. این الگوریتم، الگوی \lr{dictionary comprehension} و \lr{list comprehension} را به‌خوبی به نمایش می‌گذارد.
+
+\subsection{الگوریتم Stage-Level Mismatch Counting}
+
+برای محاسبه آمار ناهماهنگی در هر مرحله، الگوریتم زیر پیاده‌سازی شده است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		for pid in tracked_pids:
+		if pid not in receipts_by_pid:
+		missing_receipts += 1
+		continue
+		if pid not in rows_by_pid:
+		missing_rows += 1
+		continue
+		s1 = snapshot[pid]
+		s2 = receipts_by_pid[pid]["received_item"]
+		s3 = rows_by_pid[pid]
+		s4 = rows_by_pid[pid]
+		if any(s1[f] != s2[f] for f in IDENTITY_FIELDS):
+		s1_s2_mismatch += 1
+		if any(s2[f] != s3[f] for f in IDENTITY_FIELDS):
+		s2_s3_mismatch += 1
+		if any(s3[f] != s4[f] for f in IDENTITY_FIELDS):
+		s3_s4_mismatch += 1
+		exp = _expected_measurement(s1)
+		if (s3["basis_match"] != exp["basis_match"] or
+		s3["measured_bit"] != exp["measured_bit"] or
+		s3["detected"] != exp["detected"]):
+		measurement_mismatch += 1
+	\end{lstlisting}
+\end{LTR}
+
+در این الگوریتم، برای هر \lr{pid} در \lr{tracked\_pids}، ابتدا وجود \lr{receipt} و \lr{row} بررسی می‌شود. در صورت عدم وجود، شمارنده \lr{missing} افزایش می‌یابد و با \lr{\texttt{continue}} به پالس بعدی می‌رود. در غیر این صورت، چهار \lr{dict} هویتی \lr{s1}، \lr{s2}، \lr{s3}، \lr{s4} استخراج می‌شوند و برای هر جفت متوالی (\lr{S1-S2}، \lr{S2-S3}، \lr{S3-S4})، تطابق فیلدهای هویتی بررسی می‌گردد. تابع \lr{\texttt{any}} با \lr{generator expression}، الگوی پایتونیک برای بررسی وجود عدم تطابق است. در پایان، تطابق نتیجه اندازه‌گیری نیز بررسی می‌شود. این الگوریتم، الگوی \lr{fail-fast} را رعایت می‌کند: در صورت فقدان داده‌های پایه‌ای (\lr{receipt} یا \lr{row})، بقیه بررسی‌ها برای آن پالس انجام نمی‌شود.
+
+\subsection{الگوریتم Verdict و تفسیر نهایی}
+
+در پایان، الگوریتم \lr{verdict} نتیجه نهایی را اعلام می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		total_mismatch = (missing_receipts + missing_rows + s1_s2_mismatch +
+		s2_s3_mismatch + s3_s4_mismatch + measurement_mismatch)
+		if total_mismatch == 0:
+		out("  VERDICT:  All 100 tracked pulses preserved identity through all 4 stages.")
+		out(f"           {inversions} pairwise inversions occurred (reordering), yet NOT A")
+		out("           SINGLE pulse's identity was corrupted. Identity is bound to")
+		out("           pulse_id, NOT to row position -- exactly as the contract requires.")
+		else:
+		out(f"  VERDICT:  {total_mismatch} corruption(s) detected across the 4 stages.")
+		out("           See the per-pulse audit table above for details.")
+	\end{lstlisting}
+\end{LTR}
+
+این الگوریتم، مجموع تمام ناهماهنگی‌ها را محاسبه می‌کند و در صورت صفر بودن، پیام موفقیت با تأکید بر تمایز بین \lr{reordering} (که قابل‌قبول است) و \lr{corruption} (که باگ است) چاپ می‌نماید. این تمایز، پیام کلیدی ماژول است: \lr{reordering} یک ویژگی ذاتی شبیه‌سازی موازی است و در صورتی که هویت به \lr{pulse\_id} بسته شده باشد، هیچ مشکلی ایجاد نمی‌کند.
+
+\subsection{الگوریتم CLI با argparse}
+
+تابع \lr{\texttt{main}} از \lr{\texttt{argparse}} برای پیکربندی پارامترها استفاده می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def main():
+		parser = argparse.ArgumentParser(
+		description="100-random-pulse end-to-end state trace",
+		formatter_class=argparse.RawDescriptionHelpFormatter,
+		)
+		parser.add_argument("--workers", type=int, default=4)
+		parser.add_argument("--population", type=int, default=1000)
+		parser.add_argument("--tracked", type=int, default=100)
+		parser.add_argument("--seed", type=int, default=42)
+		parser.add_argument("--first", type=int, default=100)
+		parser.add_argument("--output", type=str, default=None)
+		args = parser.parse_args()
+		
+		text = run_trace(args)
+		print(text)
+		
+		default_path = os.path.join(PROJECT_ROOT, "download",
+		"pulse_tracking_trace.txt")
+		os.makedirs(os.path.dirname(default_path), exist_ok=True)
+		with open(default_path, "w") as f:
+		f.write(text)
+		print(f"\n[trace also written to {default_path}]", file=sys.stderr)
+	\end{lstlisting}
+\end{LTR}
+
+این الگوریتم، الگوی استاندارد \lr{CLI} در پایتون است. هر پارامتر با \lr{\texttt{add\_argument}} تعریف می‌شود و دارای مقدار پیش‌فرض است. \lr{\texttt{RawDescriptionHelpFormatter}} امکان قالب‌بندی متن راهنما را فراهم می‌سازد. پس از اجرای \lr{\texttt{run\_trace}}، خروجی به \lr{stdout} چاپ می‌شود و همچنین به فایل پیش‌فرض در \lr{\texttt{download/}} نوشته می‌گردد. در صورت ارائه \lr{\texttt{-{}-output}}، خروجی به فایل اضافی نیز نوشته می‌شود. این الگو، تضمین می‌کند که خروجی همیشه برای بازبینی بعدی ذخیره می‌شود، حتی اگر کاربر فایل خاصی مشخص نکند.
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+
+\subsection{وابستگی به tests/test\_main\_optimized\_pulse\_tracking}
+
+اصلی‌ترین وابستگی این ماژول، به \lr{\texttt{tests/test\_main\_optimized\_pulse\_tracking.py}} است. این وابستگی شامل پنج مورد است: ثابت \lr{\texttt{IDENTITY\_FIELDS}} و چهار تابع \lr{\texttt{\_make\_pulse\_population}}، \lr{\texttt{\_select\_tracked\_pids}}، \lr{\texttt{\_run\_tracking\_dispatch}} و \lr{\texttt{\_expected\_measurement}} و \lr{\texttt{\_tracking\_slow\_worker}}. این الگوی \lr{reuse-by-import}، تضمین می‌کند که اسکریپت ممیزی و آزمون واحد، از همان ماشین‌آلات استفاده کنند و نتایج آن‌ها همیشه هم‌خوان باشند. در صورت تغییر در یکی از این توابع (مثلاً افزودن فیلد جدید به \lr{\texttt{IDENTITY\_FIELDS}})، هر دو به‌طور خودکار به‌روز می‌شوند.
+
+این وابستگی، یک وابستگی \lr{tight coupling} است: تغییر در ساختار \lr{dict} پالس یا در امضای توابع، می‌تواند منجر به شکست این ماژول شود. برای کاهش این \lr{coupling}، می‌توان توابع کمکی را به یک ماژول جداگانه (مانند \lr{\texttt{pulse\_tracking\_utils.py}}) منتقل کرد که هم اسکریپت ممیزی و هم آزمون واحد از آن استفاده کنند. این الگو، الگوی \lr{shared utility module} است که در پروژه‌های بالغ به‌کررات به‌کار می‌رود.
+
+\subsection{ورودی از main\_optimized\_dispatch}
+
+این ماژول تابع \lr{\texttt{dispatch\_work\_items}} را از \lr{\texttt{main\_optimized\_dispatch}} وارد می‌کند. این تابع، موتور اصلی \lr{dispatch} فریم‌ورک است که کارهای شبیه‌سازی را بین چند کارگر توزیع می‌کند. وابستگی به این تابع، تضمین می‌کند که اسکریپت ممیزی، همان مسیر اجرای واقعی فریم‌ورک را آزمون می‌کند و نه یک مسیر آزمایشگاهی مصنوعی.
+
+\subsection{خروجی به stdout و فایل}
+
+خروجی این ماژول به دو شکل است: نخست، چاپ به \lr{stdout} با \lr{\texttt{print(text)}} که امکان مشاهده زنده را فراهم می‌سازد. دوم، نوشتن به فایل پیش‌فرض در مسیر \lr{\texttt{/home/z/my-project/download/pulse\_tracking\_trace.txt}} با \lr{\texttt{open(default\_path, "w")}}. در صورت ارائه \lr{\texttt{-{}-output}}، خروجی به فایل اضافی نیز نوشته می‌شود. این الگو، تضمین می‌کند که خروجی همیشه برای بازبینی بعدی ذخیره می‌شود، حتی اگر کاربر آن را به فایل خاصی هدایت نکرده باشد.
+
+\subsection{ارتباط با فریم‌ورک آزمون}
+
+این ماژول و ماژول آزمون \lr{\texttt{tests/test\_main\_optimized\_pulse\_tracking.py}} دو لایه مکمل اعتبارسنجی را تشکیل می‌دهند. لایه آزمون، اعتبارسنجی خودکار را با \lr{pytest} فراهم می‌سازد و در \lr{CI/CD pipeline} اجرا می‌شود. لایه اسکریپت ممیزی (این ماژول)، خروجی قابل مشاهده و قابل تحلیل توسط انسان را فراهم می‌کند و برای \lr{debug} و تحلیل دستی استفاده می‌شود. این دو لایه، نقش‌های مکمل دارند: لایه آزمون، \lr{gate} خودکار را برای \lr{merge} فراهم می‌سازد و لایه اسکریپت، امکان تحلیل عمیق در صورت بروز مشکل را فراهم می‌نماید.
+
+\subsection{خروجی قابل تحلیل توسط ابزارهای خارجی}
+
+خروجی متنی این ماژول، به‌گونه‌ای طراحی شده که توسط ابزارهای تحلیل متنی (مانند \lr{grep}، \lr{awk} یا اسکریپت‌های \lr{Python}) قابل پردازش باشد. جدول‌ها با \lr{spaces} هم‌تراز شده‌اند و جداکننده‌ها واضح هستند. در صورت نیاز، می‌توان خروجی را به فرمت \lr{JSON} یا \lr{CSV} نیز تبدیل کرد تا توسط ابزارهای تحلیل داده (مانند \lr{pandas}) پردازش شود. این انعطاف‌پذیری، در پروژه‌های تحقیقاتی که نیاز به تحلیل آماری نتایج شبیه‌سازی دارند، ارزشمند است.
+
+\subsection{جمع‌بندی ارتباطات}
+
+به‌طور خلاصه، این ماژول در نقش یک \lr{forensic tracer} مستقل عمل می‌کند که از طریق سه کانال با سایر بخش‌های فریم‌ورک در ارتباط است: ورودی توابع کمکی از \lr{\texttt{tests/test\_main\_optimized\_pulse\_tracking.py}}، ورودی موتور \lr{dispatch} از \lr{\texttt{main\_optimized\_dispatch}}، و خروجی به \lr{stdout} و فایل \lr{\texttt{pulse\_tracking\_trace.txt}}. این معماری، جداسازی واضحی بین لایه ممیزی و موتور شبیه‌سازی برقرار می‌سازد و امکان توسعه مستقل هر یک را فراهم می‌نماید. خروجی این ماژول، نه‌تنها برای توسعه‌دهندگان (در فرآیند \lr{debug})، بلکه برای بازبینان کریپتوگرافیک (در فرآیند \lr{security audit}) نیز مفید است، زیرا یک \lr{audit trail} قابل ممیزی از حفظ هویت پالس‌ها در طول خط لوله شبیه‌سازی فراهم می‌سازد.

@@ -1,0 +1,629 @@
+\sloppy
+\emergencystretch=5em
+\hbadness=10000
+\vbadness=10000
+\tolerance=2000
+\providecolor{codebg}{RGB}{248,248,248}
+\providecolor{codeframe}{RGB}{200,200,200}
+\providecolor{keyword}{RGB}{0,0,180}
+\providecolor{string}{RGB}{163,21,21}
+\providecolor{comment}{RGB}{0,128,0}
+\lstset{
+	basicstyle=\ttfamily\scriptsize,
+	breaklines=true,
+	breakatwhitespace=false,
+	columns=fullflexible,
+	keepspaces=true,
+	frame=single,
+	framesep=2pt,
+	showstringspaces=false,
+	backgroundcolor=\color{codebg},
+	rulecolor=\color{codeframe},
+	keywordstyle=\color{keyword}\bfseries,
+	stringstyle=\color{string},
+	commentstyle=\color{comment}\itshape,
+	numberstyle=\tiny\color{gray},
+	numbers=left,
+	numbersep=6pt,
+	xleftmargin=14pt,
+	framexleftmargin=14pt,
+	literate=
+	{ą}{{\v{a}}}1 {ę}{{\k{e}}}1 {ż}{{\.z}}1 {ś}{{\'s}}1
+	{ł}{{\l}}1 {ć}{{\'c}}1 {ń}{{\'n}}1 {ó}{{\'o}}1 {ź}{{\'z}}1
+	{→}{{$\rightarrow$}}1 {←}{{$\leftarrow$}}1 {≠}{{$\neq$}}1
+}
+
+\section{نمای کلی و هدف ماژول}
+
+فایل \lr{\texttt{qkd/proofs/optimization.py}} مجموعه‌ای از ابزارهای بهینه‌سازی پارامتر برای پروتکل‌های مختلف توزیع کلید کوانتومی (\lr{QKD}) را پیاده‌سازی می‌کند. این ماژول بر اساس دو چارچوب مرجع توسعه یافته است: چارچوب \lr{Ma et al. 2005} برای پروتکل‌های \lr{Decoy-State BB84} و چارچوب \lr{Chapman et al. 2018} برای پروتکل‌های \lr{state-dependent} مبتنی بر \lr{Amplitude Damping Channel (ADC)}. هدف اصلی این ماژول، پیدا کردن مقادیر بهینۀ پارامترهای قابل کنترل آلیس (مانند شدت سیگنال $\mu$، شدت \lr{decoy} $\nu$، احتمال انتخاب سیگنال $P_s$، احتمال انتخاب \lr{decoy} $P_d$، و زاویۀ چرخش کدگذاری $\theta$) به گونه‌ای است که نرخ کلید امن نهایی به حداکثر برسد. این بهینه‌سازی در عمل برای استقرار سیستم‌های \lr{QKD} حیاتی است، زیرا انتخاب پارامترهای غیربهینه می‌تواند نرخ کلید را تا چندین براکم کند یا حتی آن را به صفر برساند.
+
+اهمیت این ماژول از این واقعیت ناشی می‌شود که نرخ کلید امن $R$ در پروتکل‌های \lr{QKD} یک تابع غیرخطی و معمولاً غیرمحدب (\lr{non-convex}) از پارامترهای سیستم است. به عنوان مثال، در پروتکل \lr{Decoy-State BB84}، نرخ کلید به صورت $R = q\{Q_1[1 - H_2(e_1)] - Q_\mu f(E_\mu) H_2(E_\mu)\}$ محاسبه می‌شود که در آن $Q_1 = Y_1 \mu e^{-\mu}$ و $Q_\mu = \sum_n Y_n P(n|\mu)$ هر دو به صورت غیرخطی به $\mu$ وابسته‌اند. افزایش $\mu$ باعث افزایش $Q_1$ (و در نتیجه افزایش ترم تقویت حریم خصوصی) می‌شود، اما همزمان باعث افزایش $Q_\mu$ (و در نتیجه افزایش نشت تصحیح خطا) و افزایش آسیب‌پذیری به حمله \lr{PNS} نیز می‌شود. بنابراین یک نقطۀ بهینۀ $\mu^*$ وجود دارد که در آن توازن میان این دو ترم بهینه است. پیدا کردن این نقطه به صورت تحلیلی به دلیل پیچیدگی فرمول‌ها ممکن نیست و باید از روش‌های عددی استفاده شود.
+
+این ماژول ده تابع بهینه‌سازی مستقل ارائه می‌کند که هر کدام برای یک سناریوی خاص طراحی شده‌اند. این توابع عبارتند از: \lr{\texttt{optimize\_decoy\_intensities}} (بهینه‌سازی اکتشافی شدت سیگنال و \lr{decoy} بر اساس مدل نرخ ساده‌شده)، \lr{\texttt{optimize\_rotation\_angle}} (بهینه‌سازی زاویۀ چرخش کدگذاری برای یک کانال عمومی)، \lr{\texttt{calculate\_optimal\_mu\_ma2005}} (محاسبۀ تحلیلی-عددی $\mu$ بهینه بر اساس معادلۀ 12 مقالۀ \lr{Ma 2005})، \lr{\texttt{optimize\_nu\_ma2005}} (بهینه‌سازی $\nu$ برای $N$ متناهی بر اساس بخش 4.3 مقاله)، \lr{\texttt{optimize\_pulse\_distribution\_ma2005}} (بهینه‌سازی احتمالات توزیع پالس با روش \lr{SLSQP})، \lr{\texttt{optimize\_pulse\_probabilities}} (پوشش‌دهنده برای تابع قبلی)، \lr{\texttt{optimize\_simultaneous\_ma2005}} (بهینه‌سازی همزمان $P_s$، $P_d$ و $\nu$ با استفاده از کلاس \lr{\texttt{Ma2005GlobalOptimizer}} و گرادیان عددی)، \lr{\texttt{optimize\_global\_ma2005}} (پوشش‌دهنده برای تابع قبلی)، \lr{\texttt{optimize\_lim2014\_finite\_key}} (بهینه‌سازی پنج پارامتر چارچوب \lr{Lim 2014} برای کلید متناهی با روش \lr{Nelder-Mead})، و \lr{\texttt{optimize\_rotation\_angle\_chapman}} (بهینه‌سازی زاویۀ چرخش برای \lr{Coherent Scheme} در \lr{Chapman 2018} با محاسبۀ فاصلۀ \lr{trace distance} میان حالت‌های خروجی کانال).
+
+طراحی این ماژول بر اساس اصل جداسازی دغدغه‌ها (\lr{Separation of Concerns}) استوار است؛ به این ترتیب که توابع بهینه‌سازی صرفاً مسئول پیدا کردن پارامترهای بهینه هستند و محاسبۀ نرخ کلید (یا هر کمیت هدف دیگر) به یک فراخوان (\lr{callback}) تابعی سپرده می‌شود که توسط کاربر ارائه می‌گردد. این طراحی چندین مزیت دارد: 
+
+نخست، ماژول بهینه‌سازی از جزئیات پیاده‌سازی اثبات امنیتی مستقل است و می‌تواند با هر چارچوب اثبات (مانند \lr{Ma 2005}، \lr{Lim 2014} یا \lr{Tight}) کار کند؛ دوم، کاربر می‌تواند تابع هدف خود را به سادگی جایگزین کند (مثلاً به جای نرخ کلید، \lr{QBER} را کمینه کند یا طول کلید متناهی را بیشینه سازد) بدون آنکه نیازی به تغییر کد بهینه‌سازی باشد؛ سوم، فرآیند تست‌کردن و ارزیابی آسان‌تر می‌شود، زیرا می‌توان از \lr{callback}‌های مصنوعی با رفتار مشخص و شناخته‌شده برای اعتبارسنجی توابع بهینه‌سازی استفاده کرد. این الگو که به تزریق وابستگی (\lr{«dependency injection»}) نیز معروف است، یک اصل کلیدی در مهندسی نرم‌افزار به شمار می‌رود که قابلیت نگهداری و توسعهٔ کد را به طور قابل‌توجهی افزایش می‌دهد.
+
+
+در صورت شکست بهینه‌سازی (به هر دلیل: عدم همگرایی، ناحیه غیرممکن، یا خطای عددی)، توابع این ماژول به جای \lr{raise} کردن استثنا، مقادیر پیش‌فرض امن و محافظه‌کارانه را برمی‌گردانند. این رفتار \lr{fail-safe} تضمین می‌کند که خط لوله شبیه‌سازی متوقف نشود و کاربر بتواند با مقادیر پیش‌فرض ادامه دهد. به عنوان مثال، اگر بهینه‌سازی $\mu$ شکست بخورد، مقدار پیش‌فرض 0.48 (برای $f \le 1.05$) یا 0.54 (برای $f > 1.05$) برگردانده می‌شود که مقادیر تجربی خوبی برای پروتکل‌های \lr{Decoy-State BB84} هستند. این مقادیر پیش‌فرض بر اساس بخش 3.1 مقالۀ \lr{Ma 2005} انتخاب شده‌اند.
+
+\section{مبانی تئوری و فیزیکی}
+
+\subsection{نرخ کلید \lr{GLLP} و وابستگی غیرخطی به $\mu$}
+
+فرمول استاندارد نرخ کلید در چارچوب \lr{Gottesman-Lo-Lütkenhaus-Preskill (GLLP)} به صورت زیر است:
+\begin{equation}
+	R = q\left\{Q_1\left[1 - H_2(e_1)\right] - Q_\mu\,f(E_\mu)\,H_2(E_\mu)\right\},
+\end{equation}
+که در آن $q$ فاکتور پایه‌گذاری (برای \lr{BB84} برابر \lr{0.5})، $Q_1 = Y_1 \mu e^{-\mu}$ \lr{Gain} تک‌فوتونی، $Q_\mu = \sum_n Y_n P(n|\mu)$ \lr{Gain} کلی سیگنال، $e_1$ خطای تک‌فوتونی، $E_\mu$ \lr{QBER} سیگنال، $f(E_\mu)$ بازدهی تصحیح خطا و $H_2(\cdot)$ آنتروپی باینری است. ترم اول $Q_1[1 - H_2(e_1)]$ نشان‌دهندۀ آنتروفی قابل استخراج از تک‌فوتون‌های امن است و ترم دوم $Q_\mu f(E_\mu) H_2(E_\mu)$ نشان‌دهندۀ نشت تصحیح خطا است. 
+
+برای پیدا کردن $\mu$ بهینه، باید $\partial R / \partial \mu = 0$ را حل کنیم. با فرض ساده‌کنندۀ $e_1 \approx E_\mu$ و $Y_1 \approx \eta$ (در حد نویز کم)، این مشتق‌گیری به یک معادلۀ تحلیلی-عددی منجر می‌شود که در معادلۀ (12) مقالۀ \lr{Ma 2005} ارائه شده است. این معادله به صورت زیر فرمول‌بندی می‌شود:
+\begin{equation}
+	(1 - \mu)\,e^{-\mu} = C, \qquad C = \frac{f_{\text{EC}}\,H_2(e_{\text{det}})}{1 - H_2(e_{\text{det}})},
+\end{equation}
+که در آن $e_{\text{det}}$ خطای ذاتی آشکارساز است. تابع $(1-\mu)e^{-\mu}$ در $\mu = 0$ برابر 1 است و به طور یکنواخت تا $\mu \to \infty$ کاهش می‌یابد. بنابراین برای هر $C \in (0, 1)$ یک جواب یکتا در بازۀ $(0, 1)$ وجود دارد. اگر $C \ge 1$ (یعنی خطای آشکارساز خیلی بزرگ باشد)، جوابی وجود ندارد و نرخ کلید منفی می‌شود؛ در این حالت، ماژول به مقدار پیش‌فرض $\mu = 0.48$ برمی‌گردد. این محاسبۀ تحلیلی-عددی در تابع \lr{\texttt{calculate\_optimal\_mu\_ma2005}} با استفاده از روش \lr{Brent's method} (\lr{\texttt{brentq}} از \lr{SciPy}) پیاده‌سازی شده است.
+
+\subsection{بهینه‌سازی $\nu$ برای کلید متناهی}
+
+در حالت کلید متناهی ($N < \infty$)، نرخ کلید به اندازۀ نمونۀ آماری \lr{decoy} حساس می‌شود. اگر $\nu$ خیلی کوچک باشد، تعداد آشکارسازی‌های \lr{decoy} $N_d = N \cdot P_d \cdot Q_\nu$ کم می‌شود و کران‌های آماری برای $Y_1$ و $e_1$ سخت‌گیرانه‌تر (یعنی بدتر) می‌شوند. اگر $\nu$ خیلی بزرگ باشد، شباهت آن به $\mu$ زیاد می‌شود و قابلیت تفکیک آماری بین سیگنال و \lr{decoy} کاهش می‌یابد. بنابراین یک $\nu^*$ بهینه وجود دارد. بخش 4.3 مقالۀ \lr{Ma 2005} این بهینه‌سازی را به صورت یک مینیمم‌سازی اسکالر روی $\nu$ با کران‌های $[\nu_{\min}, \mu \cdot 0.9]$ فرمول‌بندی می‌کند. در کد، این بهینه‌سازی در تابع \lr{\texttt{optimize\_nu\_ma2005}} با استفاده از روش \lr{Brent's bounded method} (\lr{\texttt{minimize\_scalar}} با \lr{\texttt{method='bounded'}}) پیاده‌سازی شده است. این روش برای توابع یک‌بعدی هموار بهینه است و همگرایی تضمین‌شده‌ای در بازۀ مشخص‌شده دارد.
+
+\subsection{بهینه‌سازی توامان $P_s$، $P_d$ و $\nu$}
+
+بهینه‌سازی توامان سه پارامتر $P_s$، $P_d$ و $\nu$ یک مسألۀ بهینه‌سازی چندبعدی است که نیاز به روش‌های \lr{gradient-based} دارد. در کد، این مسأله با استفاده از روش \lr{SLSQP (Sequential Least SQuares Programming)} از \lr{SciPy} حل می‌شود. این روش برای مسائل بهینه‌سازی مقید با محدودیت‌های نامساوی مناسب است و از گرادیان تابع هدف برای هدایت جستجو استفاده می‌کند. کلاس \lr{\texttt{Ma2005GlobalOptimizer}} برای این منظور طراحی شده و یک متد \lr{\texttt{gradient}} برای محاسبۀ گرادیان به روش تفاضل محدود (\lr{finite difference}) ارائه می‌کند. 
+
+گرادیان به روش تفاضل محدود مرکزی به صورت زیر محاسبه می‌شود:
+\begin{equation}
+	\frac{\partial f}{\partial x_i} \approx \frac{f(x + \epsilon\,e_i) - f(x - \epsilon\,e_i)}{2\,\epsilon},
+\end{equation}
+که در آن $e_i$ بردار واحد در جهت $i$-ام و $\epsilon$ گام تفاضل محدود است (در کد $\epsilon = 10^{-8}$). این روش برای $P_s$ و $P_d$ به صورت تفاضل پیشرو (\lr{forward difference}) و برای $\nu$ به صورت تفاضل مرکزی پیاده‌سازی شده است. این انتخاب به این دلیل است که $P_s$ و $P_d$ در محدودیت‌های سخت ($P_s + P_d \le 1$) شرکت می‌کنند و تفاضل پیشرو در نزدیک مرز محدودیت پایدارتر است، در حالی که $\nu$ یک متغیر آزاد است و تفاضل مرکزی دقت بالاتری دارد.
+
+\subsection{کانال \lr{Amplitude Damping} و \lr{Chapman 2018}}
+
+در پروتکل‌های \lr{state-dependent QKD} که توسط \lr{Chapman et al. 2018} پیشنهاد شده‌اند، آلیس اطلاعات را در حالت‌های کوانتومی $\rho_0$ و $\rho_1$ کدگذاری می‌کند و این حالت‌ها از یک کانال \lr{Amplitude Damping Channel (ADC)} با پارامتر $\gamma$ عبور می‌کنند. \lr{ADC} کانالی است که افت انرژی (مانند واهلش آرام اتم‌ها) را مدل می‌کند و عملگرهای \lr{Kraus} آن به صورت زیر تعریف می‌شوند:
+\begin{align}
+	E_0 &= \begin{pmatrix} 1 & 0 \\ 0 & \sqrt{1 - \gamma} \end{pmatrix}, \\
+	E_1 &= \begin{pmatrix} 0 & \sqrt{\gamma} \\ 0 & 0 \end{pmatrix}.
+\end{align}
+حالت خروجی کانال از رابطۀ $\rho_{\text{out}} = E_0 \rho_{\text{in}} E_0^\dagger + E_1 \rho_{\text{in}} E_1^\dagger$ محاسبه می‌شود. در \lr{Coherent Scheme}، آلیس حالت‌های ورودی $|0\rangle\langle 0|$ و $|1\rangle\langle 1|$ را با یک چرخش \lr{Y} به زاویۀ $\theta$ تبدیل می‌کند:
+\begin{equation}
+	\rho_i^{\text{in}}(\theta) = R_y(\theta)\,|i\rangle\langle i|\,R_y(\theta)^\dagger, \qquad R_y(\theta) = \begin{pmatrix} \cos(\theta/2) & -\sin(\theta/2) \\ \sin(\theta/2) & \cos(\theta/2) \end{pmatrix}.
+\end{equation}
+احتمال موفقیت تشخیص حالت توسط باب متناسب با فاصلۀ \lr{trace distance} میان $\rho_0^{\text{out}}$ و $\rho_1^{\text{out}}$ است:
+\begin{equation}
+	P_{\text{succ}} = \frac{1}{2}\left(1 + D(\rho_0^{\text{out}}, \rho_1^{\text{out}})\right), \qquad D(\rho_0, \rho_1) = \frac{1}{2}\,\text{Tr}\left|\rho_0 - \rho_1\right|,
+\end{equation}
+که در آن $|A| = \sqrt{A^\dagger A}$ و \lr{Tr} عملگر \lr{trace} است. برای ماتریس‌های \lr{Hermitian}، $D$ را می‌توان به صورت $D = \frac{1}{2}\sum_i |\lambda_i|$ محاسبه کرد که در آن $\lambda_i$ مقادیر ویژۀ $\rho_0 - \rho_1$ هستند. بهینه‌سازی زاویۀ $\theta$ به گونه‌ای که $D$ بیشینه شود، در تابع \lr{\texttt{optimize\_rotation\_angle\_chapman}} پیاده‌سازی شده است.
+
+\subsection{بهینه‌سازی کلید متناهی \lr{Lim 2014}}
+
+چارچوب \lr{Lim et al. 2014} پنج پارامتر آزاد دارد: $q_x$ (احتمال پایۀ $X$)، $P_{\mu_1}$ (احتمال سیگنال)، $P_{\mu_2}$ (احتمال \lr{decoy} ضعیف)، $\mu_1$ (شدت سیگنال) و $\mu_2$ (شدت \lr{decoy}). بهینه‌سازی نرخ کلید $R = \ell / N$ روی این پنج پارامتر یک مسألۀ پیچیده است زیرا چشم‌انداز (\lr{landscape}) تابع هدف معمولاً ناهموار (\lr{non-smooth}) است و دارای چندین محلی است. در کد، این مسأله با روش \lr{Nelder-Mead} (یک روش بدون گرادیان) حل می‌شود که برای توابع ناهموار مقاوم‌تر از روش‌های مبتنی بر گرادیان است. این روش از یک \lr{simplex} (چندوجهی محدب) برای کاوش فضای پارامتر استفاده می‌کند و با منبسط‌کردن، منقبض‌کردن و انعکاس دادن \lr{simplex}، به سمت نقطۀ بهینه حرکت می‌کند. حداکثر تعداد تکرارها در کد 200 تنظیم شده و تلورانس $10^{-3}$ برای توقف استفاده می‌شود.
+
+\subsection{محدودیت‌های فیزیکی و منطق جریمه}
+
+در تمام توابع بهینه‌سازی این ماژول، محدودیت‌های فیزیکی به صورت جریمه‌های (\lr{penalty}) بزرگ (مانند $10^9$) پیاده‌سازی شده‌اند. این محدودیت‌ها عبارتند از: $\mu > \nu$ (شدت سیگنال باید بزرگتر از \lr{decoy} باشد)، $\nu > 0$ (شدت باید مثبت باشد)، $\mu \le 1$ (برای جلوگیری از پالس‌های بسیار چندفوتونی)، $P_s + P_d < 1$ (احتمالات باید نرمالیزه شوند و فضایی برای $P_v$ باقی بماند)، و $\nu < 0.9 \mu$ (برای حفظ قابلیت تفکیک آماری). استفاده از جریمه به جای محدودیت‌های سخت به روش \lr{Nelder-Mead} اجازه می‌دهد در ناحیه‌های غیرممکن هم کاوش کند (با جریمه بالا) و در عین حال به روش \lr{SLSQP} (که از محدودیت‌های صریح پشتیبانی می‌کند) انعطاف‌پذیری بدهد. این طراحی ترکیبی به ماژول اجازه می‌دهد با انواع روش‌های بهینه‌سازی کار کند بدون آنکه نیاز به بازنویسی تابع هدف باشد.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+
+\subsection{ساختار کلی ماژول}
+
+ماژول \lr{\texttt{optimization.py}} بر اساس یک طراحی تابعی (\lr{functional design}) استوار است که در آن نه توابع مستقل بهینه‌سازی ارائه می‌شوند و یک کلاس کمکی \lr{\texttt{Ma2005GlobalOptimizer}} برای بهینه‌سازی توامان استفاده می‌شود. این طراحی بر اساس اصل \lr{``functions first, classes when needed''} است که در آن توابع ساده برای کاربردهای یک‌بار مصرف و کلاس‌ها برای حالت‌هایی که نیاز به نگهداری \lr{state} (مانند \lr{callback} و گام تفاضل محدود) هستند، استفاده می‌شوند. تمام توابع در لیست \lr{\texttt{\_\_all\_\_}} صریحاً اعلام شده‌اند تا به کاربر یک رابط واضح از API عمومی ماژول ارائه دهند.
+
+\subsection{کلاس \lr{Ma2005GlobalOptimizer}}
+
+کلاس \lr{\texttt{Ma2005GlobalOptimizer}} برای بهینه‌سازی توامان $P_s$، $P_d$ و $\nu$ طراحی شده است. در ادامه، ساختار این کلاس را به صورت خلاصه نمایش می‌دهیم:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class Ma2005GlobalOptimizer:
+		"""
+		Implements the global optimization for Vacuum+Weak decoy protocol
+		using analytical derivatives derived from Eqs. (34) and (37) w.r.t nu
+		and Ps, Pd.
+		"""
+		def __init__(self, mu_target, n_total, cost_callback):
+		self.mu = mu_target
+		self.N = n_total
+		self.callback = cost_callback
+		self.epsilon = 1e-8  # small finite diff step
+	\end{lstlisting}
+\end{LTR}
+
+سازندۀ این کلاس چهار پارامتر دریافت می‌کند: \lr{\texttt{mu\_target}} (شدت هدف سیگنال $\mu$)، \lr{\texttt{n\_total}} (تعداد کل پالس‌های $N$)، \lr{\texttt{cost\_callback}} (تابع هدف که نرخ منفی کلید را محاسبه می‌کند) و \lr{\texttt{epsilon}} (گام تفاضل محدود با مقدار پیش‌فرض $10^{-8}$). این کلاس به صورت یک \lr{stateful wrapper} عمل می‌کند که \lr{callback} و پارامترهای سیستم را نگه می‌دارد و متدهای \lr{\texttt{objective}} و \lr{\texttt{gradient}} را برای استفاده توسط \lr{solver} \lr{SciPy} ارائه می‌دهد. این طراحی از الگوی \lr{``Strategy''} پیروی می‌کند که در آن الگوریتم بهینه‌سازی (\lr{SLSQP}) از تابع هدف (که توسط \lr{callback} تعریف می‌شود) مستقل است.
+
+\subsection{متد \lr{\texttt{objective}} و جریمه‌ها}
+
+متد \lr{\texttt{objective}} تابع هدف را برای \lr{solver} فراهم می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def objective(self, x):
+		"""Objective function for minimization (-Rate)."""
+		p_s, p_d, nu = x
+		if p_s <= 0.01 or p_d <= 0.01 or (p_s + p_d) >= 1.0:
+		return 1e9
+		if nu <= 0.001 or nu >= self.mu * 0.99:
+		return 1e9
+		# Call the provided cost function (which computes -Rate)
+		return self.callback(p_s, p_d, nu)
+	\end{lstlisting}
+\end{LTR}
+
+در این متد، ابتدا محدودیت‌های فیزیکی بررسی می‌شوند: $P_s > 0.01$، $P_d > 0.01$، $P_s + P_d < 1$، $\nu > 0.001$ و $\nu < 0.99 \mu$. اگر هر کدام از این محدودیت‌ها نقض شود، یک جریمۀ بزرگ ($10^9$) برگردانده می‌شود. این جریمه به \lr{solver} می‌گوید که این ناحیه از فضای پارامتر نامطلوب است و باید از آن دوری کند. انتخاب کران‌های 0.01 و 0.001 به این دلیل است که مقادیر خیلی کوچک از نظر آماری معنایی ندارند (تعداد پالس‌های \lr{decoy} خیلی کم می‌شود) و از نظر عددی نیز ناپایدار هستند. اگر محدودیت‌ها نقض نشوند، \lr{callback} فراخوانی می‌شود و مقدار تابع هدف (نرخ منفی کلید) برگردانده می‌شود. این طراحی به کاربر اجازه می‌دهد تابع هدف خود را بدون نگرانی در مورد محدودیت‌های فیزیکی پیاده‌سازی کند.
+
+\subsection{متد \lr{\texttt{gradient}} با تفاضل محدود}
+
+متد \lr{\texttt{gradient}} گرادیان تابع هدف را به روش تفاضل محدود محاسبه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def gradient(self, x):
+		"""Calculates the gradient [d(-R)/dPs, d(-R)/dPd, d(-R)/dnu]."""
+		p_s, p_d, nu = x
+		
+		# 1. Calculate current rate
+		val_center = self.objective(x)
+		if val_center >= 1e8:
+		return np.zeros(3)  # Infeasible region
+		
+		# 2. Finite Difference for Probabilities (Ps, Pd)
+		grad = np.zeros(3)
+		
+		# d/dPs (forward difference)
+		x_ps = x.copy(); x_ps[0] += self.epsilon
+		val_ps = self.objective(x_ps)
+		grad[0] = (val_ps - val_center) / self.epsilon
+		
+		# d/dPd (forward difference)
+		x_pd = x.copy(); x_pd[1] += self.epsilon
+		val_pd = self.objective(x_pd)
+		grad[1] = (val_pd - val_center) / self.epsilon
+		
+		# 3. Centered difference for nu
+		x_nu_p = x.copy(); x_nu_p[2] += self.epsilon
+		x_nu_m = x.copy(); x_nu_m[2] -= self.epsilon
+		grad[2] = (self.objective(x_nu_p) - self.objective(x_nu_m)) / (2 * self.epsilon)
+		
+		return grad
+	\end{lstlisting}
+\end{LTR}
+
+این متد گرادیان را به صورت یک بردار سه‌بعدی $[\partial(-R)/\partial P_s, \partial(-R)/\partial P_d, \partial(-R)/\partial \nu]$ محاسبه می‌کند. ابتدا مقدار تابع هدف در نقطۀ فعلی محاسبه می‌شود. اگر این مقدار در ناحیۀ غیرممکن باشد (بزرگتر از $10^8$)، گرادیان صفر برگردانده می‌شود تا \lr{solver} در همان نقطه بماند. سپس برای $P_s$ و $P_d$ از تفاضل پیشرو استفاده می‌شود: $\partial f / \partial x_i \approx [f(x + \epsilon e_i) - f(x)] / \epsilon$. این روش به یک ارزیابی تابع اضافی برای هر پارامتر نیاز دارد (در مجموع دو ارزیابی برای $P_s$ و $P_d$). برای $\nu$ از تفاضل مرکزی استفاده می‌شود: $\partial f / \partial \nu \approx [f(\nu + \epsilon) - f(\nu - \epsilon)] / (2\epsilon)$. این روش به دو ارزیابی اضافی نیاز دارد اما دقت مرتبۀ دوم (\lr{second-order accuracy}) دارد (خطای $O(\epsilon^2)$ در مقابل $O(\epsilon)$ برای تفاضل پیشرو). انتخاب ترکیبی تفاضل پیشرو برای $P_s$ و $P_d$ و تفاضل مرکزی برای $\nu$ به این دلیل است که $P_s$ و $P_d$ در محدودیت‌های سخت شرکت می‌کنند و تفاضل پیشرو در نزدیک مرز پایدارتر است، در حالی که $\nu$ یک متغیر آزاد است و تفاضل مرکزی دقت بالاتری ارائه می‌دهد.
+
+\subsection{الگوی \lr{callback} و تزریق وابستگی}
+
+یکی از ویژگی‌های کلیدی این ماژول، استفاده گسترده از الگوی \lr{callback} است. توابع بهینه‌سازی به جای آنکه خود نرخ کلید را محاسبه کنند، یک تابع \lr{callback} از کاربر دریافت می‌کنند که این محاسبه را انجام می‌دهد. به عنوان مثال، تابع \lr{\texttt{optimize\_simultaneous\_ma2005}} یک \lr{callback} با امضای \lr{\texttt{Callable[[float, float, float], float]}} دریافت می‌کند که به این معناست تابعی است که سه عدد اعشاری ($P_s$، $P_d$، $\nu$) دریافت می‌کند و یک عدد اعشاری (نرخ منفی کلید) برمی‌گرداند. این طراحی چندین مزیت دارد:
+
+\begin{itemize}
+	\item جداسازی لایه‌ها: لایۀ بهینه‌سازی از لایۀ اثبات امنیتی مستقل است.
+	\item انعطاف‌پذیری: کاربر می‌تواند تابع هدف خود را به‌سادگی جایگزین کند (مثلاً به‌جای نرخ کلید، \lr{QBER} را کمینه کند).
+	\item تست‌پذیری: می‌توان \lr{callback}‌های مصنوعی با رفتار شناخته‌شده برای اعتبارسنجی استفاده کرد.
+	\item قابلیت توسعه: اضافه‌کردن چارچوب‌های اثبات جدید نیازی به تغییر کد بهینه‌سازی ندارد.
+\end{itemize}
+
+این الگو که به \lr{``dependency injection''} نیز شناخته می‌شود، یک اصل کلیدی مهندسی نرم‌افزار است که قابلیت نگهداری و توسعه کد را به طور قابل توجهی افزایش می‌دهد.
+
+\subsection{Type Hint ها و ایمنی نوع}
+
+ماژول به طور گسترده از \lr{Type Hint} های \lr{Python} استفاده می‌کند تا ایمنی نوع و قابلیت خواندن کد را افزایش دهد. به عنوان مثال:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def optimize_simultaneous_ma2005(
+		mu_target: float,
+		total_pulses_N: int,
+		cost_function_callback: Callable[[float, float, float], float]
+		) -> Tuple[float, float, float, float]:
+	\end{lstlisting}
+\end{LTR}
+
+در این امضا، \lr{\texttt{mu\_target: float}} مشخص می‌کند که \lr{\texttt{mu\_target}} باید یک عدد اعشاری باشد، \lr{\texttt{total\_pulses\_N: int}} مشخص می‌کند که \lr{\texttt{total\_pulses\_N}} باید یک عدد صحیح باشد، و \lr{\texttt{cost\_function\_callback: Callable[[float, float, float], float]}} یک \lr{type hint} پیچیده‌تر است که مشخص می‌کند \lr{callback} یک تابع است که سه عدد اعشاری دریافت می‌کند و یک عدد اعشاری برمی‌گرداند. خروجی تابع نیز به صورت \lr{\texttt{Tuple[float, float, float, float]}} مشخص شده که نشان می‌دهد یک تاپل چهار عنصری از اعداد اعشاری برگردانده می‌شود ($P_s^*$، $P_d^*$، $P_v^*$، $\nu^*$). این \lr{Type Hint} ها به ویرایشگرهای کد اجازه می‌دهند خطاهای نوع را در زمان توسعه شناسایی کنند و به کاربر در فهم رابط تابع کمک می‌کنند.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+
+\subsection{محاسبۀ $\mu$ بهینه بر اساس معادلۀ 12 مقالۀ \lr{Ma 2005}}
+
+تابع \lr{\texttt{calculate\_optimal\_mu\_ma2005}} محاسبۀ تحلیلی-عددی $\mu$ بهینه را پیاده‌سازی می‌کند. در ادامه، نسخۀ کامل این تابع را با توضیح خط به خط ارائه می‌دهیم:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def calculate_optimal_mu_ma2005(
+		distance_km: float,
+		fiber_loss_db_km: float,
+		det_eff: float,
+		dark_rate: float,
+		error_correction_f: float = 1.22,
+		e_detector: float = 0.033
+		) -> float:
+		"""
+		Calculates optimal signal intensity (mu) maximizing the GLLP rate.
+		Implements the numerical solution to Eq. (12) in Ma et al. 2005.
+		"""
+		# 1. Calculate RHS constant C based on detector error
+		h2_e = binary_entropy(e_detector)
+		numerator = error_correction_f * h2_e
+		denominator = 1.0 - h2_e
+		
+		if denominator <= 0:
+		logger.warning(
+		"Denominator in optimal mu calc is <= 0 "
+		"(Error rate too high). Defaulting to 0.48.")
+		return 0.48
+		
+		C = numerator / denominator
+	\end{lstlisting}
+\end{LTR}
+
+در خطوط ابتدایی، ابتدا آنتروپی باینری خطای آشکارساز $H_2(e_{\text{det}})$ با تابع \lr{\texttt{binary\_entropy}} از ماژول \lr{\texttt{qkd.utils.math}} محاسبه می‌شود. سپس صورت و مخرج ثابت $C = f_{\text{EC}} H_2(e_{\text{det}}) / (1 - H_2(e_{\text{det}}))$ محاسبه می‌شوند. اگر مخرج غیرمثبت باشد (یعنی $H_2(e_{\text{det}}) \ge 1$ که فقط در $e_{\text{det}} = 0.5$ رخ می‌دهد و نشان‌دهندۀ خطای بسیار بالای آشکارساز است)، یک هشدار در لاگ ثبت می‌شود و مقدار پیش‌فرض \lr{0.48} برگردانده می‌شود. این رفتار \lr{fail-safe} تضمین می‌کند که تابع حتی در شرایط غیرفیزیکی هم یک خروجی معتبر برمی‌گرداند. سپس ثابت $C$ محاسبه می‌شود که در معادلۀ $(1 - \mu) e^{-\mu} = C$ استفاده می‌شود.
+
+سپس تابع هدف و جواب آن به صورت زیر تعریف می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		# 2. Define function to find root: (1-mu)e^-mu - C = 0
+		def objective(mu):
+		return (1.0 - mu) * math.exp(-mu) - C
+		
+		# Define dynamic fallback based on Paper Section 3.1
+		fallback_mu = 0.54 if error_correction_f <= 1.05 else 0.48
+		
+		# 3. Solve for mu in (0, 1]
+		try:
+		val_low = objective(0.001)
+		val_high = objective(0.999)
+		
+		if val_low * val_high < 0:
+		mu_opt = brentq(objective, 0.001, 0.999)
+		return float(mu_opt)
+		else:
+		logger.warning(
+		f"Optimal mu equation has no solution in [0,1]. "
+		f"Falling back to {fallback_mu}.")
+		return fallback_mu
+		except Exception as e:
+		logger.warning(
+		f"Numerical solver failed for optimal mu: {e}. "
+		f"Defaulting to {fallback_mu}.")
+		return fallback_mu
+	\end{lstlisting}
+\end{LTR}
+
+در این بخش، ابتدا تابع هدف به صورت $f(\mu) = (1 - \mu) e^{-\mu} - C$ تعریف می‌شود. این تابع در $\mu = 0$ برابر $1 - C$ (مثبت برای $C < 1$) و در $\mu \to \infty$ به $-C$ (منفی) میل می‌کند. بنابراین یک ریشه در بازۀ $(0, \infty)$ وجود دارد. برای اطمینان از وجود ریشه در بازۀ $[0.001, 0.999]$، مقدار تابع در دو انتها بررسی می‌شود: اگر $f(0.001) \cdot f(0.999) < 0$ (یعنی علامت‌های متضاد)، طبق \lr{Intermediate Value Theorem} یک ریشه در این بازه وجود دارد و \lr{\texttt{brentq}} می‌تواند آن را پیدا کند. در غیر این صورت، یک هشدار ثبت می‌شود و مقدار پیش‌فرض \lr{\texttt{fallback\_mu}} (که بر اساس $f_{\text{EC}}$ انتخاب می‌شود) برگردانده می‌شود. این \lr{fallback} بر اساس بخش 3.1 مقالۀ \lr{Ma 2005} انتخاب شده است: برای $f_{\text{EC}} \le 1.05$ مقدار \lr{0.54} و برای $f_{\text{EC}} > 1.05$ مقدار \lr{0.48} پیشنهاد شده است. در صورت بروز هرگونه استثنا در \lr{\texttt{brentq}}، بلوک \lr{\texttt{try/except}} آن را می‌گیرد و مقدار پیش‌فرض برمی‌گرداند.
+
+\subsection{بهینه‌سازی $\nu$ با روش \lr{Brent}}
+
+تابع \lr{\texttt{optimize\_nu\_ma2005}} بهینه‌سازی $\nu$ را برای $N$ متناهی پیاده‌سازی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def optimize_nu_ma2005(
+		mu: float,
+		total_pulses_N: float,
+		cost_function_callback: Callable[[float], float],
+		distance_km: float = 0.0
+		) -> float:
+		"""
+		Optimizes the weak decoy intensity (nu) for a fixed data size N.
+		Based on Ma et al. 2005 Section 4.3.
+		"""
+		lower_bound = 0.001
+		upper_bound = mu * 0.9
+		
+		# Robust 1D scalar minimization (Brent's method)
+		res = minimize_scalar(
+		cost_function_callback,
+		bounds=(lower_bound, upper_bound),
+		method='bounded',
+		options={'xatol': 1e-4}
+		)
+		
+		if res.success:
+		return float(res.x)
+		
+		# Fallback if optimization fails
+		return 0.1
+	\end{lstlisting}
+\end{LTR}
+
+در این تابع، ابتدا کران‌های جستجو به صورت $[\nu_{\min}, \nu_{\max}] = [0.001, 0.9 \mu]$ تعریف می‌شوند. کران پایین \lr{0.001} برای جلوگیری از مقادیر خیلی کوچک (که از نظر آماری معنایی ندارند) و کران بالا $0.9 \mu$ برای حفظ قابلیت تفکیک آماری بین سیگنال و \lr{decoy} انتخاب شده‌اند. سپس \lr{\texttt{minimize\_scalar}} با روش \lr{\texttt{'bounded'}} فراخوانی می‌شود. این روش بر اساس الگوریتم \lr{Brent's bounded method} است که برای توابع یک‌بعدی هموار بهینه است و همگرایی تضمین‌شده‌ای در بازۀ مشخص‌شده دارد. گزینه \lr{\texttt{xatol=1e-4}} تلورانس توقف را روی $10^{-4}$ تنظیم می‌کند که برای کاربردهای عملی کافی است. اگر بهینه‌سازی موفق شود، مقدار بهینۀ $\nu^*$ برگردانده می‌شود. در غیر این صورت، مقدار پیش‌فرض \lr{0.1} (یک مقدار تجربی خوب برای \lr{decoy} ضعیف) برگردانده می‌شود.
+
+\subsection{بهینه‌سازی احتمالات توزیع پالس}
+
+تابع \lr{\texttt{optimize\_pulse\_distribution\_ma2005}} احتمالات توزیع پالس $P_s$ و $P_d$ را بهینه‌سازی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def optimize_pulse_distribution_ma2005(
+		mu: float,
+		nu: float,
+		total_pulses_N: int,
+		cost_function_callback: Callable[[float, float], float]
+		) -> Tuple[float, float, float]:
+		"""
+		Optimizes the pulse probabilities (Signal, Decoy, Vacuum) for a fixed data size N.
+		"""
+		def objective(x):
+		p_s, p_d = x
+		if p_s <= 0 or p_d <= 0 or (p_s + p_d) >= 1.0:
+		return 1e9  # Penalty
+		return cost_function_callback(p_s, p_d)
+		
+		# Initial guess
+		x0 = [0.66, 0.29]
+		bounds = [(0.01, 0.98), (0.01, 0.98)]
+		constraints = [{'type': 'ineq', 'fun': lambda x: 1.0 - (x[0] + x[1]) - 0.01}]
+		
+		res = minimize(objective, x0, bounds=bounds,
+		constraints=constraints, method='SLSQP')
+		
+		if res.success:
+		p_s, p_d = res.x
+		p_v = 1.0 - p_s - p_d
+		return p_s, p_d, p_v
+		
+		logger.warning("Pulse distribution optimization failed. Using defaults.")
+		return 0.8, 0.1, 0.1
+	\end{lstlisting}
+\end{LTR}
+
+در این تابع، ابتدا تابع هدف داخلی تعریف می‌شود که محدودیت‌های فیزیکی را بررسی می‌کند: $P_s > 0$، $P_d > 0$ و $P_s + P_d < 1$. اگر هر کدام نقض شود، جریمۀ $10^9$ برگردانده می‌شود. در غیر این صورت، \lr{callback} فراخوانی می‌شود. سپس نقطۀ شروع $x_0 = [0.66, 0.29]$ (یک توزیع متعادل با $P_v \approx 0.05$) و کران‌های $[0.01, 0.98]$ برای هر دو پارامتر تعریف می‌شوند. یک محدودیت نامساوی نیز اضافه می‌شود: $P_s + P_d \le 0.99$ که فضایی برای $P_v \ge 0.01$ باقی می‌گذارد. سپس \lr{\texttt{minimize}} با روش \lr{\texttt{SLSQP}} فراخوانی می‌شود. این روش برای مسائل بهینه‌سازی مقید مناسب است و از محدودیت‌های نامساوی پشتیبانی می‌کند. اگر بهینه‌سازی موفق شود، $P_s^*$، $P_d^*$ و $P_v^* = 1 - P_s^* - P_d^*$ برگردانده می‌شوند. در غیر این صورت، مقادیر پیش‌فرض $(0.8, 0.1, 0.1)$ برگردانده می‌شوند که یک توزیع متعادل برای پروتکل \lr{Vacuum + Weak} است.
+
+\subsection{بهینه‌سازی توامان سه پارامتر}
+
+تابع \lr{\texttt{optimize\_simultaneous\_ma2005}} بهینه‌سازی توامان $P_s$، $P_d$ و $\nu$ را با استفاده از کلاس \lr{\texttt{Ma2005GlobalOptimizer}} پیاده‌سازی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def optimize_simultaneous_ma2005(
+		mu_target: float,
+		total_pulses_N: int,
+		cost_function_callback: Callable[[float, float, float], float]
+		) -> Tuple[float, float, float, float]:
+		"""
+		Simultaneously optimizes pulse probabilities (P_s, P_d) and decoy intensity (nu).
+		"""
+		optimizer = Ma2005GlobalOptimizer(
+		mu_target, total_pulses_N, cost_function_callback)
+		
+		# Initial guess: Start with standard values
+		x0 = [0.66, 0.29, 0.127]
+		
+		# Bounds
+		bounds = [
+		(0.1, 0.95), (0.01, 0.8), (0.001, mu_target * 0.99)
+		]
+		
+		# Relax vacuum constraint to allow P_v -> 0
+		constraints = [{'type': 'ineq',
+			'fun': lambda x: 1.0 - (x[0] + x[1]) - 1e-9}]
+		
+		# Use SLSQP with the Jacobian method implemented in the optimizer class
+		res = minimize(
+		optimizer.objective,
+		x0,
+		jac=optimizer.gradient,
+		bounds=bounds,
+		constraints=constraints,
+		method='SLSQP',
+		tol=1e-5
+		)
+		
+		if res.success:
+		p_s_opt, p_d_opt, nu_opt = res.x
+		p_v_opt = 1.0 - p_s_opt - p_d_opt
+		return p_s_opt, p_d_opt, p_v_opt, nu_opt
+		else:
+		# If optimization fails, try fallback or return initial guess
+		return 0.66, 0.29, 0.05, 0.127
+	\end{lstlisting}
+\end{LTR}
+
+در این تابع، ابتدا یک نمونۀ \lr{\texttt{Ma2005GlobalOptimizer}} با \lr{\texttt{mu\_target}}، \lr{\texttt{total\_pulses\_N}} و \lr{\texttt{cost\_function\_callback}} ساخته می‌شود. سپس نقطۀ شروع $x_0 = [0.66, 0.29, 0.127]$ (مقادیر استاندارد برای پروتکل \lr{Vacuum + Weak}) تعریف می‌شود. کران‌ها به صورت $[0.1, 0.95]$ برای $P_s$، $[0.01, 0.8]$ برای $P_d$ و $[0.001, 0.99 \mu]$ برای $\nu$ تعریف می‌شوند. یک محدودیت نامساوی نیز اضافه می‌شود: $P_s + P_d \le 1 - 10^{-9}$ که اجازه می‌دهد $P_v$ به صفر میل کند (برای حالتی که \lr{decoy} خلأ لازم نیست). سپس \lr{\texttt{minimize}} با روش \lr{\texttt{SLSQP}} فراخوانی می‌شود و هم تابع هدف (\lr{\texttt{optimizer.objective}}) و هم گرادیان (\lr{\texttt{optimizer.gradient}}) به آن پاس داده می‌شوند. تلورانس توقف $10^{-5}$ تنظیم می‌شود. اگر بهینه‌سازی موفق شود، $P_s^*$، $P_d^*$، $P_v^*$ و $\nu^*$ برگردانده می‌شوند. در غیر این صورت، مقادیر پیش‌فرض $(0.66, 0.29, 0.05, 0.127)$ برگردانده می‌شوند.
+
+\subsection{بهینه‌سازی کلید متناهی \lr{Lim 2014}}
+
+تابع \lr{\texttt{optimize\_lim2014\_finite\_key}} بهینه‌سازی پنج پارامتر چارچوب \lr{Lim 2014} را پیاده‌سازی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def optimize_lim2014_finite_key(
+		params: QKDParams,
+		dist_km: float,
+		cost_callback: Callable[[float, float, float, float, float], float]
+		) -> Tuple[float, float, float, float, float]:
+		"""
+		Numerically optimizes the secret key rate R = l/N over the free parameters
+		{q_x, p_mu1, p_mu2, mu1, mu2} as specified in Lim et al. (2014) Section IV.
+		"""
+		x0 = [0.9, 0.6, 0.2, 0.5, 0.1]
+		
+		bounds = [
+		(0.5, 0.99),  # q_x
+		(0.1, 0.8),   # p_s
+		(0.05, 0.5),  # p_d
+		(0.2, 0.8),   # mu
+		(0.01, 0.2)   # nu
+		]
+		
+		def objective(x):
+		q_x, p_s, p_d, mu, nu = x
+		if p_s + p_d >= 0.99: return 1e9
+		if nu >= mu * 0.9: return 1e9
+		if mu <= 0 or nu <= 0: return 1e9
+		return cost_callback(q_x, p_s, p_d, mu, nu)
+		
+		# Run optimization (Nelder-Mead is robust for non-smooth finite-key landscapes)
+		res = minimize(
+		objective,
+		x0,
+		bounds=bounds,
+		method='Nelder-Mead',
+		options={'maxiter': 200, 'xatol': 1e-3}
+		)
+		
+		if res.success:
+		return tuple(res.x)
+		
+		# Fallback to initial guess if optimization fails
+		logger.warning("Lim2014 parameter optimization failed. Using defaults.")
+		return tuple(x0)
+	\end{lstlisting}
+\end{LTR}
+
+در این تابع، نقطۀ شروع $x_0 = [0.9, 0.6, 0.2, 0.5, 0.1]$ برای پنج پارامتر $q_x$، $P_s$، $P_d$، $\mu$ و $\nu$ تعریف می‌شود. کران‌ها به صورت $[0.5, 0.99]$ برای $q_x$ (احتمال پایۀ $X$، باید بیشتر از \lr{0.5} باشد زیرا پایۀ تولیدکنندۀ کلید است)، $[0.1, 0.8]$ برای $P_s$، $[0.05, 0.5]$ برای $P_d$، $[0.2, 0.8]$ برای $\mu$ و $[0.01, 0.2]$ برای $\nu$ تعریف می‌شوند. تابع هدف داخلی محدودیت‌های فیزیکی را بررسی می‌کند: $P_s + P_d < 0.99$، $\nu < 0.9 \mu$ و $\mu, \nu > 0$. اگر هر کدام نقض شود، جریمۀ $10^9$ برگردانده می‌شود. سپس \lr{\texttt{minimize}} با روش \lr{\texttt{Nelder-Mead}} فراخوانی می‌شود. این روش بدون گرادیان است و برای توابع ناهموار مقاوم‌تر از روش‌های مبتنی بر گرادیان است. حداکثر تعداد تکرارها 200 و تلورانس $10^{-3}$ تنظیم می‌شود. اگر بهینه‌سازی موفق شود، تاپل پنج عنصری $(q_x^*, P_s^*, P_d^*, \mu^*, \nu^*)$ برگردانده می‌شود. در غیر این صورت، مقادیر پیش‌فرض (همان $x_0$) برگردانده می‌شوند.
+
+\subsection{بهینه‌سازی زاویۀ چرخش در \lr{Chapman 2018}}
+
+تابع \lr{\texttt{optimize\_rotation\_angle\_chapman}} بهینه‌سازی زاویۀ چرخش $\theta$ برای \lr{Coherent Scheme} در \lr{Chapman 2018} را پیاده‌سازی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def optimize_rotation_angle_chapman(gamma: float, M: int = 1) -> float:
+		"""
+		Finds the optimal encoding rotation angle theta_gamma for the Coherent Scheme
+		in Chapman et al. (2018).
+		
+		We maximize P_succ = 0.5 * (1 + D(rho_0, rho_1)) where rho_i are outputs of ADC.
+		"""
+		# Kraus ops for ADC(gamma)
+		E0 = np.array([[1, 0], [0, math.sqrt(1-gamma)]])
+		E1 = np.array([[0, math.sqrt(gamma)], [0, 0]])
+		
+		# Rotation Y
+		Ry = lambda theta: np.array([
+		[math.cos(theta/2), -math.sin(theta/2)],
+		[math.sin(theta/2),  math.cos(theta/2)]])
+		
+		def get_rho_out(state_in):
+		return E0 @ state_in @ E0.conj().T + E1 @ state_in @ E1.conj().T
+		
+		def objective(theta):
+		# Rotate |0> and |1> input states by theta
+		U = Ry(theta)
+		state0 = U @ np.array([[1,0],[0,0]]) @ U.conj().T
+		state1 = U @ np.array([[0,0],[0,1]]) @ U.conj().T
+		
+		rho0_out = get_rho_out(state0)
+		rho1_out = get_rho_out(state1)
+		
+		# Maximize Trace Distance for M=1
+		diff = rho0_out - rho1_out
+		evals = np.linalg.eigvalsh(diff)
+		dist = 0.5 * np.sum(np.abs(evals))
+		return -dist
+		
+		res = minimize_scalar(objective, bounds=(0, math.pi), method='bounded')
+		return float(res.x)
+	\end{lstlisting}
+\end{LTR}
+
+در این تابع، ابتدا عملگرهای \lr{Kraus} برای \lr{ADC} با پارامتر $\gamma$ ساخته می‌شوند: $E_0$ و $E_1$ به صورت ماتریس‌های \lr{NumPy} تعریف می‌شوند. سپس یک \lr{lambda} برای ماتریس چرخش \lr{Y} به صورت $R_y(\theta) = \begin{pmatrix} \cos(\theta/2) & -\sin(\theta/2) \\ \sin(\theta/2) & \cos(\theta/2) \end{pmatrix}$ تعریف می‌شود. تابع \lr{\texttt{get\_rho\_out}} حالت خروجی کانال را از رابطۀ $\rho_{\text{out}} = E_0 \rho_{\text{in}} E_0^\dagger + E_1 \rho_{\text{in}} E_1^\dagger$ محاسبه می‌کند. در تابع هدف، ابتدا ماتریس چرخش $U = R_y(\theta)$ ساخته می‌شود و حالت‌های ورودی $|0\rangle\langle 0|$ و $|1\rangle\langle 1|$ با این چرخش تبدیل می‌شوند: $\rho_i^{\text{in}} = U |i\rangle\langle i| U^\dagger$. سپس حالت‌های خروجی محاسبه می‌شوند و فاصلۀ \lr{trace} میان آن‌ها به صورت $D = \frac{1}{2} \sum_i |\lambda_i|$ محاسبه می‌شود که در آن $\lambda_i$ مقادیر ویژۀ $\rho_0^{\text{out}} - \rho_1^{\text{out}}$ هستند. تابع \lr{\texttt{eigvalsh}} از \lr{NumPy} برای محاسبۀ مقادیر ویژۀ یک ماتریس \lr{Hermitian} استفاده می‌شود (که سریع‌تر و پایدارتر از \lr{\texttt{eigvals}} عمومی است). چون بهینه‌سازی به دنبال بیشینه‌کردن $D$ است و \lr{\texttt{minimize\_scalar}} به دنبال کمینه‌کردن است، علامت منفی $-D$ برگردانده می‌شود. در نهایت، \lr{\texttt{minimize\_scalar}} با روش \lr{\texttt{'bounded'}} در بازۀ $[0, \pi]$ فراخوانی می‌شود و زاویۀ بهینۀ $\theta^*$ برگردانده می‌شود.
+
+\subsection{بهینه‌سازی اکتشافی شدت‌ها}
+
+تابع \lr{\texttt{optimize\_decoy\_intensities}} یک بهینه‌سازی اکتشافی برای شدت سیگنال و \lr{decoy} ارائه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def optimize_decoy_intensities(
+		distance_km: float,
+		fiber_loss_db_km: float,
+		det_eff: float,
+		dark_rate: float,
+		error_correction_f: float
+		) -> Tuple[float, float]:
+		"""
+		Heuristic optimization for signal and decoy intensities.
+		Returns: (mu_opt, nu_opt)
+		"""
+		transmittance = 10**(-fiber_loss_db_km * distance_km / 10.0)
+		
+		def neg_key_rate(x):
+		mu, nu = x[0], x[1]
+		if mu <= nu or nu <= 0 or mu > 1.0:
+		return 1.0
+		
+		# Heuristic simplified rate model
+		Q_mu = 1 - math.exp(-transmittance * mu) + 2 * dark_rate
+		E_mu = (0.5 * 2 * dark_rate) / Q_mu
+		Y1 = transmittance * det_eff
+		Q1 = mu * math.exp(-mu) * Y1
+		
+		rate = Q1 - error_correction_f * Q_mu * binary_entropy(E_mu)
+		return -rate
+		
+		res = minimize(neg_key_rate, [0.5, 0.1],
+		bounds=[(0.1, 0.9), (0.01, 0.3)])
+		
+		if res.success:
+		return res.x[0], res.x[1]
+		return 0.48, 0.05
+	\end{lstlisting}
+\end{LTR}
+
+در این تابع، ابتدا عبور کانال به صورت $\eta = 10^{-\alpha L / 10}$ محاسبه می‌شود که در آن $\alpha$ ضریب افت فیبر (به \lr{dB/km}) و $L$ فاصله (به \lr{km}) است. این فرمول از قانون \lr{Beer-Lambert} ناشی می‌شود. سپس تابع هدف به صورت نرخ منفی کلید با یک مدل ساده‌شده تعریف می‌شود: $Q_\mu = 1 - e^{-\eta \mu} + 2 Y_0$ (احتمال آشکارسازی سیگنال به همراه \lr{dark count})، $E_\mu = Y_0 / Q_\mu$ (نرخ خطای سیگنال که عمدتاً از \lr{dark count} ناشی می‌شود)، $Y_1 = \eta \cdot \text{det\_eff}$ (بازده تک‌فوتونی) و $Q_1 = \mu e^{-\mu} Y_1$ (\lr{Gain} تک‌فوتونی). نرخ کلید به صورت $R = Q_1 - f_{\text{EC}} Q_\mu H_2(E_\mu)$ محاسبه می‌شود. این یک مدل اکتشافی است که فرض می‌کند $e_1 \approx 0$ و $q = 1$ (یعنی پایه‌گذاری بی‌اتلاف). سپس \lr{\texttt{minimize}} با نقطۀ شروع $[0.5, 0.1]$ و کران‌های $[0.1, 0.9]$ برای $\mu$ و $[0.01, 0.3]$ برای $\nu$ فراخوانی می‌شود. اگر بهینه‌سازی موفق شود، $(\mu^*, \nu^*)$ برگردانده می‌شود. در غیر این صورت، مقادیر پیش‌فرض $(0.48, 0.05)$ برگردانده می‌شوند.
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+
+\subsection{ورودی‌های ماژول}
+
+ماژول \lr{\texttt{optimization.py}} برای انجام بهینه‌سازی‌های خود به چندین نوع ورودی نیاز دارد. این ورودی‌ها به دو دستۀ پارامترهای فیزیکی و \lr{callback}‌های تابعی تقسیم می‌شوند.
+
+\begin{itemize}
+	\item پارامترهای فیزیکی: این پارامترها مشخصات سیستم \lr{QKD} را توصیف می‌کنند و شامل موارد زیر هستند: \lr{\texttt{distance\_km}} (فاصله به کیلومتر)، \lr{\texttt{fiber\_loss\_db\_km}} (ضریب افت فیبر به \lr{dB/km}، معمولاً 0.2 برای فیبر سیلیکایی در طول موج 1550 \lr{nm})، \lr{\texttt{det\_eff}} (راندمان آشکارساز، معمولاً 0.1 تا 0.3 برای \lr{SPAD})، \lr{\texttt{dark\_rate}} (نرخ شمارش تاریک آشکارساز)، \lr{\texttt{error\_correction\_f}} (بازدهی تصحیح خطا، معمولاً 1.1 تا 1.2) و \lr{\texttt{e\_detector}} (خطای ذاتی آشکارساز). این پارامترها یا به صورت آرگومان‌های مستقیم به توابع پاس داده می‌شوند یا از شیء \lr{\texttt{QKDParams}} استخراج می‌شوند.
+	\item فراخوان‌های تابعی (\lr{callback}ها): این \lr{callback}‌ها تابع هدف را برای بهینه‌سازی تعریف می‌کنند و توسط کاربر ارائه می‌شوند. امضای این \lr{callback}‌ها بسته به تابع بهینه‌سازی متفاوت است: \lr{\texttt{Callable[[float], float]}} برای \lr{\texttt{optimize\_nu\_ma2005}}، \lr{\texttt{Callable[[float, float], float]}} برای \lr{\texttt{optimize\_pulse\_distribution\_ma2005}}، \lr{\texttt{Callable[[float, float, float], float]}} برای \lr{\texttt{optimize\_simultaneous\_ma2005}} و \lr{\texttt{Callable[[float, float, float, float, float], float]}} برای \lr{\texttt{optimize\_lim2014\_finite\_key}}. این \lr{callback}‌ها معمولاً نرخ منفی کلید را محاسبه می‌کنند (زیرا حل‌گرها (\lr{solver}ها) به دنبال کمینه‌کردن هستند) اما می‌توانند هر کمیت هدف دیگری را نیز محاسبه کنند.
+	\item \lr{\texttt{QKDParams}}: این شیء از ماژول \lr{\texttt{qkd.params}} وارد می‌شود و در تابع \lr{\texttt{optimize\_lim2014\_finite\_key}} استفاده می‌شود. این شیء شامل تمام پارامترهای پیکربندی سیستم است و به \lr{callback} اجازه می‌دهد به پارامترهای اثبات امنیتی (مانند $\varepsilon_{\text{sec}}$، $\varepsilon_{\text{cor}}$ و $\varepsilon_{\text{pe}}$) دسترسی داشته باشد.
+	\item \lr{\texttt{gamma}} (پارامتر کانال): این پارامتر در توابع \lr{\texttt{optimize\_rotation\_angle}} و \lr{\texttt{optimize\_rotation\_angle\_chapman}} استفاده می‌شود و نشان‌دهندۀ پارامتر کانال \lr{ADC} (در \lr{Chapman 2018}) یا یک کانال عمومی است.
+\end{itemize}
+
+\subsection{خروجی‌های ماژول}
+
+خروجی‌های ماژول بسته به تابع بهینه‌سازی متفاوت هستند:
+
+\begin{enumerate}
+	\item خروجی‌های تک‌مقداری: توابع \lr{\texttt{calculate\_optimal\_mu\_ma2005}}، \lr{\texttt{optimize\_nu\_ma2005}}، \lr{\texttt{optimize\_rotation\_angle}} و \lr{\texttt{optimize\_rotation\_angle\_chapman}} یک مقدار اعشاری واحد را برمی‌گردانند (به ترتیب $\mu^*$، $\nu^*$، $\theta^*$ عمومی و $\theta^*$ برای \lr{Chapman}).
+	\item خروجی‌های دومقداری: تابع \lr{\texttt{optimize\_decoy\_intensities}} یک تاپل دو عنصری شامل $(\mu^*, \nu^*)$ را برمی‌گرداند.
+	\item خروجی‌های سه‌مقداری: تابع \lr{\texttt{optimize\_pulse\_distribution\_ma2005}} (و پوشش‌دهندۀ آن \lr{\texttt{optimize\_pulse\_probabilities}}) یک تاپل سه عنصری شامل $(P_s^*, P_d^*, P_v^*)$ را برمی‌گرداند.
+	\item خروجی‌های چهارمقداری: تابع \lr{\texttt{optimize\_simultaneous\_ma2005}} (و پوشش‌دهندۀ آن \lr{\texttt{optimize\_global\_ma2005}}) یک تاپل چهار عنصری شامل $(P_s^*, P_d^*, P_v^*, \nu^*)$ را برمی‌گرداند.
+	\item خروجی‌های پنج‌مقداری: تابع \lr{\texttt{optimize\_lim2014\_finite\_key}} یک تاپل پنج عنصری شامل $(q_x^*, P_s^*, P_d^*, \mu^*, \nu^*)$ را برمی‌گرداند.
+\end{enumerate}
+
+در تمام موارد، اگر بهینه‌سازی شکست بخورد، مقادیر پیش‌فرض محافظه‌کارانه برگردانده می‌شوند. این مقادیر پیش‌فرض بر اساس تجربۀ عملی و مقالات مرجع انتخاب شده‌اند و برای پروتکل‌های \lr{Decoy-State BB84} معمولاً خوب عمل می‌کنند.
+
+\subsection{وابستگی‌های داخلی و خارجی}
+
+ماژول وابستگی‌های داخلی و خارجی متعددی دارد. وابستگی‌های داخلی شامل موارد زیر است:
+
+\begin{itemize}
+	\item \lr{\texttt{qkd.params.QKDParams}}: کلاس پارامترهای \lr{QKD} که در تابع \lr{\texttt{optimize\_lim2014\_finite\_key}} استفاده می‌شود.
+	\item \lr{\texttt{qkd.utils.math.binary\_entropy}}: تابع محاسبۀ آنتروپی باینری $H_2(p) = -p \log_2 p - (1-p) \log_2 (1-p)$ که در توابع \lr{\texttt{calculate\_optimal\_mu\_ma2005}} و \lr{\texttt{optimize\_decoy\_intensities}} استفاده می‌شود.
+	\item \lr{\texttt{qkd.constants.is\_valid\_probability}}: تابع اعتبارسنجی احتمال که بررسی می‌کند یک مقدار در بازۀ $[0, 1]$ قرار دارد.
+	\item \lr{\texttt{qkd.datatypes.TallyCounts}}: کلاس دادهٔ (\lr{dataclass}) شمارش‌های آماری که در برخی \lr{callback}‌ها برای محاسبۀ نرخ کلید استفاده می‌شود.
+\end{itemize}
+
+وابستگی‌های خارجی شامل موارد زیر است:
+
+\begin{itemize}
+	\item \lr{\texttt{scipy.optimize.minimize}}: تابع بهینه‌سازی چندبعدی \lr{SciPy} که در توابع \lr{\texttt{optimize\_decoy\_intensities}}، \lr{\texttt{optimize\_pulse\_distribution\_ma2005}}، \lr{\texttt{optimize\_simultaneous\_ma2005}} و \lr{\texttt{optimize\_lim2014\_finite\_key}} استفاده می‌شود. این تابع از روش‌های مختلفی (مانند \lr{SLSQP} و \lr{Nelder-Mead}) پشتیبانی می‌کند.
+	\item \lr{\texttt{scipy.optimize.minimize\_scalar}}: تابع بهینه‌سازی یک‌بعدی \lr{SciPy} که در توابع \lr{\texttt{optimize\_rotation\_angle}}، \lr{\texttt{optimize\_nu\_ma2005}} و \lr{\texttt{optimize\_rotation\_angle\_chapman}} استفاده می‌شود. این تابع از روش \lr{Brent's bounded} پشتیبانی می‌کند.
+	\item \lr{\texttt{scipy.optimize.brentq}}: تابع یافتن ریشه \lr{SciPy} که در تابع \lr{\texttt{calculate\_optimal\_mu\_ma2005}} برای حل معادلۀ $(1-\mu)e^{-\mu} = C$ استفاده می‌شود.
+	\item \lr{\texttt{numpy}}: کتابخانۀ محاسبات برداری که در تابع \lr{\texttt{optimize\_rotation\_angle\_chapman}} برای محاسبۀ ماتریس‌ها و مقادیر ویژه استفاده می‌شود.
+	\item \lr{\texttt{math}}: ماژول ریاضی استاندارد \lr{Python} برای توابع پایه مانند \lr{\texttt{exp}}، \lr{\texttt{log}}، \lr{\texttt{cos}}، \lr{\texttt{sin}} و \lr{\texttt{sqrt}}.
+	\item \lr{\texttt{logging}}: ماژول لاگ‌گذاری استاندارد \lr{Python} برای ثبت هشدارها و اطلاعات.
+	\item \lr{\texttt{typing}}: ماژول \lr{Type Hint} برای تعریف امضای توابع.
+\end{itemize}
+
+\subsection{جریان داده در سراسر فریم‌ورک}
+
+جریان داده کلی به این شکل است:
+\begin{enumerate}
+	\item لایۀ بالایی (مانند اسکریپت پیکربندی یا شبیه‌ساز) پارامترهای فیزیکی سیستم (مانند فاصله، افت فیبر، راندمان آشکارساز) را مشخص می‌کند.
+	\item یک \lr{callback} تابعی تعریف می‌شود که نرخ کلید (یا هر کمیت هدف دیگر) را برای مجموعه‌ای از پارامترهای داده‌شده محاسبه می‌کند. این \lr{callback} معمولاً از ماژول‌های اثبات امنیتی (مانند \lr{\texttt{lim2014.py}}، \lr{\texttt{tight.py}} یا \lr{\texttt{ma2005.py}}) استفاده می‌کند.
+	\item تابع بهینه‌سازی مناسب (مانند \lr{\texttt{optimize\_lim2014\_finite\_key}}) با پارامترهای فیزیکی و \lr{callback} فراخوانی می‌شود.
+	\item تابع بهینه‌سازی، \lr{callback} را در نقاط مختلف فضای پارامتر فراخوانی می‌کند و با استفاده از روش‌های عددی (مانند \lr{SLSQP} یا \lr{Nelder-Mead}) به سمت نقطۀ بهینه حرکت می‌کند.
+	\item در هر فراخوانی \lr{callback}، تابع هدف ابتدا محدودیت‌های فیزیکی را بررسی می‌کند و در صورت نقض، جریمۀ بزرگی برگردانده می‌شود.
+	\item پس از همگرایی (یا رسیدن به حداکثر تعداد تکرار)، تابع بهینه‌سازی پارامترهای بهینه را برمی‌گرداند.
+	\item لایۀ بالایی از این پارامترهای بهینه برای پیکربندی شبیه‌سازی نهایی استفاده می‌کند.
+\end{enumerate}
+
+این جداسازی مراحل به گونه‌ای طراحی شده که هر مرحله به صورت مستقل قابل آزمایش و بازبینی باشد. به عنوان مثال، می‌توان از \lr{callback}‌های مصنوعی با رفتار مشخص برای اعتبارسنجی توابع بهینه‌سازی استفاده کرد. این ماژول‌بندی از اصل تک‌مسئولیتی (\lr{Single Responsibility}) پیروی می‌کند و قابلیت نگهداری و توسعه کد را به طور قابل توجهی افزایش می‌دهد. علاوه بر این، الگوی \lr{callback} به کاربر اجازه می‌دهد تابع هدف خود را بدون تغییر کد بهینه‌سازی جایگزین کند. این انعطاف‌پذیری برای تحقیقات \lr{QKD} که در آن‌ها معیارهای مختلف بهینه‌سازی (نرخ کلید، \lr{QBER}، طول کلید متناهی و غیره) مورد بررسی قرار می‌گیرند، حیاتی است. طراحی مطمئن از خرابی (\lr{fail-safe}) این ماژول، آن را به انتخابی ایده‌آل برای محیط‌های عملیاتی تبدیل می‌کند که در آن‌ها پایداری و قابلیت اطمینان سیستم اهمیت زیادی دارد.

@@ -1,0 +1,786 @@
+\sloppy
+\emergencystretch=3em
+\hbadness=10000
+\vbadness=10000
+\sloppy
+\emergencystretch=3em
+\hbadness=10000
+\vbadness=10000
+
+\lstset{
+	basicstyle=\ttfamily\footnotesize,
+	breakatwhitespace=false,
+	breaklines=true,
+	captionpos=b,
+	keepspaces=true,
+	numbers=left,
+	numbersep=5pt,
+	numberstyle=\tiny\color{gray},
+	showspaces=false,
+	showstringspaces=false,
+	showtabs=false,
+	tabsize=2,
+	language=Python,
+	frame=single,
+	framesep=2pt,
+	rulecolor=\color{gray!50},
+	backgroundcolor=\color{gray!5},
+	keywordstyle=\color{blue!70!black}\bfseries,
+	commentstyle=\color{green!50!black}\itshape,
+	stringstyle=\color{red!60!black},
+	emph={np, math, self, rng, DetectorType, DoubleClickPolicy, DeadTimeModel, AfterpulseModel, DetectorTopology, APRescheduleMode, ParameterValidationError, ConfigurationError, DetectionDiagnostics, DetectionResult, SinglePhotonDetector, EntanglingDecoder, DetectorConstants, DetectorSimParams, _DetectorState, CarryOverEvent, PhotonResolvedResult, np.ndarray},
+	emphstyle=\color{purple!70!black}\bfseries,
+}
+
+\section{نمای کلی و هدف ماژول}
+
+ماژول \lr{\texttt{qkd.detectors}} یکی از بزرگ‌ترین، پیچیده‌ترین و از منظر فیزیکی حساس‌ترین اجزای فریم‌ورک شبیه‌سازی \lr{QKD} است. این ماژول مدل کاملی از آشکارسازهای تک‌فوتونی را برای شبیه‌سازی پروتکل \lr{BB84-Decoy} به‌صورت رویداد-محور \lr{(event-driven)} پیاده‌سازی می‌کند و سه نوع آشکارساز را به‌صورت یکپارچه پشتیبانی می‌نماید: آشکارسازهای آوانش نوری \lr{(SPAD)} در حالت آستانه‌ای، آشکارسازهای ابررسانا نانوسیمی \lr{(SNSPD)} با مدل‌سازی اختصاصی از وابستگی دمایی نرخ شمارش تاریک، و آشکارسازهای تفکیک‌پذیر عدد فوتون \lr{(PNRD)} با خروجی شمارشی. هدف اصلی این ماژول، فراهم‌آوردن یک موتور شبیه‌سازی واقع‌گرایانه است که اثرات پدیده‌های مخرب فیزیکی نظیر زمان مرده \lr{(dead time)}، پالس‌های پسین \lr{(afterpulsing)}، شمارش تاریک \lr{(dark counts)}، لرزش زمانی \lr{(timing jitter)} و پهن‌شدگی کروماتیک \lr{(chromatic dispersion)} را با دقت ریاضی و با وفاداری به ادبیات علمی، به‌ویژه مرجع سنتی \lr{Rogers et al. (2007)}، بازتولید کند.
+
+این ماژول نقش گره اصلی در گراف وابستگی‌های فریم‌ورک را ایفا می‌کند؛ به این معنا که خروجی کانال فیبر نوری (آرایه‌های تعداد فوتون و پیامد ایده‌آل مسیریابی) به‌عنوان ورودی این ماژول عرضه می‌شود و خروجی آن، یعنی آرایه‌های کلیک بولی \lr{D0} و \lr{D1} به‌همراه اشیای تشخیصی \lr{DetectionDiagnostics}، پایه‌ی محاسبات نرخ کلید امن در پروتکل‌های \lr{decoy-state} و \lr{MDI-QKD} را شکل می‌دهد. پیچیدگی این ماژول نه‌تنها از تنوع پدیده‌های فیزیکی مدل‌سازی‌شده برمی‌آید، بلکه از لزوم حفظ سازگاری نتایج میان مسیرهای مختلف شبیه‌سازی (آستانه‌ای در برابر \lr{PNRD}) و لزوم تضمین بازتولیدپذیری آماری \lr{(reproducibility)} برای کارهای وابسته به انتشار علمی ناشی می‌شود.
+
+یک ویژگی برجسته این ماژول، سیستم کنترل نسخه‌بندی حالت داخلی است که با ثابت \texttt{STATE\_VERSION = 19} و فهرست نسخه‌های قدیمی \texttt{\_LEGACY\_STATE\_VERSIONS} مدیریت می‌شود. این سیستم امکان مهاجرت رو به جلوی حالت‌های ذخیره‌شده از نسخه‌های قدیمی‌تر را فراهم می‌سازد و در عین حال با مکانیزم کنترل یکپارچگی هش پیکربندی \lr{(SHA-256 config hash)} و کنترل نسخه کد فیزیک \lr{(\_PHYSICS\_CODE\_VERSION = 10)} از بارگذاری ناسازگار حالت‌های ذخیره‌شده با طرح متفاوت \lr{const\_params} یا معناشناسی متفاوت \lr{AP-reschedule} جلوگیری می‌کند. این طراحی محافظه‌کارانه برای کاربردهای انتشار علمی که در آن‌ها لازم است نتایج یک شبیه‌سازی با همان بذر تصادفی دقیقاً بازتولید شوند، حیاتی است.
+
+ماژول همچنین از یک مکانیزم حالت سخت‌گیرانه \lr{(strict\_mode)} که به‌صورت پیش‌فرض فعال است، بهره می‌برد. این مکانیزم تقریباً هر ساده‌سازی فیزیکی مسئله‌ساز را یا به یک استثنای صریح تبدیل می‌کند یا هشدار می‌دهد، تا از انتشار نتایج نادرست فیزیکی جلوگیری شود. برای مثال، حالت سخت‌گیرانه استفاده از مدل زمان مرده پارالایز \lr{(paralyzable)} در سطح یک \lr{SPAD} منفرد را که بر اساس \lr{Rogers et al.} نادرست است، رد می‌کند و در عوض پارالایزپذیری ظهور-سطح-پایه را تنها در صورت فعال‌سازی سیاست \lr{ROGERS\_2007} شبیه‌سازی می‌نماید. این رویکرد دفاعی، ماژول را برای استفاده در پروژه‌های پایان‌نامه و مقالات ژورنالی که در آن‌ها دقت فیزیکی فراتر از سرعت اجرا اهمیت دارد، مناسب می‌سازد.
+
+\section{مبانی تئوری و فیزیکی}
+
+مدل‌سازی آشکارسازهای تک‌فوتونی در این ماژول بر چند ستون فیزیکی استوار است که در ادامه به تفصیل بسط داده می‌شوند. نخست، فیزیک \lr{SPAD} بر پدیده شکست بهرهاوری \lr{(avalanche breakdown)} در دیودهای معکوس‌بایاس استوار است. وقتی یک فوتون در ناحیه تخلیه جذب می‌شود و یک حامل بار تولید می‌کند، میدان الکتریکی قوی حامل را شتاب می‌دهد و شکست بهرهاوری آغاز می‌شود؛ در نتیجه یک پالس جریان قابل‌اندازه‌گیری ایجاد می‌گردد. در این حالت که به حالت گایگر \lr{(Geiger mode)} معروف است، آشکارساز به هر فوتون با احتمال $\eta$ (بازده آشکارساز) پاسخ می‌دهد، اما پس از هر کلیک نیازمند یک پنجره زمانی برای خاموش‌سازی \lr{(quenching)} و بازیابی به حالت آماده‌به‌کار است که به آن زمان مرده $\tau_d$ می‌گوئیم. این زمان مرده در مدل حاضر از نوع غیر-پارالایز \lr{(non-paralyzable)} است؛ یعنی فوتون‌هایی که در طول پنجره مرده می‌رسند هیچ اثری بر آشکارساز ندارند و پنجره مرده را تمدید نمی‌کنند. این انتخاب بر اساس \lr{Rogers et al. (2007) §3 و §6} صورت گرفته که صراحتاً بیان می‌کنند \lr{SPAD}های منفرد غیر-پارالایز هستند و پارالایزپذیری صرفاً یک ویژگی نوپدید \lr{(emergent)} در سطح جفت آشکارسازهای پایه به‌همراه قانون سیفتنگ \lr{(sifting rule)} است.
+
+دومین ستون فیزیکی، پدیده پالس‌های پسین \lr{(afterpulsing)} است. در \lr{SPAD}های \lr{InGaAs/InP} که در بازه مخابراتی \lr{1550 nm} استفاده می‌شوند، حامل‌های بار در طول شکست بهرهاوری می‌توانند در تله‌های سطحی \lr{(surface trap levels)} به‌دام بیفتند و سپس با یک تأخیر تصادفی آزاد شوند. اگر آزادسازی در زمانی رخ دهد که آشکارساز در حالت آماده‌به‌کار باشد، یک کلیک کاذب \lr{(afterpulse)} تولید می‌شود. مدل زمان تأخیر در این ماژول از دو نوع توزیع پشتیبانی می‌کند: توزیع نمایی پیوسته با میانگین $\tau_{ap}$ (پارامتر \texttt{afterpulse\_lifetime\_ns}) و توزیع هندسی گسسته روی شبکه دوره پالس. در حالت هندسی، پارامتر $p$ به‌صورت زیر از طول عمر به‌دست می‌آید:
+
+\begin{equation}
+	p = 1 - \exp\left(-\frac{T}{\tau_{ap}}\right)
+\end{equation}
+
+که در آن $T$ دوره پالس \lr{(pulse\_period\_ns)} است. این انتخاب تضمین می‌کند که $\tau_{ap}$ در هر دو حالت به‌عنوان زمان مشخصه توزین تأخیر تفسیر شود. احتمال تولید پالس پسین پس از هر کلیک با $p_{ap}$ (پارامتر \texttt{afterpulse\_prob}) کنترل می‌شود و عمق آبشاری \lr{(cascade depth)} با کران سخت \lr{\texttt{MAX\_AFTERPULSE\_CASCADE = 32}} محدود می‌گردد تا از زنجیره‌های بازگشتی بی‌نهایت جلوگیری شود. وقتی یک پالس پسین در طول پنجره زمان مرده فعال می‌شود، هسته پردازشی آن را به زمانی پس از پایان پنجره مرده برنامه‌ریزی مجدد می‌کند؛ این برنامه‌ریزی مجدد می‌تواند با سیاست \lr{END} (پایان پنجره مرده) یا سیاست \lr{UNIFORM} (توزیع یکنواخت در بازه \lr{[last\_fire + dt, last\_fire + dt + ap\_lifetime]}) انجام شود.
+
+سومین ستون، شمارش تاریک \lr{(dark count)} است. شمارش تاریک در \lr{SPAD}ها به‌دو مکانیسم اصلی برمی‌گردد: نشر تونلی ناشی از تله \lr{(trap-assisted tunneling)} و تولید حرارتی-نمایی \lr{(thermal generation)}. مدل حاضر از تقریب آرنیوس \lr{(Arrhenius)} با انرژی فعال‌سازی $E_a = 0.15$ eV برای بخش دمایی و یک وابستگی درجه دوم به بایاس مازاد \lr{(excess bias)} برای بخش ولتاژی استفاده می‌کند. بایاس مازاد به‌صورت $V_{eb} = V_{bias} - V_{bd}$ تعریف می‌شود، که در آن $V_{bd}$ ولتاژ شکست است. اصلاح \lr{Review-v19 F-01} وابستگی دمایی ولتاژ شکست را با ضریب $50$ mV/K برای \lr{InGaAs} مدل می‌کند:
+
+\begin{equation}
+	V_{bd}^{op} = V_{bd}^{ref} + \alpha_{bd}\,(T_{op} - T_{ref})
+\end{equation}
+
+که در آن $\alpha_{bd}$ پارامتر \texttt{breakdown\_temp\_coeff\_mv\_per\_k} است. این اصلاح از یک باگ خاموش می‌کشد که پیش از آن همان $V_{bd}$ برای هر دو نقطه عملیاتی و مرجع استفاده می‌شد و برای اختلاف دمایی $50$ K مقادیر اشتباه $\text{voltage\_factor} = 1.0$ به‌جای $0.25$ تولید می‌کرد. مقیاس‌کننده نهایی نرخ تاریک \lr{SPAD} به‌صورت زیر به‌دست می‌آید:
+
+\begin{equation}
+	\mathcal{S}_{SPAD}(T, V) = \exp\!\left[\frac{E_a}{k_B\,T_{ref}} - \frac{E_a}{k_B\,T}\right] \cdot \left(\frac{V_{eb}^{op}}{V_{eb}^{ref}}\right)^{2}
+\end{equation}
+
+که در آن $k_B$ ثابت بولتزمن است. باید تأکید کرد که این مدل صرفاً یک تقریب کیفی است و برای کارهای انتشار علمی توصیه می‌شود نرخ تاریک اندازه‌گیری‌شده در نقطه عملیاتی مستقیماً تأمین شود (با قرار دادن $T_{ref}=T_{op}$ تا مقیاس‌کننده به $1.0$ فروکد کند).
+
+برای \lr{SNSPD}ها، مکانیسم شمارش تاریک متفاوت است: آشکارساز در دماهای بسیار پایین (نظیر $2$--$4$ \lr{K}) کار می‌کند و منبع غالب نویز، تابش جسم سیاه \lr{(black-body radiation)} از محیط اطراف است که با طیف پلانک توصیف می‌شود. مدل حاضر شار فوتون جسم سیاه را در فرکانس‌های بالاتر از فرکانس برش $\nu_{cut} = c/\lambda_{cut}$ (با $\lambda_{cut}\approx 1550$ nm) به‌صورت زیر محاسبه می‌کند:
+
+\begin{equation}
+	\Phi(T) = \frac{2(k_B T)^3}{c^2 h^3} \sum_{n=1}^{\infty} e^{-nx}\left(\frac{x^2}{n} + \frac{2x}{n^2} + \frac{2}{n^3}\right)
+\end{equation}
+
+که در آن $x = h\nu_{cut}/(k_B T)$ است. این سری با حد به $n \to \infty$ همگراست و در عمل با کران \lr{\texttt{SNSPD\_PLANCK\_MAX\_TERMS = 200}} و تلورانس نسبی $10^{-20}$ متوقف می‌شود. مقیاس‌کننده دمای \lr{SNSPD} نسبت $\Phi(T)/\Phi(T_{ref})$ است؛ به‌علاوه یک فاکتور تجربی وابسته به جریان بایاس $f(x) = \exp(-\alpha/(1-x))$ (با $x = I_{bias}/I_{sw}$) اعمال می‌شود که به‌صورت کیفی رشد نرخ تاریک را هنگام نزدیک شدن جریان بایاس به جریان سوئیچینگ بازتولید می‌کند. این مقیاس‌کننده صریحاً به‌عنوان کیفی-تنها \lr{(QUALITATIVE ONLY)} مستند شده و در حالت سخت‌گیرانه اگر انحراف آن از $1.0$ بیش از $5\%$ باشد، استثنا صادر می‌کند.
+
+چهارمین ستون، لرزش زمانی \lr{(timing jitter)} و پهن‌شدگی کروماتیک \lr{(chromatic dispersion)} است. لرزش زمانی به‌منظور بازتولید عدم قطعیت در زمان‌بندی الکترونیک آشکارساز و پهن‌شدگی پالس نوری در فیبر، در مرحله بن کردن \lr{(binning)} به هر رویداد کلیک اعمال می‌شود. مدل از توزیع گوسی با عرض نیم-ماکزیمم $\text{FWHM} = \text{jitter\_fwhm\_ns}$ استفاده می‌کند که به انحراف معیار از رابطه آشنای زیر تبدیل می‌شود:
+
+\begin{equation}
+	\sigma = \frac{\text{FWHM}}{2\sqrt{2\ln 2}}
+\end{equation}
+
+نکته فیزیکی مهم این است که پهن‌شدگی کروماتیک صرفاً به رویدادهای کلیک با منشأ سیگنال اعمال می‌شود و نه به شمارش‌های تاریک و پالس‌های پسین، زیرا این دو پدیده درون آشکارساز تولید می‌شوند و از فیبر عبور نمی‌کنند. این تفکیک با پرچم \texttt{is\_sig} در هسته پردازشی پیگیری می‌شود (اصلاح \lr{Review-v12 F3}).
+
+پنجمین ستون، سیاست سيفتنگ دو-کلیک \lr{(double-click sifting policy)} است که با \lr{Enum} به نام \lr{DoubleClickPolicy} پیاده‌سازی شده و چهار حالت دارد: \lr{DISCARD} (رد هر دو کلیک هم‌زمان)، \lr{RANDOM} (انتخاب تصادفی یکی از دو کلیک)، \lr{KEEP\_BOTH} (نگه‌داشتن هر دو) و \lr{ROGERS\_2007}. حالت \lr{ROGERS\_2007} مطابق مقاله \lr{Rogers et al. (2007)} یک دنباله تشخیص \lr{(detection sequence)} را به‌صورت یک اجرای ماکزیمال از رویدادهای تشخیص روی D0 $\cup$ D1 تعریف می‌کند که در آن رویدادهای متوالی با فاصله کمتر از $\tau_d$ جدا شده‌اند. هر دنباله نهایتاً یک بیت سیفتی \lr{(sifted bit)} (اولین رویداد) تولید می‌کند و سایر رویدادها در همان دنباله دور ریخته می‌شوند و در شمارنده \texttt{rogers\_discarded\_events} ثبت می‌گردند.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+
+معماری این ماژول چندلایه است و از یک مجموعه غنی از \lr{dataclass}ها، \lr{Enum}ها و \lr{NamedTuple}ها تشکیل شده که هر کدام نقش مشخصی در جداسازی نگرانی‌ها \lr{(separation of concerns)} ایفا می‌کنند. در رأس این معماری، کلاس اصلی \texttt{SinglePhotonDetector} قرار دارد که یک \lr{dataclass} با \texttt{slots=True} (اما بدون \texttt{frozen=True}) است تا امکان تغییر حالت درون‌رونده \lr{(in-process state)} را حفظ کند و در عین حال مصرف حافظه را بهینه نماید. این کلاس به‌صورت هدفمند غیر-ایستا \lr{(non-frozen)} طراحی شده زیرا باید حالت درون‌رونده‌ی آشکارساز (مانند زمان آخرین کلیک، زمان \lr{AP} معلق، عمق آبشار، زمان \lr{DC} بعدی و رویدادهای \lr{carry-over}) را در طول شبیه‌سازی به‌روزرسانی کند. با این‌حال، \textit{پیکربندی} آشکارساز (یعنی تمام فیلدهای فیزیکی مانند بازده، نرخ تاریک، زمان مرده و غیره) پس از ساخت از طریق اعتبارسنجی در \texttt{\_\_post\_init\_\_} به‌صورت عملی تغییرناپذیر باقی می‌مانند؛ زیرا هیچ متد عمومی برای تغییر آن‌ها وجود ندارد.
+
+فیلدهای پیکربندی به سه گروه تقسیم می‌شوند. گروه نخست، فیلدهای پایه عملکرد آشکارساز هستند: \texttt{det\_eff\_d0} و \texttt{det\_eff\_d1} (بازده‌های نامتقارن دو آشکارساز)، \texttt{dark\_rate} و \texttt{dark\_rate\_d1} (نرخ‌های تاریک نامتقارن)، \texttt{qber\_intrinsic} و \texttt{misalignment} که به‌ترتیب نرخ خطای ذاتی کوانتومی و ناهم‌راستایی پایه را کنترل می‌کنند، و \texttt{detector\_type} که بین سه مسیر \lr{SPD}، \lr{SNSPD} و \lr{PNRD} انتخاب می‌کند. گروه دوم، فیلدهای زمان‌بندی و نویز هستند: \texttt{dead\_time\_ns}، \texttt{jitter\_fwhm\_ns}، \texttt{afterpulse\_prob}، \texttt{afterpulse\_lifetime\_ns}، و حالت‌های نامتقارن لرزش \texttt{jitter\_fwhm\_ns\_d0/d1}. این فیلدها با \lr{metadata=\{"noise": True\}} علامت‌گذاری شده‌اند تا در عملیات \lr{noiseless\_copy()} به‌صورت خودکار صفر شوند و امکان شبیه‌سازی حالت ایده‌آل (بدون نویز) فراهم شود. گروه سوم، فیلدهای سخت‌افزاری/محیطی هستند: \texttt{temperature\_k}، \texttt{bias\_voltage}، \texttt{breakdown\_voltage}، \texttt{ref\_temperature\_k}، \texttt{ref\_bias\_voltage}، \texttt{bias\_current}، \texttt{switching\_current} که برای محاسبه مقیاس‌کننده‌های دمایی/ولتاژی نرخ تاریک به کار می‌روند.
+
+حالت درون‌رونده در یک \lr{dataclass} جداگانه به نام \texttt{\_DetectorState} نگهداری می‌شود که به‌صورت یک فیلد \texttt{init=False} درون آشکارساز قرار گرفته و در فرآیند سریال‌سازی \texttt{to\_config\_dict()} از آن عبور نمی‌کند. این جداسازی صریح میان \lr{پیکربندی} و \lr{حالت} طراحی امنی برای جلوگیری از نشت حالت درون‌رونده به خروجی پیکربندی است و به کاربر اجازه می‌دهد یک آشکارساز را با همان پیکربندی اما با حالت بازنشانی‌شده بسازد. فیلدهای \texttt{\_DetectorState} شامل: \texttt{last\_abs\_fire\_time\_ns\_d0/d1} (با سنتینل $-\infty$ به‌معنای «هرگز کلیک نکرده»)، \texttt{pending\_ap\_time\_d0/d1} (با سنتینل $<0$ به‌معنای «بدون \lr{AP} معلق»)، \texttt{ap\_depth\_d0/d1} (عمق آبشار \lr{AP} معلق)، \texttt{next\_dc\_time\_d0/d1} (زمان برنامه‌ریزی‌شده شمارش تاریک بعدی)، \texttt{carry\_over\_events} (تاپل از \lr{CarryOverEvent}ها که رویدادهای ورودی پس از پایان بلاک را برای بلاک بعدی نگه می‌دارند)، \texttt{total\_time\_processed\_ns} (ساعت زمان مطلق پردازش‌شده)، \texttt{afterpulse\_total\_count} (شمارنده تجمعی \lr{AP}) و \texttt{last\_path} (\lr{"threshold"} یا \lr{"pnrd"} که برای کشف تغییر مسیر و هشدار درباره از دست رفتن حالت پیوسته به کار می‌رود) است.
+
+\lr{NamedTuple} به نام \texttt{CarryOverEvent} برای ساختاردهی به رویدادهای \lr{carry-over} معرفی شده است. این ساختار با نام‌گذاری صریح فیلدها (\texttt{time\_abs\_ns}، \texttt{det\_id}، \texttt{src\_pulse\_idx}، \texttt{is\_signal\_origin}) از جابه‌جایی تصادفی مؤلفه‌ها هنگام تغییر شکل تاپل جلوگیری می‌کند و کد را خود-مستندکننده می‌سازد. خروجی شبیه‌سازی در دو \lr{NamedTuple} جداگانه بازگردانده می‌شود: \texttt{DetectionResult} برای خروجی استاندارد (با آرایه‌های کلیک، تشخیصی، و \lr{state\_snapshot} به‌صورت رشته \lr{JSON}) و \texttt{PhotonResolvedResult} برای تحلیل‌های \lr{decoy-state yield} که در آن فیلدهای اضافی \texttt{arrivals}، \texttt{target\_d0} و \texttt{ideal\_target\_d0} نیز در دسترس هستند.
+
+اشیای تشخیصی در \lr{dataclass} ایستای \texttt{DetectionDiagnostics} جمع‌آوری می‌شوند که بیش از $25$ فیلد شمارشی دارد: از \texttt{double\_clicks\_total} و \texttt{resolved\_to\_d0/d1} (برای سیاست \lr{RANDOM}) گرفته تا \texttt{rogers\_discarded\_events}، \texttt{deadtime\_dropped}، \texttt{combined\_flips\_with\_arrivals}، \texttt{qber\_flips\_only}، \texttt{isi\_events} (تداخل بین-سمبلی)، \texttt{afterpulse\_events}، \texttt{dark\_count\_events}، \texttt{imd\_click\_events} و \texttt{multiple\_fires\_per\_slot}. این کلاس دارای \lr{property}های مفیدی مانند \texttt{tossed\_breakdown} (که تجزیه دسته‌بندی‌شده رویدادهای دورریخته را برمی‌گرداند) و \texttt{total\_discarded} است. شاخص \texttt{kernel\_tossed} که پیش از \lr{Review-v19 F-11} با تفریق محاسبه می‌شد و ممکن بود منفی شود، اکنون مستقیماً از diagnose هسته \lr{(DIAG\_TOSSED\_CORE)} پر می‌شود تا از پنهان‌شدن باگ‌های حسابداری تشخیصی جلوگیری شود.
+
+یک \lr{dataclass} ایستای دیگر به نام \texttt{DetectorConstants} تمام ثابت‌های تنظیمی را متمرکز می‌کند تا تغییر آن‌ها بدون اعتبارسنجی مجدد در برابر داده‌های مشخصه‌سازی امکان‌پذیر نباشد. این کلاس شامل مقادیری مانند \texttt{MAX\_AFTERPULSE\_CASCADE = 32}، \texttt{SPAD\_DARK\_ACTIVATION\_EV = 0.15}، \texttt{SNSPD\_PLANCK\_MAX\_TERMS = 200}، \texttt{DEFAULT\_RNG\_BUFFER\_MULT = 10.0}، \texttt{LOG\_SAFE\_EPS = 1e-300} و چندین ثابت مرتبط با تحلیل \lr{Rogers} است. \lr{Enum}های پشتیبانی‌شده شامل \texttt{DetectorType} (\lr{SPD/SNSPD/PNRD})، \texttt{DeadTimeModel} (\lr{NON\_PARALYZABLE/PARALYZABLE} که دومی منسوخ‌شده است)، \texttt{AfterpulseModel} (\lr{EXPONENTIAL/GEOMETRIC})، \texttt{DetectorTopology} (\lr{INDEPENDENT\_SPADS/SHARED\_SPAD})، \texttt{DoubleClickPolicy}، \texttt{DecoderArchitecture} و \texttt{APRescheduleMode} (\lr{END/UNIFORM}) هستند.
+
+کلاس کمکی \texttt{EntanglingDecoder} برای رمزگشای درهم‌تنیدگی در پروتکل‌های \lr{MDI-QKD} و بازگشت متقارن \lr{(redundant return)} طراحی شده است. این \lr{dataclass} ایستا با \texttt{slots=True} از عملگرهای کوانتومی \lr{CPTP} برای اعمال دیفیزینگ \lr{(dephasing)} آگاه از دیدپذیری \lr{(visibility-aware)} استفاده می‌کند: درایه‌های خارج‌قطری ماتریس چگالی مشترک $\rho_{joint}$ با ضریب $V$ (دیدپذیری) مقیاس می‌شوند در حالی که قطر (جمعیت‌ها) دست‌نخورده باقی می‌ماند. این کلاس از \lr{redundancy\_M} در \lr{\{2, 3\}} پشتیبانی می‌کند و برای $M=2$ از پروژکتورهای بل-حالت $|\Psi^-\rangle$ و $|\Psi^+\rangle$ استفاده می‌کند:
+
+\begin{equation}
+	|\Psi^\pm\rangle = \frac{1}{\sqrt{2}}\left(|01\rangle \pm |10\rangle\right)
+\end{equation}
+
+و برای $M=3$ از کلمات کد کیوبیتی-۳ برای کد فلیپ-بیت که حالت‌های $|000\rangle$، $|011\rangle$، $|101\rangle$ و $|110\rangle$ را به‌عنوان پایه‌های سندروم دو-بیتی در نظر می‌گیرد.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+
+مسیر آستانه‌ای \lr{(threshold path)} که برای \lr{SPD/SNSPD} فعال می‌شود، یک موتور رویداد-محور کامل را پیاده‌سازی می‌کند. در گام نخست، نازک‌سازی کانال \lr{(channel thinning)} با توزیع دو-جمله‌ای انجام می‌شود: برای هر پالس، تعداد فوتون‌های رسیده به آشکارساز با $\text{arrivals} \sim \text{Binomial}(n, \eta_{ch})$ نمونه‌برداری می‌شود که در آن $n$ تعداد فوتون منبع و $\eta_{ch} = \eta_{eff} \cdot F_{int}$ شامل شدت بازده کانال و فاکتور ناهم‌خوانی شدت است. سپس احتمال کلیک در هر پالس برای $m$ فوتون وارد شده با فرمول زیر محاسبه می‌شود:
+
+\begin{equation}
+	P_{click}(m, \eta) = 1 - (1-\eta)^m
+\end{equation}
+
+این محاسبه با $\texttt{log1p}$ و $\texttt{expm1}$ برای پایداری عددی پیاده‌سازی می‌شود تا برای مقادیر کوچک $\eta$ خطای گردکردن \lr{IEEE-754} به حداقل برسد. در ادامه، مسیریابی به \lr{D0/D1} با احتمال ترکیبی فلیپ $p_{combined}$ انجام می‌شود که پیش‌فرض آن از فرمول \lr{XOR} زیر به‌دست می‌آید:
+
+\begin{equation}
+	p_{combined} = m(1-p_{qber}) + (1-m)\,p_{qber}
+\end{equation}
+
+که در آن $m$ ناهم‌راستایی \lr{(misalignment)} و $p_{qber} = q_{intrinsic} + (1-V)/2$ است که $V$ دیدپذیری \lr{(visibility)} تداخل است. این فرمول \lr{XOR} فرض استقلال آماری میان ناهم‌راستایی و خطای \lr{QBER} را دارد که در \lr{BB84} واقعی از نظر فیزیکی نادرست است (هر دو از همان نقص‌های دیدپذیری ناشی می‌شوند)؛ به همین دلیل حالت سخت‌گیرانه استفاده از این فرمول را نیازمند ارائه صریح \texttt{flip\_prob\_override} یا فعال‌سازی \texttt{allow\_xor\_flip\_formula=True} می‌کند.
+
+محاسبه نرخ تاریک پویا در متد \texttt{\_calculate\_dynamic\_rates()} انجام می‌شود که برای \lr{SPAD} از مقیاس‌کننده آرنیوس-درجه دوم و برای \lr{SNSPD} از مقیاس‌کننده طیف پلانک استفاده می‌کند. این متد برای جلوگیری از محاسبه مکرر انتگرال پلانک (که تا $200$ جمله سری می‌تواند داشته باشد) در هر فراخوانی شبیه‌سازی، کش می‌شود. کد زیر پیاده‌سازی مقیاس‌کننده \lr{SPAD} را نشان می‌دهد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _spad_dark_scaler(self) -> float:
+		# Review-v19 F-01: temperature-dependent breakdown voltage
+		coeff_V_per_K = self.breakdown_temp_coeff_mv_per_k * 1e-3
+		delta_T = self.temperature_k - self.ref_temperature_k
+		bdv_op = self.breakdown_voltage + coeff_V_per_K * delta_T
+		excess_bias = self.bias_voltage - bdv_op
+		ref_excess_bias = self.ref_bias_voltage - self.breakdown_voltage
+		if ref_excess_bias <= EPS:
+		ref_excess_bias = _REF_EXCESS_BIAS_FALLBACK_V
+		voltage_factor = (excess_bias / ref_excess_bias) ** 2
+		
+		kT = CONST_BOLTZMANN * self.temperature_k
+		ref_kT = CONST_BOLTZMANN * self.ref_temperature_k
+		e_act = _SPAD_DARK_ACTIVATION_EV * _EV_TO_JOULE
+		
+		exponent = (e_act / ref_kT) - (e_act / kT)
+		if exponent < -700.0 or exponent > 700.0:
+		# guard against numerical overflow in math.exp
+		if self.strict_mode:
+		raise ParameterValidationError(...)
+		exponent = max(-700.0, min(700.0, exponent))
+		temp_factor = math.exp(exponent)
+		return temp_factor * voltage_factor
+	\end{lstlisting}
+\end{LTR}
+
+در خط نخست، ضریب $\text{mV/K}$ به $\text{V/K}$ تبدیل می‌شود تا در محاسبه جبری با $V$ سازگار باشد. سپس اختلاف دما $\Delta T$ و ولتاژ شکست عملیاتی $V_{bd}^{op}$ با اصلاح دمایی محاسبه می‌شوند. بایاس مازاد عملیاتی و مرجع به‌ترتیب $V_{eb}^{op} = V_{bias} - V_{bd}^{op}$ و $V_{eb}^{ref} = V_{bias}^{ref} - V_{bd}^{ref}$ هستند. اگر بایاس مازاد مرجع نزدیک به صفر باشد، از مقدار جایگزین \texttt{\_REF\_EXCESS\_BIAS\_FALLBACK\_V} استفاده می‌شود تا از تقسیم بر صفر جلوگیری شود. فاکتور ولتاژ به‌صورت درجه دوم و فاکتور دما به‌صورت نمایی \lr{Arrhenius} محاسبه می‌شوند. محافظت عددی برای بازه $[-700, 700]$ اعمال می‌شود تا از سرریز $\exp$ جلوگیری شود؛ این محدوده برای اکثر پیکربندی‌های واقع‌گرایانه (دماهای $200$--$400$ \lr{K}) کافی است.
+
+هسته پردازش رویداد که در ماژول جداگانه \texttt{detector\_kernel.py} پیاده‌سازی شده (که فصل جداگانه‌ای به آن اختصاص دارد)، در این ماژول توسط متد \texttt{\_simulate\_event\_driven()} فراخوانی می‌شود. این متد ابتدا آرایه‌های رویداد ساختار-یافته را می‌سازد، سپس \lr{const\_params} (یک آرایه \lr{float64} با $15$ مؤلفه که شامل زمان مرده، احتمال \lr{AP}، طول عمر \lr{AP}، دوره پالس، زمان شروع بلاک، مدت بلاک، نرخ‌های تاریک \lr{D0/D1} و... است) و بافر \lr{RNG} پیش‌کشیده را آماده می‌کند، و سپس هسته را فرامی‌خواند. خروجی هسته شامل زمان‌های کلیک، شناسه آشکارساز، پرچم منشأ سیگنال، آرایه تشخیصی، و تاپل حالت-خروج است که برای به‌روزرسانی \texttt{\_DetectorState} استفاده می‌شود.
+
+مسیر \lr{PNRD} در متد \lr{\texttt{\_simulate\_pnrd()}} به‌صورت کاملاً متفاوتی پیاده‌سازی شده است. در این مسیر، اثر زمان مرده، پس‌پالس و فرآیند زمانی پیوستهٔ شمارش‌های تاریک لحاظ نمی‌شود؛ در عوض، برای هر پالس از یک مدل پواسونیِ مستقل جهت شبیه‌سازی شمارش‌های تاریک استفاده می‌شود. این انتخاب از نظر سازگاری درونی مسیر قابل‌قبول است، زیرا آشکارسازهای واقعی \lr{PNRD} معمولاً در رژیمی کار می‌کنند که در آن زمان مرده ناچیز است. کد زیر، نازک‌سازی کانال و مسیریابی را در مسیر \lr{PNRD} نشان می‌دهد:
+
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		# Channel thinning (binomial)
+		photon_numbers_i = np.asarray(photon_numbers, dtype=np.int64)
+		arrivals = rng.binomial(photon_numbers_i, eff_trans)
+		
+		if per_photon_routing_pnrd and has_multiphoton:
+		# Per-photon routing (the default, physically correct)
+		n_total = int(np.sum(arrivals))
+		if n_total > 0:
+		photon_flips = rng.random(n_total) < p_combined_flip
+		ideal_per_pulse = np.asarray(ideal_outcomes_d0, dtype=np.bool_)
+		photon_ideal = np.repeat(ideal_per_pulse, arrivals)
+		photon_actual_to_d0 = photon_ideal ^ photon_flips
+		pulse_idx = np.repeat(np.arange(num_pulses), arrivals)
+		arrivals_d0 = np.zeros(num_pulses, dtype=np.int64)
+		np.add.at(arrivals_d0, pulse_idx,
+		photon_actual_to_d0.astype(np.int64))
+		arrivals_d1 = arrivals - arrivals_d0
+		# ...
+		det_counts_d0 = rng.binomial(arrivals_d0, self.det_eff_d0)
+		det_counts_d1 = rng.binomial(arrivals_d1, self.det_eff_d1)
+		mu_dc_d0 = max(0.0, dr0) * float(pulse_period_ns) * 1e-9
+		dark_counts_d0 = rng.poisson(mu_dc_d0, size=num_pulses)
+		final_d0 = det_counts_d0 + dark_counts_d0 + imd_counts_d0
+	\end{lstlisting}
+\end{LTR}
+
+این کد نشان می‌دهد که مسیر \lr{PNRD} از \texttt{rng.binomial} برای نازک‌سازی کانال و بازده آشکارساز استفاده می‌کند و \texttt{rng.poisson} را برای شمارش تاریک هر-پالس به کار می‌گیرد. حالت پیش‌فرض \texttt{per\_photon\_routing=True} مسیریابی هر-فوتون را (که فیزیکی صحیح است) انتخاب می‌کند؛ اگر ورودی چند-فوتونی در حالت سخت‌گیرانه با \texttt{per\_photon\_routing=False} ارائه شود، استثنا صادر می‌شود زیرا مسیریابی هر-پالس بازده \lr{decoy-state} $Y_n$ برای $n \geq 2$ را به‌صورت خاموش تحریف می‌کند.
+
+تحلیل‌های تحلیلی \lr{Rogers et al. (2007)} به‌صورت چند تابع سطح-ماژول پیاده‌سازی شده‌اند. تابع \lr{\texttt{rogers\_P\_00(p, k, eps)}}
+ حالت پایدار احتمال اینکه هر دو آشکارساز در یک پایه زنده باشند را با تکرار ارزش \lr{(value iteration)} روی فضای حالت دوبعدی $\{(i,j): 0 \leq i, j \leq k\}$ محاسبه می‌کند. این تابع برای $k$ بزرگ با کران تکرار تطبیقی $\min(50000, \max(5000, k^2 \cdot 100))$ و تلورانس $10^{-12}$ همگرا می‌شود. تابع\lr{\texttt{rogers\_T\_N(N, p, k)}} توزیع احتمال طول دنباله را با فرمول هندسی بازتولید می‌کند:
+
+\begin{equation}
+	T_N = (1 - s)^{N-1} \cdot s, \quad s = (1 - 2p)^k
+\end{equation}
+
+که در آن $p = L/8$ (پارامتر از-دست‌رفته پیوند) و $k = \rho_{TX} \cdot \tau$ (تعداد دوره‌های ارسال در هر زمان مرده) است. تابع \lr{\texttt{rogers\_S(p, k)}}
+احتمال سيفتنگ موفق یک بیت از یک دنباله را به‌صورت زیر محاسبه می‌کند:
+
+\begin{equation}
+	S(p, k) = \sum_{N=1}^{N_{max}} T_N(p, k) \cdot \left(1 - \frac{1}{2^N}\right)
+\end{equation}
+
+و نرخ بیت سيفتی \lr{(SBR)} از معادله \lr{(15)} مقاله به دست می‌آید:
+
+\begin{equation}
+	\text{SBR} = \rho_{TX} \cdot 8p \cdot P_{00}(p, k) \cdot S(p, k)
+\end{equation}
+
+همچنین تقریب‌های مجانبی مقاله در توابع \texttt{rogers\_sbr\_max(\textbackslash tau) = 1.433/(2\textbackslash tau)} و \texttt{rogers\_rho\_tx\_max(L, \textbackslash tau) = 5.92/(L\textbackslash tau)} پیاده‌سازی شده‌اند که به ترتیب نرخ بیت سيفتی بیشینه و نرخ ارسال بیشینه را در شرط بهینه‌سازی ارائه می‌کنند.
+
+پیاده‌سازی سیاست سيفتنگ \lr{ROGERS\_2007} در متد ایستا \texttt{\_apply\_rogers\_2007\_sifting()} قرار دارد. این متد یک اجرای ماکزیمال از رویدادهای کلیک را با بررسی فاصله زمانی متوالی شناسایی می‌کند: یک رویداد به‌عنوان شروع دنباله در نظر گرفته می‌شود اگر اولین رویداد باشد یا شکاف زمانی $\geq \tau_d$ از رویداد قبلی داشته باشد. سپس تنها رویدادهای شروع دنباله (که در پنجره گیت نیز قرار دارند) در آرایه‌های کلیک نهایی نگه داشته می‌شوند و سایر رویدادها به‌عنوان \texttt{rogers\_discarded\_events} شمارش می‌گردند. این متد از زمان‌های واقعی \lr{(true times)} برای مقایسه شکاف با زمان مرده استفاده می‌کند (نه زمان‌های لرزش‌دیده) که از نظر فیزیکی صحیح است: ساعت زمان مرده آشکارساز در زمان واقعی رسیدن فوتون شروع به کار می‌کند، نه در زمان لرزش‌دیده‌ی اندازه‌گیری.
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+
+این ماژول به‌عنوان گره میانی میان کانال فیبر نوری و لایه تحلیل کلید امن عمل می‌کند و رابط‌های ورودی و خروجی متعددی دارد. از منظر ورودی، متد عمومی \texttt{simulate\_detection()} یک سیگنال چندوجهی دریافت می‌کند که از ماژول‌های بالا‌دست می‌آید: پارامتر \texttt{channel\_transmittance} (یک عدد \lr{float} در بازه $[0, 1]$) از ماژول کانال فیبر نوری \lr{qkd.channel} می‌آید و حاصل قانون بیر-لامبرت $T = 10^{-L_{total}/10}$ است؛ آرایه \texttt{photon\_numbers} (از نوع \lr{NDArray[np.int64]}) از ماژول منبع نوری \lr{qkd.source} می‌آید و تعداد فوتون‌های ارسالی آلیس در هر پالس را با توزیع پواسون یا توزیع چندجمله‌ای \lr{decoy} ارائه می‌کند؛ آرایه \texttt{ideal\_outcomes\_d0} (از نوع \lr{NDArray[np.bool\_]}) از ماژول رمزگذاری پایه \lr{qkd.encoder} می‌آید و نشان می‌دهد کدام پالس‌ها در حالت ایده‌آل به \lr{D0} مسیریابی شده‌اند؛ آرایه \texttt{basis\_selector} اختیاری نیز از همان ماژول می‌آید و برای فعال‌سازی بازده پایه-وابسته \lr{(basis-dependent efficiency)} با فیلدهای \texttt{det\_eff\_d0\_z/x} و \texttt{det\_eff\_d1\_z/x} به کار می‌رود.
+
+شیء \texttt{rng} از نوع \lr{numpy.random.Generator} یا از ماژول بالادستی \lr{qkd.simulation\_driver} می‌آید یا توسط کاربر به‌صورت مستقیم ساخته می‌شود و بذر آن برای بازتولیدپذیری شبیه‌سازی حیاتی است. ماژول از مکانیزم \lr{RNG state snapshot/restore} برای اطمینان از اینکه تلاش‌های مجدد بافر \lr{(buffer retries)} نتایج یکسانی با همان بذر تولید کنند، استفاده می‌کند. کلمات کلیدی \texttt{kwargs} شامل پارامترهای فیزیکی \lr{SCM} مانند \texttt{visibility\_mismatch\_dm}، \texttt{visibility\_bias\_drift\_psi1/psi2}، \texttt{modulation\_index}، \texttt{mu\_signal} و \texttt{N\_channels} است که از ماژول تحلیل \lr{SCM} \lr{(qkd.utils.scm\_analysis)} می‌آیند و برای محاسبه شدت \lr{IMD/FWM} به کار می‌روند. پارامترهای \lr{WDM} مانند \texttt{include\_wdm\_fwm\_noise} نیز از ماژول تحلیل \lr{WDM} عرضه می‌شوند.
+
+از منظر خروجی، ماژول یک \texttt{DetectionResult} (یا \texttt{PhotonResolvedResult}) برمی‌گرداند که شامل سه بخش اصلی است. آرایه‌های \texttt{click0} و \texttt{click1} (از نوع \lr{NDArray[np.bool\_]} برای آستانه‌ای و \lr{NDArray[np.int64]} برای \lr{PNRD}) به طول \texttt{num\_pulses} هستند و به ماژول سيفتنگ پایه \lr{(qkd.sifting)} ارسال می‌شوند تا بیت‌های سيفتی استخراج شوند. شیء \texttt{DetectionDiagnostics} به ماژول گزارش‌گیری و تجزیه‌وتحلیل آماری \lr{(qkd.analysis)} ارسال می‌شود و در آن معیارهایی مانند \lr{QBER} مشاهده‌شده، بازده \lr{decoy-state} $Y_n$، نرخ \lr{IMD} و نرخ \lr{ISI} محاسبه می‌شوند. رشته \texttt{state\_snapshot} (یک \lr{JSON} سریال‌شده با \texttt{allow\_nan=False}) به ماژول مدیریت حالت \lr{(qkd.state\_manager)} ارسال می‌شود تا در صورت نیاز به ادامه شبیه‌سازی در بلاک‌های بعدی، حالت آشکارساز به‌صورت دقیق قابل بازیابی باشد.
+
+از منظر وابستگی‌های درون‌پروژه‌ای، این ماژول از چندین ماژول زیرین واردات دارد: \texttt{qkd.datatypes} برای \lr{Enum}ها و \lr{dataclass}های مشترک مانند \lr{Double\-Click\-Policy}، \lr{Detector\-Type}، \lr{Detection\-Config}، \lr{Decoder\-Architecture} و \lr{Tally\-Counts}؛ \texttt{qkd.exceptions} برای \lr{Configuration\-Error} و \lr{Parameter\-Validation\-Error} که با زمینه‌های ساختاریافته \lr{(param\_name, param\_value, context)} هستند؛ \texttt{qkd.constants} برای توابع کمری مانند \lr{is\_valid\_probability}، \lr{is\_finite\_non\_negative}، \lr{clamp\_probability} و ثابت‌های فیزیکی \lr{CONST\_BOLTZMANN}، \lr{CONST\_ELECTRON\_CHARGE}، \lr{CONST\_PLANCK} و \lr{CONST\_SPEED\_OF\_LIGHT}؛ \texttt{qkd.utils.utils} برای \lr{sanitize\_for\_serialization}؛ و \texttt{qkd.utils.scm\_analysis} برای توابع \lr{calculate\_visibility}، \lr{calculate\_intensity\_mismatch\_factor} و \lr{calculate\_wdm\_fwm\_noise}.
+
+این ماژول همچنین یک لایه سازگار-کاهش \lr{(graceful fallback)} برای زمانی که بسته \lr{qkd} کامل نصب نباشد (مانند زمان اجرای تست‌های مستقل) دارد که در آن نسخه‌های ساده‌شده‌ی تمام \lr{Enum}ها، ثابت‌ها و توابع کمری به‌صورت درون‌ماژولی تعریف می‌شوند. این لایه با پرچم \lr{\_HAS\_QKD\_PACKAGE} کنترل می‌شود و امکان تست‌گذاری جداگانه ماژول را بدون نیاز به کل زیرساخت پروژه فراهم می‌سازد. با این‌حال، در کاربردهای عملی، همیشه نسخه کامل بسته \lr{qkd} باید نصب باشد تا تمام اعتبارسنجی‌ها و رفتارهای سخت‌گیرانه فعال شوند.
+
+از منظر مصرف‌کنندگان اصلی، ماژول \lr{qkd.main\_optimized} (موتور اصلی شبیه‌سازی) از \texttt{build\_detector\_sim\_params()} برای ساخت یک بسته ایستای \lr{DetectorSimParams} از آشکارساز اعتبارسنجی‌شده استفاده می‌کند؛ این بسته شامل یازده پارامتر مشتق‌شده از آشکارساز است و برای جلوگیری از خواندن مکرر از دیکشنری پیکربندی در حلقه اصلی شبیه‌سازی به کار می‌رود. ماژول‌های تحلیل کلید امن مانند \lr{qkd.key\_rate} نیز از خروجی‌های \texttt{DetectionDiagnostics} به‌ویژه \texttt{combined\_flips\_with\_arrivals}، \texttt{dark\_count\_events} و \texttt{afterpulse\_events} برای تغذیه فرمول‌های نرخ کلید \lr{GLLP} و \lr{decoy-state} استفاده می‌کنند. در نهایت، تابع \texttt{is\_threshold\_detector()} به‌عنوان یک تابع کمکی برای سایر ماژول‌هایی که نیاز به بررسی نوع آشکارساز دارند (مانند انتخاب مسیر محاسبه بازده) فراهم شده است.
+
+
+\lstset{
+	basicstyle=\ttfamily\footnotesize,
+	breakatwhitespace=false,
+	breaklines=true,
+	captionpos=b,
+	keepspaces=true,
+	numbers=left,
+	numbersep=5pt,
+	numberstyle=\tiny\color{gray},
+	showspaces=false,
+	showstringspaces=false,
+	showtabs=false,
+	tabsize=2,
+	language=Python,
+	frame=single,
+	framesep=2pt,
+	rulecolor=\color{gray!50},
+	backgroundcolor=\color{gray!5},
+	keywordstyle=\color{blue!70!black}\bfseries,
+	commentstyle=\color{green!50!black}\itshape,
+	stringstyle=\color{red!60!black},
+	emph={np, math, njit, NUMBA_AVAILABLE, _process_events_logic, _process_events_numba, event_np_dtype, _SENTINEL_T, STATUS_OK, STATUS_RNG_EXHAUSTED, STATUS_OUTPUT_BUFFER_EXHAUSTED, STATUS_CARRY_OVER_BUFFER_EXHAUSTED, STATUS_ITERATION_CAP_EXCEEDED, DIAG_DEADTIME, DIAG_AFTERPULSE, DIAG_DARKCOUNT, DIAG_TOSSED_CORE, DIAG_IMD_CLICKS, DIAG_CARRY_OVER, DIAG_DEADTIME_DROPPED, DIAG_MULTIPLE_FIRES_PER_SLOT, DIAG_COUNT, CP_DEAD_TIME, CP_AP_PROB, CP_AP_LIFETIME, CP_PULSE_PERIOD, CP_TIME_START, CP_BATCH_DURATION, CP_DR0, CP_DR1, CP_AP_GEOMETRIC, CP_MAX_CASCADE, CP_GATED, CP_GATE_WIDTH, CP_GATE_OFFSET, CP_SHARED_SPAD, CP_AP_RESCHEDULE_UNIFORM, CP_LEN},
+	emphstyle=\color{purple!70!black}\bfseries,
+}
+
+\section{نمای کلی و هدف ماژول}
+
+ماژول \lr{\texttt{qkd.detector\_kernel}} هسته پردازش رویداد \lr{(event-processing kernel)} و پوشش کامپایل \lr{Numba JIT} را برای موتور شبیه‌سازی آشکارساز فریم‌ورک \lr{QKD} در خود جای داده است. این ماژول نقش حلقه داغ \lr{(hot loop)} پردازش متوالی رویدادها را ایفا می‌کند و عملکرد کل فریم‌ورک شبیه‌سازی به‌طور مستقیم به بهینه‌سازی این ماژول وابسته است. هدف اصلی، پیاده‌سازی یک هسته پردازشی است که رویدادهای کلیک آشکارساز را با وفاداری کامل به فیزیک پدیده‌های موقت \lr{(time-domain phenomena)} - شامل زمان مرده غیر-پارالایز، تولید پالس پسین با کران آبشاری، زمان‌بندی پیوسته شمارش تاریک و \lr{carry-over} رویدادهای ورودی پس از پایان بلاک - پردازش کند و در عین حال با مکانیزم \lr{Numba JIT} به سرعت اجرای نزدیک به \lr{C} دست یابد. این ماژول از ماژول مادر \texttt{qkd.detectors} استخراج شده تا جداسازی صریح میان منطق پردازش رویداد (پُر از بحت‌های عددی و فیزیکی) و منطق سطح بالای آشکارساز (ساخت پیکربندی، اعتبارسنجی، سریال‌سازی) را فراهم سازد.
+
+پیچیدگی اصلی این ماژول از چند منبع نشئت می‌گیرد. نخست، هسته باید با ترتیب زمانی سختگیرانه رویدادها را پردازش کند و در زمان‌های تساوی، اولویت صریح \lr{input > afterpulse > dark count} را اعمال نماید. این اولویت‌بندی برای تضمین بازتولیدپذیری \lr{(reproducibility)} نتایج در پلتفرم‌های مختلف و در حضور نویز تصادفی حیاتی است. دوم، هسته باید حالت آشکارساز را در طول چندین بلاک شبیه‌سازی به‌صورت پیوسته نگه دارد؛ به این معنا که رویدادهای \lr{afterpulse} و شمارش تاریک که در پایان یک بلاک برنامه‌ریزی شده‌اند، در بلاک بعدی به‌صورت دقیق در زمان‌های مطلق صحیح خود پردازش شوند. این نیازمند یک \lr{state-out tuple} غنی است که تمام حالت موقت را در خود نگه دارد. سوم، هسته باید با چندین سناریوی فرسایشی \lr{(exhaustion scenarios)} مقابله کند: فرسایش بافر \lr{RNG}، فرسایش بافر خروجی، فرسایش بافر \lr{carry-over}، و فراتر رفتن از کران تکرار. در هر یک از این موارد، هسته باید به‌صورت تشخیصی \lr{(diagnostic)} رفتار کند و خروجی معتبری تولید نماید که به کاربر امکان دیباگ و تلاش مجدد با بافر بزرگ‌تر را بدهد.
+
+این ماژول به‌صورت آگاهانه بر روی مکانیزم \lr{Numba JIT} تکیه دارد اما در صورت عدم دسترسی یا شکست کامپایل، به‌صورت شفاف به پیاده‌سازی \lr{pure-Python} بازمی‌گردد. این طراحی \lr{graceful fallback} با پرچم \texttt{NUMBA\_AVAILABLE} کنترل می‌شود و در صورت وقوع، تنها یک هشدار لاگ صادر می‌کند. نکته مهم این است که کامپایل \lr{Numba} با \texttt{fastmath=False} انجام می‌شود تا از بازترتیب عملیات \lr{IEEE-754-violating} توسط کامپایلر جلوگیری شود و نتایج \lr{bit-identical} میان مسیر \lr{Numba-compiled} و \lr{pure-Python} (در محدوده عملیاتی هسته) تضمین گردد. با این‌حال، مستندات ماژول به‌صراحت اشاره می‌کنند که این تضمین به‌صورت رسمی \lr{bit-identical} نیست و نقاط واگرایی شناخته‌شده‌ای (مانند \texttt{math.log} روی ورودی‌های زیر-نرمال و عرض \lr{int()} در پایتون در برابر \lr{Numba}) وجود دارند که در محدوده عملیاتی هسته (زمان‌مهرهای کمتر از $10^{16}$ و \texttt{max\_steps} کمتر از $10^{7}$) غیرقابل‌دسترس هستند.
+
+ماژول از ماژول خواهری \texttt{qkd.detector\_datastructures} دو نهاد حیاتی را وارد می‌کند: ثابت \texttt{\_SENTINEL\_T} (یک مقدار شناور بسیار بزرگ که به‌عنوان سنتینل «هیچ رویداد» استفاده می‌شود) و \texttt{event\_np\_dtype} (یک \lr{NumPy structured dtype} که شکل هر رویداد را در آرایه ورودی تعریف می‌کند). این وابستگی به‌صورت سختگیرانه اعمال می‌شود و در صورت عدم دسترسی، به‌جای \lr{fallback} خاموش، استثنای \lr{ImportError} صادر می‌کند؛ زیرا یک \lr{fallback} با \lr{dtype} متفاوت می‌تواند به واگرایی پنهان میان مسیرهای \lr{Numba-compiled} و \lr{pure-Python} منجر شود که دیباگ آن بسیار دشوار است. این تصمیم طراحی بر اساس ممیزی \lr{F9} گرفته شده و سیاست صریح ماژول را به \lr{«no silent fallback for dtype divergence»} تبدیل می‌کند.
+
+\section{مبانی تئوری و فیزیکی}
+
+هسته پردازش رویداد بر پایه چند مفهوم بنیادین از فیزیک آشکارسازهای تک‌فوتونی و تئوری صف‌های رویداد استوار است. نخست، مدل زمان مرده غیر-پارالایز \lr{(non-paralyzable dead-time model)} که طبق \lr{Rogers et al. (2007)} رفتار صحیح یک \lr{SPAD} منفرد را توصیف می‌کند. در این مدل، وقتی یک کلیک در زمان $t_f$ رخ می‌دهد، آشکارساز تا زمان $t_f + \tau_d$ به هیچ ورودی حساس نیست و فوتون‌های رسیده در طول این پنجره هیچ تأثیری بر آشکارساز ندارند - نه کلیک تولید می‌کنند و نه پنجره مرده را تمدید می‌نمایند. این رفتار با بررسی ساده زیر در هسته پیاده‌سازی می‌شود:
+
+\begin{equation}
+	\text{if } (t_{current} - t_{last\_fire}) < \tau_d \Rightarrow \text{suppress}
+\end{equation}
+
+نکته فیزیکی مهم این است که این بررسی با \textit{زمان واقعی} \lr{(true time)} رویداد انجام می‌شود، نه با زمان لرزش‌دیده \lr{(jittered time)}. این تمایز حیاتی است زیرا ساعت زمان مرده آشکارساز در زمان واقعی رسیدن فوتون شروع به کار می‌کند، در حالی که زمان ثبت‌شده در خروجی (که برای بن کردن به پالس‌ها استفاده می‌شود) تحت تأثیر لرزش الکترونیک است.
+
+دومین مفهوم، مدل تولید پالس پسین \lr{(afterpulse generation)} با توزیع تأخیر است. وقتی یک کلیک رخ می‌دهد، با احتمال $p_{ap}$ یک پالس پسین تولید می‌شود که زمان آغاز آن از توزیع تأخیر نمایی یا هندسی نمونه‌برداری می‌شود. در توزیع نمایی پیوسته، تأخیر با $\text{decay} = -\ln(u) \cdot \tau_{ap}$ نمونه‌برداری می‌شود که در آن $u \sim \text{Uniform}(0, 1)$ و $\tau_{ap}$ طول عمر پالس پسین است:
+
+\begin{equation}
+	P(\text{delay} > t) = \exp\left(-\frac{t}{\tau_{ap}}\right)
+\end{equation}
+
+در توزیع هندسی گسسته روی شبکه دوره پالس $T$، پارامتر هندسی $p = 1 - \exp(-T/\tau_{ap})$ به‌گونه‌ای انتخاب می‌شود که میانگین تأخیر در هر دو توزیع برابر $\tau_{ap}$ باشد. تعداد گام‌های تأخیر با $K = \lceil \ln(u) / \ln(1-p) \rceil$ نمونه‌برداری می‌شود و $\text{decay} = K \cdot T$ تنظیم می‌گردد. یک کران سخت \texttt{max\_steps} (که تطبیقی با طول عمر و مدت بلاک است) از نمونه‌برداری تأخیرهای بسیار بزرگ جلوگیری می‌کند تا از سرریز بافر \lr{RNG} جلوگیری شود.
+
+سومین مفهوم، عمق آبشار پالس پسین \lr{(afterpulse cascade depth)} است. وقتی خود یک پالس پسین کلیک می‌کند، می‌تواند پالس پسین دیگری تولید کند که این چرخه می‌تواند به‌صورت بی‌نهایت ادامه یابد. در عمل، احتمال تولید در هر مرحله به‌صورت نمایی کاهش می‌یابد اما برای جلوگیری از زنجیره‌های طولانی، یک کران سخت \texttt{MAX\_AFTERPULSE\_CASCADE = 32} اعمال می‌شود. وقتی این کران رسید، عمق آبشار به مقدار کران قفل می‌شود تا شروع فوری یک آبشار جدید در کلیک بعدی همان آشکارساز جلوگیری شود. یک آبشار جدید تنها می‌تواند از یک کلیک غیر-\lr{AP} (سیگنال، شمارش تاریک یا \lr{IMD}) آغاز شود که عمق را به $1$ بازنشانی می‌کند.
+
+چهارمین مفهوم، زمان‌بندی پیوسته شمارش تاریک \lr{(continuous-time dark-count scheduling)} است. شمارش تاریک به‌صورت یک فرآیند پواسون همگن با نرخ $\lambda$ مدل می‌شود که در آن زمان میان-رسیدها از توزیع نمایی با میانگین $1/\lambda$ پیروی می‌کند:
+
+\begin{equation}
+	P(\text{inter-arrival} > t) = \exp(-\lambda t)
+\end{equation}
+
+نمونه‌برداری با تبدیل معکوس \lr{(inverse transform sampling)} انجام می‌شود: $\text{wait} = -\ln(u) / \lambda$ که در آن $u \sim \text{Uniform}(0, 1)$. برای جلوگیری از $\ln(0) = -\infty$، یک کران پایین \texttt{log\_safe\_eps = 1e-300} اعمال می‌شود که به حداکثر تأخیر $\approx 690/\lambda$ منجر می‌شود (که برای هر مدت بلاک واقع‌گرایانه عملاً نامحدود است). نکته مهم این است که وقتی نرخ شاری تاریک میان بلاک‌ها به صفر تغییر می‌کند، یک زمان شاری تاریک معلق از بلاک قبلی باید به‌صورت صریح باطل شود؛ در غیر این صورت یک شاری تاریک در بلاکی که نرخ صفر است اجرا می‌شود که از نظر فیزیکی محال است (اصلاح \lr{F-H9}).
+
+پنجمین مفهوم، \lr{carry-over} رویدادهای ورودی است. وقتی بلاک شبیه‌سازی پایان می‌یابد، ممکن است رویدادهای ورودی وجود داشته باشند که زمان مطلق آن‌ها فراتر از \lr{time\_end\_abs} است. این رویدادها نباید در بلاک فعلی پردازش شوند؛ به‌جای آن، در بافر \lr{carry-over} ذخیره می‌شوند تا در بلاک بعدی به‌عنوان رویدادهای ورودی اولیه فراخوانی شوند. نکته ظریف این است که رویدادهای ورودی که در طول پنجره زمان مرده رخ داده‌اند (و در نتیجه در بلاک فعلی سرکوب شده‌اند) \textbf{نباید} به بافر \lr{carry-over} منتقل شوند؛ زیرا پنجره مرده در بلاک بعدی نیز بر اساس \texttt{last\_fire} قبلی اعمال می‌شود و انتقال چنین رویدادی منجر به سرکوب مضاعف یا حتی رفتار نامشخص می‌شود. این نکته در اصلاح \lr{C4} به‌صورت صریح پیاده‌سازی شده است.
+
+ششمین مفهوم، برنامه‌ریزی مجدد پالس پسین در زمان مرده \lr{(AP reschedule in dead time)} است. وقتی یک پالس پسین در طول پنجره زمان مرده فعال می‌شود، نمی‌تواند کلیک تولید کند و باید به زمانی پس از پایان پنجره مرده برنامه‌ریزی مجدد شود. این ماژول دو سیاست برنامه‌ریزی مجدد را پشتیبانی می‌کند: سیاست \lr{END} که پالس پسین را در انتهای پنجره مرده ($t_{last\_fire} + \tau_d$) قرار می‌دهد، و سیاست \lr{UNIFORM} که آن را به‌صورت یکنواخت در بازه $[t_{last\_fire} + \tau_d, t_{last\_fire} + \tau_d + \tau_{ap}]$ نمونه‌برداری می‌کند. سیاست \lr{UNIFORM} فیزیکاً صحیح‌تر است زیرا زمان آزادسازی تله‌ها به‌صورت یکنواخت در طول طول عمر تله توزیع شده است. اصلاح \lr{Review-v12 F2} یک باگ حیاتی را برطرف کرد که در آن بازه نمونه‌برداری به‌اشتباه $[t_{last\_fire}, t_{last\_fire} + \tau_d]$ (درون پنجره مرده) بود که منجر به حلقه‌های بی‌نهایت برنامه‌ریزی مجدد می‌شد.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+
+معماری این ماژول حول دو نهاد اصلی سازمان‌دهی شده: تابع \texttt{\_process\_events\_logic()} که پیاده‌سازی \lr{pure-Python} هسته است و متغیر \texttt{\_process\_events\_numba} که یا به همین تابع (در صورت عدم دسترسی \lr{Numba}) یا به نسخه \lr{JIT-compiled} آن اشاره می‌کند. این طراحی به مصرف‌کنندگان اجازه می‌دهد همیشه از \texttt{\_process\_events\_numba} استفاده کنند و نگران دسترس‌پذیری \lr{Numba} نباشند. در زمان \lr{import} ماژول، در صورت دسترس بودن \lr{Numba}، تلاش کامپایل با \texttt{njit(cache=True, fastmath=False)} انجام می‌شود و یک کامپایل اجباری \lr{(one-shot)} با ورودی‌های کوچک برای اشکال‌زدایی زودهنگام خطاهای کامپایل و پر کردن کش دیسک اجرا می‌گردد. اگر کامپایل شکست بخورد، یک هشدار لاگ صادر شده و \texttt{\_process\_events\_numba} به \texttt{\_process\_events\_logic} بازمی‌گردد.
+
+امضای تابع \texttt{\_process\_events\_logic()} به‌صورت زیر است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _process_events_logic(
+		sorted_events: NDArray[Any],          # structured array
+		last_abs_fire_d0: float,              # state-in: last fire times
+		last_abs_fire_d1: float,
+		pending_ap_d0: float,                 # state-in: pending AP times
+		pending_ap_d1: float,
+		next_dc_d0_in: float,                 # state-in: next DC times
+		next_dc_d1_in: float,
+		const_params: NDArray[np.float64],    # 15-float bundle
+		rng_floats: NDArray[np.float64],      # pre-drawn RNG buffer
+		co_buffer: NDArray[Any],              # carry-over output buffer
+		out_times: NDArray[np.float64],       # fire-time output buffer
+		out_dets: NDArray[np.int64],          # detector-id output buffer
+		out_sigs: NDArray[np.bool_],          # signal-origin flag buffer
+		cascade_depths_in: NDArray[np.int64], # 2-element AP depth state
+		ap_overflow_times: NDArray[np.float64],   # 4-element multi-trap overflow
+		ap_overflow_depths: NDArray[np.int64],    # 4-element overflow depths
+		):
+	\end{lstlisting}
+\end{LTR}
+
+این امضای طولانی به‌دلیل نیاز هسته به دسترسی مستقیم به تمام حالت و بافرهای ورودی/خروجی بدون عبور از لایه‌های شیء-گرا است؛ این طراحی برای کارایی \lr{Numba} حیاتی است زیرا \lr{Numba} نمی‌تواند به‌صورت کارآمد با اشیاء پایتون تعامل داشته باشد و آرایه‌های \lr{NumPy} بهترین نوع داده برای کامپایل \lr{JIT} هستند. پارامتر \texttt{sorted\_events} یک آرایه ساختار-یافته با \lr{dtype} \texttt{event\_np\_dtype} است که شامل چهار فیلد \texttt{time}، \texttt{det}، \texttt{idx} و \texttt{sig} برای هر رویداد است؛ این فیلدها به‌ترتیب زمان مطلق، شناسه آشکارساز، شاخص پالس منبع و پرچم منشأ سیگنال را نگه می‌دارند.
+
+پارامتر \texttt{const\_params} یک آرایه \lr{float64} با طول ثابت \texttt{CP\_LEN = 15} است که تمام پارامترهای فیزیکی و پیکربندی را در خود جای داده. این پارامترها با شاخص‌های نام‌دار \texttt{CP\_DEAD\_TIME}، \texttt{CP\_AP\_PROB}، \texttt{CP\_AP\_LIFETIME}، \texttt{CP\_PULSE\_PERIOD}، \texttt{CP\_TIME\_START}، \texttt{CP\_BATCH\_DURATION}، \texttt{CP\_DR0}، \texttt{CP\_DR1}، \texttt{CP\_AP\_GEOMETRIC}، \texttt{CP\_MAX\_CASCADE}، \texttt{CP\_GATED}، \texttt{CP\_GATE\_WIDTH}، \texttt{CP\_GATE\_OFFSET}، \texttt{CP\_SHARED\_SPAD} و \texttt{CP\_AP\_RESCHEDULE\_UNIFORM} دسترسی می‌شوند. این رویکرد با شاخص‌های نام‌دار (به‌جای دیکشنری یا کلاس) برای کارایی \lr{Numba} ضروری است زیرا دسترسی به آرایه با شاخص عددی سریع‌ترین روش دسترسی در کد کامپایل‌شده است. مقادیر بولی به‌صورت \lr{float64} ذخیره می‌شوند و با مقایسه $\geq 0.5$ به بولی تبدیل می‌شوند (نه $> 0.5$ که در نقطه میانی $0.5$ رفتار شکننده‌ای دارد).
+
+پارامترهای \texttt{ap\_overflow\_times} و \texttt{ap\_overflow\_depths} آرایه‌هایی با طول $4$ هستند که \lr{multi-trap overflow} را برای هر آشکارساز پیگیری می‌کنند. دو شکاف نخست ($0, 1$) برای \lr{D0} و دو شکاف دوم ($2, 3$) برای \lr{D1} اختصاص داده شده‌اند. این طراحی به هسته اجازه می‌دهد تا دو \lr{AP} معلق اضافی به ازای هر آشکارساز را پیگیری کند، که تقریبی بهتر از مدل تک-\lr{AP} معلق قبلی است. وقتی یک \lr{AP} جدید باید برنامه‌ریزی شود و هر سه شکاف (یک اصلی + دو سرریز) پر هستند، جدیدترین \lr{AP} در شکاف سرریز با جدیدترین زمان بازنویسی می‌شود (تصمیمی که کمترین تأثیر را دارد زیرا \lr{AP} جدید احتمالاً زودتر از \lr{AP} سرریز قدیمی فعال می‌شود). این بازنویسی در شمارنده تشخیصی \texttt{DIAG\_AP\_OVERWRITE} ثبت می‌گردد.
+
+کدهای وضعیت بازگشتی توسط ثابت‌های ماژولی \texttt{STATUS\_OK = 0}، \texttt{STATUS\_RNG\_EXHAUSTED = 1}، \texttt{STATUS\_OUTPUT\_BUFFER\_EXHAUSTED = 2}، \texttt{STATUS\_CARRY\_OVER\_BUFFER\_EXHAUSTED = 3} و \texttt{STATUS\_ITERATION\_CAP\_EXCEEDED = 4} تعریف شده‌اند. این کدها به مصرف‌کننده اجازه می‌دهند به‌صورت برنامه‌نویسی رفتار متناسب با وضعیت را اتخاذ کنند؛ مثلاً در صورت \texttt{STATUS\_RNG\_EXHAUSTED}، مصرف‌کننده می‌تواند بافر \lr{RNG} بزرگ‌تری تخصیص دهد و تلاش مجدد کند. شاخص‌های تشخیصی \texttt{DIAG\_DEADTIME}، \texttt{DIAG\_AFTERPULSE}، \texttt{DIAG\_DARKCOUNT}، \texttt{DIAG\_TOSSED\_CORE}، \texttt{DIAG\_IMD\_CLICKS}، \texttt{DIAG\_CARRY\_OVER}، \texttt{DIAG\_DEADTIME\_DROPPED} و \texttt{DIAG\_MULTIPLE\_FIRES\_PER\_SLOT} شاخص‌هایی در آرایه خروجی \texttt{diags} هستند که آمار تفکیکی از انواع رویدادها را در اختیار مصرف‌کننده قرار می‌دهند.
+
+خروجی تابع، یک تاپل هشت‌عضوی به فرمت \lr{\texttt{(final\_times, final\_dets, final\_sigs, diags, state\_out, co\_count, status\_code)}} است. متغیر \lr{\texttt{state\_out}} خود یک ساختار داده‌ای جامع است که شامل $14$ مؤلفه برای به‌روزرسانی وضعیت آشکارساز می‌باشد: زمان‌های آخرین کلیک برای \lr{D0/D1}، زمان‌های \lr{AP} معلق برای \lr{D0/D1}، زمان‌های \lr{DC} بعدی برای \lr{D0/D1}، عمق‌های آبشار برای \lr{D0/D1}، اشاره‌گر \lr{RNG}، شمارنده‌های بازنویسی \lr{AP} و کپی‌هایی از آرایه‌های سرریز \lr{AP}. وجود این کپی‌ها ضروری است؛ زیرا آرایه‌های محلی ممکن است در بلاک زمانی بعدی تغییر کنند و وضعیت باید مستقل از آن‌ها حفظ شود.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+
+هسته پردازش از یک حلقه اصلی تشکیل شده که در هر تکرار، رویداد بعدی را با توجه به اولویت \lr{input > afterpulse > dark count} انتخاب و پردازش می‌کند. در ادامه، گزیده‌ای از کد انتخاب رویداد ارائه شده است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		while True:
+		iteration += 1
+		if iteration > max_iterations:
+		status_code = STATUS_ITERATION_CAP_EXCEEDED
+		break
+		
+		t_input = _SENTINEL_T
+		if input_ptr < input_len:
+		t_input = float(sorted_events[input_ptr]["time"])
+		
+		# Find the earliest in-batch AP across both detectors
+		t_next_ap = _SENTINEL_T
+		ap_det = -1
+		if t_ap_0 >= 0.0 and t_ap_0 < time_end_abs and t_ap_0 < t_next_ap:
+		t_next_ap = t_ap_0; ap_det = 0
+		if t_ap_1 >= 0.0 and t_ap_1 < time_end_abs and t_ap_1 < t_next_ap:
+		t_next_ap = t_ap_1; ap_det = 1
+		
+		# Filter past-batch-end DCs; track which detector wins
+		_dc0_c = t_dc_0 if (t_dc_0 < _SENTINEL_T and t_dc_0 < time_end_abs) else _SENTINEL_T
+		_dc1_c = t_dc_1 if (t_dc_1 < _SENTINEL_T and t_dc_1 < time_end_abs) else _SENTINEL_T
+		if _dc0_c <= _dc1_c and _dc0_c < _SENTINEL_T:
+		t_next_dc = _dc0_c; dc_det = 0
+		elif _dc1_c < _SENTINEL_T:
+		t_next_dc = _dc1_c; dc_det = 1
+		else:
+		t_next_dc = _SENTINEL_T; dc_det = -1
+		
+		# Early exit: no more events to process
+		if (input_ptr >= input_len
+		and (t_ap_0 < 0.0 or t_ap_0 >= time_end_abs)
+		and (t_ap_1 < 0.0 or t_ap_1 >= time_end_abs)
+		and (t_dc_0 >= _SENTINEL_T or t_dc_0 >= time_end_abs)
+		and (t_dc_1 >= _SENTINEL_T or t_dc_1 >= time_end_abs)):
+		break
+		
+		# Priority selection: input > afterpulse > dark count
+		if t_input <= t_next_ap and t_input <= t_next_dc:
+		# Input wins (priority 1)
+		current_time = t_input
+		current_det = int(sorted_events[input_ptr]["det"])
+		src_idx = int(sorted_events[input_ptr]["idx"])
+		is_sig = bool(sorted_events[input_ptr]["sig"])
+		input_ptr += 1
+		elif t_next_ap <= t_next_dc:
+		# Afterpulse wins (priority 2 over dark count)
+		current_time = t_next_ap
+		current_det = ap_det
+		is_ap = True
+		# ...
+		else:
+		# Dark count wins
+		current_time = t_next_dc
+		current_det = dc_det
+		is_dark = True
+	\end{lstlisting}
+\end{LTR}
+
+این کد چندین ویژگی طراحی مهم را نشان می‌دهد. نخست، بررسی «خروج زودهنگام» \lr{(early exit)} پیش از بررسی فرسایش بافر انجام می‌شود؛ این ترتیب بر اساس اصلاح \lr{Review-v12 F13} تغییر کرده تا از خروج اشتباه با کد فرسایش وقتی حلقه به‌صورت تمیز پایان می‌یافت جلوگیری شود. دوم، مقایسه‌ها با $\leq$ دقیق انجام می‌شوند (نه با تلورانس \lr{EPS}) که این مقایسه‌ها را انتقالی \lr{(transitive)} و قابل بازتولید در پلتفرم‌های مختلف می‌سازد. سوم، فیلتر کردن \lr{AP}ها و \lr{DC}های پس از پایان بلاک به‌صورت صریح انجام می‌شود تا فقط رویدادهای درون-بلاک به‌عنوان کاندیدای «رویداد بعدی» انتخاب شوند.
+
+پس از انتخاب رویداد، چندین بررسی متوالی انجام می‌شود. ابتدا بررسی زمان مرده:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if shared_spad:
+		# Shared dead-time clock: most recent fire on EITHER detector
+		last_fire = t_fire_0 if t_fire_0 > t_fire_1 else t_fire_1
+		else:
+		last_fire = t_fire_0 if current_det == 0 else t_fire_1
+		
+		# Non-paralyzable dead-time check
+		if (current_time - last_fire) < dt_ns:
+		# Distinguish batch-end input events (DIAG_DEADTIME_DROPPED)
+		# from in-batch events (DIAG_DEADTIME)
+		if current_time >= time_end_abs and not is_dark and not is_ap:
+		diags[DIAG_DEADTIME_DROPPED] += 1
+		continue
+		diags[DIAG_DEADTIME] += 1
+		
+		if is_ap:
+		# Reschedule the AP after the dead-time window
+		if ap_reschedule_uniform:
+		u_release = rng_floats[rng_ptr]; rng_ptr += 1
+		release_time = last_fire + dt_ns + u_release * ap_lifetime
+		else:
+		release_time = last_fire + dt_ns
+		rescheduled = release_time + _KERNEL_AP_RESCHEDULE_SLACK_NS
+		# ... restore to t_ap_0 or t_ap_1
+		continue
+		
+		# In-batch input/dark events in dead time: silently dropped
+		continue
+	\end{lstlisting}
+\end{LTR}
+
+این بخش نشان می‌دهد که چگونه مدل زمان مرده غیر-پارالایز پیاده‌سازی شده: اگر رویداد در پنجره مرده باشد، بدون تأثیر بر ساعت زمان مرده سرکوب می‌شود. تمایز مهمی میان رویدادهای ورودی در پایان بلاک (که در \texttt{DIAG\_DEADTIME\_DROPPED} شمارش می‌شوند اما در \lr{carry-over} قرار نمی‌گیرند) و رویدادهای درون-بلاک (که در \texttt{DIAG\_DEADTIME} شمارش می‌شوند) وجود دارد. برای پالس‌های پسین که در زمان مرده فعال می‌شوند، سیاست \lr{END} یا \lr{UNIFORM} برای برنامه‌ریزی مجدد اعمال می‌گردد؛ یک \texttt{slack} کوچک (\lr{\_KERNEL\_AP\_RESCHEDULE\_SLACK\_NS = 1e-6}) برای جلوگیری از شرط مرزی دقیق $t = t_{last\_fire} + \tau_d$ اضافه می‌شود.
+
+تولید پالس پسین پس از هر کلیک موفق با کد زیر انجام می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if ap_prob > 0.0:
+		u_fire = rng_floats[rng_ptr]; rng_ptr += 1
+		if u_fire < ap_prob:
+		# Determine the current cascade depth for this detector
+		if is_ap:
+		# AP-originated fire: depth = parent_depth + 1
+		current_depth = _consumed_ap_depth + 1
+		else:
+		# Signal/dark/IMD-originated fire: first-generation AP
+		current_depth = 1
+		
+		if (current_depth <= per_detector_depth_limit
+		and global_ap_count < global_cascade_limit):
+		u_decay = rng_floats[rng_ptr]; rng_ptr += 1
+		u_decay = max(log_safe_eps, u_decay)
+		
+		if ap_model_geometric:
+		if pulse_period_ns > EPS and p_geometric > 0.0:
+		# Standard geometric sampling:
+		# K = ceil(log(U)/log(1-p))
+		raw_steps = int(math.ceil(math.log(u_decay) / log_1mp))
+		steps = max(1, min(raw_steps, max_steps))
+		decay = steps * pulse_period_ns
+		else:
+		decay = 0.0
+		else:
+		# Exponential sampling: decay = -ln(u) * tau
+		decay = -math.log(u_decay) * ap_lifetime
+		
+		sched_time = current_time + max(0.0, decay)
+		
+		# Schedule the AP, handling overflow slots
+		if current_det == 0:
+		if t_ap_0 < 0.0:
+		t_ap_0 = sched_time
+		ap_depth_0 = current_depth
+		else:
+		# Try overflow slots 0, 1 for D0
+		# ... (overflow management logic)
+		# ...
+		global_ap_count += 1
+	\end{lstlisting}
+\end{LTR}
+
+این کد چندین نکته مهم را نشان می‌دهد. نخست، عمق آبشار به‌صورت صریح پیگیری می‌شود: اگر خود کلیک یک \lr{AP} باشد، عمق پالس پسین جدید $\text{depth}_{parent} + 1$ است؛ در غیر این صورت (سیگنال، شمارش تاریک یا \lr{IMD})، عمق از $1$ آغاز می‌شود. این تمایز برای جلوگیری از شروع فوری یک آبشار جدید پس از رسیدن به کران ضروری است. دوم، نمونه‌برداری هندسی از فرمول استاندارد $K = \lceil \ln(u)/\ln(1-p) \rceil$ استفاده می‌کند که $P(K = k) = (1-p)^{k-1} \cdot p$ را برای $k = 1, 2, \ldots$ تولید می‌کند. سوم، کران \texttt{max\_steps} (که تطبیقی با طول عمر و مدت بلاک است) از نمونه‌برداری تأخیرهای بسیار بزرگ جلوگیری می‌کند. چهارم، مدیریت \lr{overflow} برای \lr{AP}های معلق اضافی پیاده‌سازی شده که تقریبی بهتر از مدل تک-\lr{AP} معلق قبلی ارائه می‌دهد.
+
+محاسبه کران تکرار تطبیقی \lr{(adaptive iteration cap)} بر اساس تعداد تخمینی کل رویدادها انجام می‌شود:
+
+\begin{equation}
+	\text{max\_iterations} = \max\left(10^7,\; 100 \cdot \text{est\_total\_events}\right)
+\end{equation}
+
+که در آن $\text{est\_total\_events} = \text{input\_len} + (\text{dr}_0 + \text{dr}_1) \cdot 10^{-9} \cdot \text{batch\_duration} + 100$ است. این کران تطبیقی (که بر اساس اصلاح \lr{Review-v15 F-17} معرفی شده) از رسیدن زودرس به کران ثابت قبلی $10^7$ برای بلاک‌های بزرگ با $10^6$ پالس و شمارش تاریک بالا جلوگیری می‌کند. یک کران سخت بالا $10^8$ نیز اعمال می‌شود تا از مسیرهای پاتولوژیک جلوگیری شود.
+
+محاسبه پارامتر هندسی $p$ با کد زیر انجام می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		if ap_model_geometric and ap_lifetime > EPS and pulse_period_ns > EPS:
+		p_geometric = 1.0 - math.exp(-pulse_period_ns / ap_lifetime)
+		# Clamp to [0, 1 - EPS] to avoid log1p(-1) = -inf
+		if p_geometric < 0.0:
+		p_geometric = 0.0
+		elif p_geometric >= 1.0 - EPS:
+		p_geometric = 1.0 - EPS
+		if p_geometric <= 0.0:
+		log_1mp = 0.0  # degenerate; effectively no afterpulse
+		else:
+		log_1mp = math.log1p(-p_geometric)
+		else:
+		p_geometric = 0.0
+		log_1mp = 0.0
+	\end{lstlisting}
+\end{LTR}
+
+محاسبهٔ \lr{\texttt{log\_1mp}} با استفاده از \lr{\texttt{math.log1p(-p)}} به‌جای \lr{\texttt{math.log(1 - p)}}، به‌منظور بهبود دقت عددی در نزدیکی $p = 0$ انجام می‌شود. اعمال کران $1 - \varepsilon$ از بروز خطای $\log(0) = -\infty$ جلوگیری می‌کند. این پارامترها یک‌بار در ابتدای هر فراخوانی هسته محاسبه شده و در طول حلقهٔ اصلی استفاده می‌شوند.
+
+
+پوشش کامپایل \lr{Numba} با کد زیر پیاده‌سازی شده:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		# Default to the pure-Python implementation
+		_process_events_numba = _process_events_logic
+		
+		if NUMBA_AVAILABLE:
+		try:
+		_process_events_numba = njit(cache=True, fastmath=False)(
+		_process_events_logic
+		)
+		# Force a one-shot compile to surface compilation errors eagerly
+		_seed_events = np.zeros(2, dtype=event_np_dtype)
+		_seed_events["time"] = (1.0, 2.0)
+		_seed_events["det"] = (0, 1)
+		_seed_events["idx"] = (0, 1)
+		_seed_events["sig"] = (True, False)
+		_seed_cp = np.zeros(CP_LEN, dtype=np.float64)
+		_seed_cp[CP_PULSE_PERIOD] = 1.0
+		_seed_cp[CP_DEAD_TIME] = 50.0
+		_seed_cp[CP_BATCH_DURATION] = 1000.0
+		_seed_cp[CP_AP_LIFETIME] = 50.0
+		_seed_cp[CP_MAX_CASCADE] = 5.0
+		_ = _process_events_numba(
+		_seed_events,
+		-1.0e9, -1.0e9, -1.0, -1.0, -1.0, -1.0,
+		_seed_cp,
+		np.zeros(32, dtype=np.float64),
+		np.zeros(8, dtype=event_np_dtype),
+		np.zeros(16, dtype=np.float64),
+		np.zeros(16, dtype=np.int64),
+		np.zeros(16, dtype=np.bool_),
+		np.zeros(2, dtype=np.int64),
+		np.full(4, -1.0, dtype=np.float64),
+		np.zeros(4, dtype=np.int64),
+		)
+		except Exception as e:
+		logger.warning(
+		"Failed to compile Numba logic, falling back to pure Python: %s",
+		e,
+		)
+		_process_events_numba = _process_events_logic
+	\end{lstlisting}
+\end{LTR}
+
+این پیاده‌سازی چندین ویژگی دارد. نخست، \texttt{njit(cache=True)} کش دیسک را فعال می‌کند تا در اجراهای بعدی، زمان کامپایل اولیه حذف شود. دوم، \texttt{fastmath=False} از بازترتیب عملیات \lr{IEEE-754-violating} توسط کامپایلر جلوگیری می‌کند و در نتیجه نتایج \lr{bit-identical} (در محدوده عملیاتی) میان مسیر \lr{Numba} و \lr{pure-Python} را تضمین می‌نماید. سوم، کامپایل اجباری با ورودی‌های کوچک در زمان \lr{import} خطاهای کامپایل را زودهنگام آشکار می‌کند و کش دیسک را پر می‌کند. چهارم، در صورت شکست کامپایل، با هشدار لاگ به \lr{pure-Python} بازمی‌گردد تا ماژول همواره قابل استفاده باشد. این طراحی \lr{graceful} برای محیط‌هایی که \lr{Numba} در آن‌ها نصب نیست یا نسخه ناسازگار دارد، حیاتی است.
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+
+این ماژول به‌عنوان هستهٔ پردازشی درونی، در نقش یک سرویس‌دهندهٔ سطح پایین برای ماژول سطح بالای \lr{\texttt{qkd.detectors}} عمل کرده و رابط‌های مشخصی با ماژول‌های هم‌راستا دارد. مصرف‌کنندهٔ اصلی این ماژول، متد \lr{\texttt{\_simulate\_event\_driven()}} از کلاس \lr{SinglePhotonDetector} است که هسته را به این صورت فراخوانی می‌کند: نخست، آرایه‌های رویداد ساختاریافته را با استفاده از متد کمکی \lr{\texttt{\_build\_event\_array()}} می‌سازد؛ سپس آرایهٔ \lr{\texttt{const\_params}} را با $15$ مؤلفه از فیلدهای اعتبارسنجی‌شدهٔ آشکارساز پر می‌کند؛ سپس بافر \lr{RNG} را با \lr{\texttt{rng.random(est\_events * rng\_buffer\_mult)}} پیش‌بارگذاری می‌کند؛ و در نهایت هسته را فراخوانی کرده و خروجی را به‌صورت ساختاریافته پردازش می‌نماید. این الگوی فراخوانی، جداسازی صریحی میان لایهٔ بالا (ساخت پارامترها و پردازش پسین) و لایهٔ پایین (پردازش رویداد) ایجاد می‌کند.
+
+
+از منظر ورودی، هسته چندین نوع داده دریافت می‌کند. آرایه \texttt{sorted\_events} که از \texttt{qkd.detector\_datastructures} با \lr{dtype} \texttt{event\_np\_dtype} وارد می‌شود، شامل رویدادهای کلیک سیگنال (که از خروجی کانال فیبر و آشکارساز منبع مشتق شده‌اند) و رویدادهای کلیک \lr{IMD/FWM} (که از تحلیل \lr{SCM/WDM} می‌آیند) است. این رویدادها پیش از فراخوانی هسته بر اساس زمان مطلق مرتب می‌شوند تا هسته بتواند به‌صورت کارآمد با یک عبور خطی آن‌ها را پردازش کند. آرایه \texttt{cascade\_depths\_in} که عمق آبشار فعلی \lr{AP} معلق برای هر آشکارساز را در بر دارد، از \texttt{\_DetectorState} آشکارساز استخراج می‌شود.
+
+از منظر خروجی، هسته چندین ساختار داده تولید می‌کند. آرایه‌های \texttt{out\_times}، \texttt{out\_dets} و \texttt{out\_sigs} (که به‌عنوان بافر از سوی فراخواننده تخصیص داده می‌شوند و هسته تنها آن‌ها را پر می‌کند) حاوی زمان‌های کلیک، شناسه آشکارساز و پرچم منشأ سیگنال برای رویدادهای کلیک موفق هستند. این آرایه‌ها در متد \texttt{\_simulate\_event\_driven()} به مرحله بن کردن \lr{(binning)} ارسال می‌شوند که در آن زمان‌های کلیک با لرزش گوسی به پالس‌های متناظر نگاشته می‌شوند و در نهایت آرایه‌های بولی \texttt{click0} و \texttt{click1} تولید می‌گردند. آرایه \texttt{diags} شامل $8$ شمارنده تشخیصی است که در شیء \texttt{DetectionDiagnostics} کپی می‌شوند و به مصرف‌کنندگان نهایی (مانند تحلیل کلید امن) ارائه می‌گردند.
+
+تاپل \texttt{state\_out} که حاوی $14$ مؤلفه است، برای به‌روزرسانی \texttt{\_DetectorState} آشکارساز استفاده می‌شود. این به‌روزرسانی به‌صورت زیر انجام می‌شود: زمان‌های آخرین کلیک \lr{D0/D1} در فیلدهای \texttt{last\_abs\_fire\_time\_ns\_d0/d1} ذخیره می‌شوند؛ زمان‌های \lr{AP} معلق \lr{D0/D1} در \texttt{pending\_ap\_time\_d0/d1}؛ عمق‌های آبشار در \texttt{ap\_depth\_d0/d1}؛ زمان‌های \lr{DC} بعدی در \texttt{next\_dc\_time\_d0/d1}؛ و آرایه‌های سرریز \lr{AP} در فیلدهای مخصوص به خود. این به‌روزرسانی پیوسته تضمین می‌کند که بلاک بعدی شبیه‌سازی می‌تواند حالت دقیق را از بلاک قبلی به ارث ببرد و پیوستگی فیزیکی زمان مرده، پالس پسین و شمارش تاریک را حفظ کند.
+
+از منظر وابستگی‌های درون‌پروژه‌ای، این ماژول به‌صورت سختگیرانه به ماژول \texttt{qkd.detector\_datastructures} وابسته است و در صورت عدم دسترسی، به‌جای \lr{fallback} خاموش، استثنای \lr{ImportError} صادر می‌کند. این وابستگی شامل دو نهاد است: ثابت \texttt{\_SENTINEL\_T} (یک مقدار شناور بسیار بزرگ که به‌عنوان سنتینل «هیچ رویداد» استفاده می‌شود) و \texttt{event\_np\_dtype} (یک \lr{NumPy structured dtype} که شکل هر رویداد را تعریف می‌کند). ثابت‌های شاخص \texttt{CP\_*} و \texttt{DIAG\_*} و \texttt{STATUS\_*} نیز از ماژول \texttt{qkd.detector\_datastructures} (یا ماژول خواهری آن) واردات می‌شوند تا یکپارچگی شاخص‌ها در سراسر فریم‌ورک تضمین شود. این طراحی یک-منبع \lr{(single source of truth)} برای ثابت‌های شاخص از واگرایی احتمالی جلوگیری می‌کند.
+
+تعامل با کتابخانه \lr{Numba} نیز از طریق \texttt{try/except ImportError} انجام می‌شود. در صورت دسترس بودن \lr{Numba}، دکوراتور \texttt{njit} به‌صورت پویا واردات می‌شود و در غیر این صورت، یک دکوراتور \lr{no-op} جایگزین تعریف می‌گردد. این رویکرد امکان استفاده از ماژول را در محیط‌هایی که \lr{Numba} نصب نیست (مانند برخی محیط‌های \lr{CI} سبک) فراهم می‌سازد. تصمیم آگاهانه برای عدم اعلام صریح امضا روی تابع هسته \lr{(no explicit signature on the hot-loop kernel)} برای جلوگیری از وابستگی‌های شکننده \lr{ABI} به \texttt{numba.types.Tuple} و \texttt{numba.types.Array} که در نسخه‌های مختلف \lr{Numba} تغییر کرده‌اند، اتخاذ شده است. این طراحی به ماژول اجازه می‌دهد با طیف وسیع‌تری از نسخه‌های \lr{Numba} سازگار بماند.
+
+لاگر ماژول (\texttt{logging.getLogger(\_\_name\_\_)}) در سطح \lr{WARNING} برای گزارش شکست کامپایل \lr{Numba} و در سطح \lr{INFO} برای گزارش رویدادهای مهم (مانند بازگشت به \lr{pure-Python}) به کار می‌رود. این سطح‌بندی به کاربران اجازه می‌دهد با تنظیم سطح لاگ، میزان جزئیات گزارش‌ها را کنترل کنند. لاگ سطح \lr{DEBUG} در این ماژول استفاده نمی‌شود زیرا هسته در حلقه داغ اجرا می‌شود و هرگونه لاگ اضافی به‌طور قابل‌توجهی عملکرد را کاهش می‌دهد؛ به‌جای آن، آمار تفکیکی در آرایه \texttt{diags} جمع‌آوری می‌شود که پس از پایان اجرای هسته توسط مصرف‌کننده قابل بررسی است.
+
+در نهایت، این ماژول به‌صورت مستقیم با مکانیزم \lr{RNG state snapshot/restore} ماژول \texttt{qkd.detectors} تعامل دارد. مصرف‌کننده پیش از فراخوانی هسته، حالت \lr{RNG} را با \texttt{\_copy\_rng\_state(rng.bit\_generator.state)} عکس‌برداری می‌کند و در صورت نیاز به تلاش مجدد با بافر بزرگ‌تر، حالت را بازیابی می‌نماید. این مکانیزم تضمین می‌کند که تلاش‌های مجدد با همان بذر \lr{RNG} نتایج یکسانی تولید کنند (تا جایی که بافر \lr{RNG} بزرگ‌تر اجازه می‌دهد). نکته مهم این است که پس از اصلاح \lr{Review-v12 F1}، حالت \lr{RNG} دیگر پس از \lr{pre-draw} بازگردانده نمی‌شود؛ زیرا این بازگردانی به‌صورت قطعی کش‌های \lr{RNG} هسته و پس-هسته را همبسته می‌کرد و آمار \lr{ISI}، \lr{gate-loss} و \lr{double-click} را تحریف می‌نمود. این تصمیم طراحی برای بازتولیدپذیری صحیح آماری حیاتی است.
+
+
+\sloppy
+\emergencystretch=5em
+\hbadness=10000
+\vbadness=10000
+\tolerance=2000
+\providecolor{codebg}{RGB}{248,248,248}
+\providecolor{codeframe}{RGB}{200,200,200}
+\providecolor{kwblue}{RGB}{0,0,140}
+\providecolor{strred}{RGB}{163,21,21}
+\providecolor{cmtgreen}{RGB}{0,110,0}
+\providecolor{emphpurple}{RGB}{110,0,140}
+\lstset{
+	basicstyle=\ttfamily\footnotesize,
+	breakatwhitespace=false,
+	breaklines=true,
+	captionpos=b,
+	keepspaces=true,
+	numbers=left,
+	numbersep=5pt,
+	numberstyle=\tiny\color{gray},
+	showspaces=false,
+	showstringspaces=false,
+	showtabs=false,
+	tabsize=2,
+	language=Python,
+	frame=single,
+	framesep=2pt,
+	rulecolor=\color{gray!50},
+	backgroundcolor=\color{gray!5},
+	keywordstyle=\color{kwblue}\bfseries,
+	commentstyle=\color{cmtgreen}\itshape,
+	stringstyle=\color{strred},
+	emph={math, channel, get_strict_mode, ParameterValidationError, PhysicalSuspicionWarning, _warn_physical_suspicion, is_close, is_finite_non_negative, AttenuationConfig, validate_parameter, validate_channel, check_type, validate_parameter_ranges, check_meaningful_alpha, check_meaningful_distance, check_total_loss_finite, check_attenuation_config_contract, check_wavelength_consistency, validate_wavelength_range, compute_transmittance, effective_total_loss_db, transmittance_from_loss_db, check_transmittance_health},
+	emphstyle=\color{emphpurple}\bfseries,
+}
+
+\section{نمای کلی و هدف ماژول}
+
+ماژول \lr{\texttt{qkd.\_gating}} یک لایه اعتبارسنجی و گارد \lr{(validation / gating layer)} است که به‌صورت هدفمند از کلاس اصلی \lr{\texttt{FiberChannel}} استخراج شده تا نگرانی‌های مرتبط با کنترل سلامت فیزیکی و سازگاری پیکربندی کانال را در یک مجموعه منسجم از توابع مستقل متمرکز کند. این ماژول در راستای اصل مهندسی نرم‌افزارِ تفکیک نگرانی‌ها \lr{(separation of concerns)} طراحی شده و هر تابع آن به‌جای ارجاع به \texttt{self} از پارامتر صریح \texttt{channel} به‌عنوان آرگومان اول استفاده می‌کند؛ این طراحی امکان آزمون‌پذیری واحد \lr{(unit testability)}، استفاده مجدد در زمینه‌های متفاوت (مانند اعتبارسنجی پس از \lr{deserialization}) و امکان جایگزینی آسان در \lr{mock}های تست را فراهم می‌سازد. هدف نهایی، فراهم‌آوردن یک لایه دفاعی چندگانه \lr{(defense in depth)} است که هرگونه پیکربندی غیرفیزیکی کانال را پیش از ورود به حلقه اصلی شبیه‌سازی شناسایی و رد کند.
+
+اهمیت این ماژول از آنجا ناشی می‌شود که فریم‌ورک شبیه‌سازی \lr{QKD} به‌عنوان یک ابزار تحقیقاتی-آکادمیک، همواره با پیکربندی‌های متنوع و گاهی غیرعادی از سوی کاربران مواجه است؛ مقادیر منفی برای طول فیبر، ضرایب تضعیف غیرمنطقی (مانند $\alpha=0$ با طول غیرصفر که فیبر بی‌تلفاتی را بر روی فاصله متناهی ارائه می‌دهد و از نظر فیزیکی محال است)، طول‌موج‌های خارج از بازه مخابراتی، و تطبیق نادرست میان \texttt{total\_loss\_db} و حاصلضرب $\alpha \cdot L$ تنها چند نمونه از خطاهای متداول هستند. اگر این خطاها به‌صورت خاموش از لایه اعتبارسنجی عبور کنند، در محاسبات پایین‌دستی مانند فرمول‌های بازده \lr{decoy-state}، نرخ کلید امن و \lr{QBER} به نتایج ظاهراً معتبر اما فیزیکی غلط منجر می‌شوند که می‌توانند ماه‌ها تلاش تحقیقاتی را بی‌اثر کنند. این ماژول با سیاست دو-سطحی \lr{strict/non-strict} (که توسط \lr{ContextVar} جهانی \texttt{get\_strict\_mode()} کنترل می‌شود) به کاربر اجازه می‌دهد در حالت پیش‌فرض سخت‌گیرانه هرگونه تخلف را به‌صورت استثنا مشاهده کند و در حالت اکتشافی \lr{(exploratory)} صرفاً هشدار دریافت نماید.
+
+ماژول \lr{\_gating} شامل چهارده تابع عمومی است که در \texttt{\_\_all\_\_} فهرست شده‌اند: \texttt{check\_type}، \texttt{validate\_parameter\_ranges}، \texttt{check\_meaningful\_alpha}، \texttt{check\_meaningful\_distance}، \texttt{check\_total\_loss\_finite}، \texttt{check\_attenuation\_config\_contract}، \texttt{check\_wavelength\_consistency}، \texttt{validate\_wavelength\_range}، \texttt{compute\_transmittance}، \texttt{effective\_total\_loss\_db}، \texttt{transmittance\_from\_loss\_db}، \texttt{check\_transmittance\_health}، \texttt{validate\_parameter} و \texttt{validate\_channel}. هر یک از این توابع به یک جنبه خاص از سلامت کانال می‌پردازند و در مجموع یک شبکه اعتبارسنجی کامل را تشکیل می‌دهند که از نوع شیء \texttt{attenuation} آغاز شده و به انسجام حالت مشتق‌شده \lr{(derived state)} مانند \texttt{transmittance} ختم می‌شود.
+
+این ماژول به‌عنوان زیرسیستمی فرعی از معماری بزرگ‌تر \lr{qkd.channel} عمل می‌کند و در خط لوله ساخت کانال به‌صورت متوالی فراخوانی می‌شود. در معماری کلی، پس از ساخت اولیه شیء \lr{FiberChannel} (که خود یک \lr{dataclass} ایستا با فیلدهای \texttt{attenuation}، \texttt{wavelength\_nm} و \texttt{\_total\_loss\_db\_override} است)، متد \texttt{\_\_post\_init\_\_} این کلاس توابع گیتینگ را به‌ترتیب زیر فرامی‌خواند: نخست \texttt{check\_type}، سپس \texttt{validate\_parameter\_ranges}، سپس \texttt{check\_meaningful\_alpha} و \texttt{check\_meaningful\_distance}، سپس \texttt{check\_total\_loss\_finite} و \texttt{check\_attenuation\_config\_contract}، و در نهایت \texttt{check\_wavelength\_consistency}، \texttt{validate\_wavelength\_range} و \texttt{check\_transmittance\_health}. این ترتیب به‌گونه‌ای انتخاب شده که هر گیت بر اساس خروجی‌های گیت‌های قبلی عمل کند و در صورت بروز خطا در هر مرحله، مراحل بعدی اجرا نشوند.
+
+\section{مبانی تئوری و فیزیکی}
+
+بنای نظری این ماژول بر چند اصل بنیادین فیزیک فیبر نوری و نظریه اعتبارسنجی عددی استوار است. نخست، قانون بیر-لامبرت \lr{(Beer-Lambert law)} که پایه محاسبه انتقال \lr{(transmittance)} کانال است. این قانون بیان می‌کند که شدت نور پس از عبور از یک محیط با ضریب تضعیف $\alpha$ به طول $L$ به‌صورت نمایی کاهش می‌یابد:
+
+\begin{equation}
+	T = \frac{I(L)}{I(0)} = 10^{-\alpha L / 10}
+\end{equation}
+
+که در آن $\alpha$ بر حسب \lr{dB/km}، $L$ بر حسب \lr{km} و $T$ یک عدد بی‌بعد در بازه $[0, 1]$ است. در این ماژول، تابع \texttt{transmittance\_from\_loss\_db()} این محاسبه را با استفاده از \texttt{math.pow} (به‌جای عملگر \texttt{**}) پیاده‌سازی می‌کند تا در برابر \lr{OverflowError} در پلتفرم‌های مختلف مقاوم باشد. یک نکته ظریف اما مهم این است که برای $L_{total} = 0$ (یعنی فیبر بی‌تلفات با طول صفر)، انتقال برابر $1$ بازگردانده می‌شود، اما این شاخه با استفاده از برابری دقیق $L_{total} == 0.0$ (به‌جای \texttt{is\_close} با تلورانس $10^{-12}$) ارزیابی می‌شود. این انتخاب عمدی است: تلورانس $10^{-12}$ قبلی برای $\alpha = 0.2$ و $L = 5 \times 10^{-12}$ km، مقدار غیرصفر $L_{total}$ را به‌صورت خاموش صفر تلقی می‌کرد و انتقال نادرست $1.0$ بازمی‌گرداند.
+
+دومین اصل، رفتار اعداد ممیز-شناور \lr{IEEE-754} و پدیده‌های پاتولوژیک آن، مانند صفر منفی \lr{-0.0} و اعداد زیرنرمال \lr{subnormal} است. در استاندارد \lr{IEEE-754}، رابطهٔ $-0.0 == 0.0$ برقرار است، اما این دو مقدار از نظر فیزیکی متفاوت تلقی می‌شوند؛ زیرا \lr{-0.0} معمولاً نشان‌دهندهٔ یک خطای علامت در بالادست \lr{upstream sign error} یا حاصلِ سرریزِ یک مقدار منفیِ بسیار کوچک (مانند $-1 \times 10^{-324}$ که به \lr{-0.0} تبدیل می‌شود) است. این ماژول با استفاده از \lr{\texttt{math.copysign(1.0, value) < 0}} به‌صورت صریح \lr{-0.0} را تشخیص داده و در حالت سخت‌گیرانه، استثنا صادر می‌کند. به‌طور مشابه، اعداد زیرنرمال \lr{subnormal floats} که کوچک‌تر از \lr{\texttt{sys.float\_info.min}} هستند، نهایتاً یک بیت دقت مانتیس دارند و در فرمول‌های \lr{QKD} (مانند محاسبهٔ $Y_n$ یا $e_1$) به نتایج کاملاً نادرست منجر می‌شوند؛ لذا این ماژول هرگونه عدد زیرنرمال را به‌صورت غیرقابل‌بازگشت رد می‌کند.
+
+
+سومین اصل، مدل‌سازی فیزیکی ضرایب تضعیف بر اساس طول‌موج است. فیبرهای سیلیکایی در طول‌موج‌های استاندارد مخابراتی دارای ضرایب تضعیف مشخصی هستند: در $850$ \lr{nm} (پنجره اول) نزدیک به $2.5$ \lr{dB/km}، در $1310$ \lr{nm} (پنجره دوم) نزدیک به $0.35$ \lr{dB/km}، و در $1550$ \lr{nm} (پنجره سوم) نزدیک به $0.20$ \lr{dB/km}. این ماژول با استفاده از دیکشنری \texttt{TYPICAL\_WAVELENGTH\_ALPHA\_RANGES} بازه‌های مجاز را تعریف می‌کند و تابع \texttt{check\_wavelength\_consistency()} نزدیک‌ترین طول‌موج شناخته‌شده را با \texttt{WAVELENGTH\_CHECK\_TOLERANCE\_NM} پیدا کرده و اعتبارسنجی می‌کند. این بررسی از ارسال پیکربندی‌هایی مانند $\alpha = 0.05$ \lr{dB/km} در $1550$ \lr{nm} (که از نظر فیزیکی محال است زیرا کم‌تلفات‌ترین فیبر تجاری در این طول‌موج نزدیک به $0.15$ \lr{dB/km} است) جلوگیری می‌کند.
+
+چهارمین اصل، مفهوم قرارداد ساختاری \lr{(structural contract)} میان \lr{dataclass}های مرتبط است. در این فریم‌ورک، \texttt{AttenuationConfig} یک \lr{dataclass} با سه فیلد اصلی \texttt{fiber\_length}، \texttt{attenuation\_coefficient} و \texttt{total\_loss\_db} است و قرارداد آن این است که \texttt{total\_loss\_db} باید برابر با \texttt{fiber\_length * attenuation\_coefficient} باشد. این قرارداد به‌صورت ضمنی توسط تمامی کدهای پایین‌دستی فرض می‌شود؛ به‌ویژه، محاسبه انتقال $T = 10^{-L_{total}/10}$ به این قرارداد وابسته است. تابع \texttt{check\_attenuation\_config\_contract()} این قرارداد را با تلورانس نسبی \lr{\_CONTRACT\_CHECK\_REL\_TOL} و تلورانس مطلق \lr{\_CONTRACT\_CHECK\_ABS\_TOL} (که هر دو در \texttt{\_schema} تعریف شده‌اند) اعتبارسنجی می‌کند. یک جنبه ظریف این است که وقتی \texttt{\_total\_loss\_db\_override} تنظیم شده باشد (یعنی کاربر به‌صورت دستی مقدار \texttt{total\_loss\_db} را تنظیم کرده باشد)، قرارداد همچنان بررسی می‌شود اما با تلورانس نسبی سخت‌گیرانه $10^{-9}$؛ زیرا فرض می‌شود \texttt{override} باید نهایتاً چند \lr{ULP} از $\alpha \cdot L$ فاصله داشته باشد و انحراف بزرگ‌تر نشانگر یک پیکربندی ناسازگار است.
+
+پنجمین اصل، مدیریت هشدارهای فیزیکی-مشکوک \lr{(physically suspicious)} است. این ماژول دو سطح پاسخ را تفکیک می‌کند: استثنای سخت \lr{(ParameterValidationError)} که در حالت سخت‌گیرانه برای خطاهای قطعی (مانند $T = $ NaN یا $\alpha = 0$ با $L > 0$) صادر می‌شود، و هشدار نرم \lr{(PhysicalSuspicionWarning)} که از طریق تابع کمکی \texttt{\_warn\_physical\_suspicion()} برای موارد مشکوک اما نه قطعاً غلط (مانند $\alpha < 0.05$ بدون تنظیم طول‌موج) منتشر می‌شود. این هشدارها به‌صورت پیش‌فرض توسط پایتون نمایش داده می‌شوند (زیرا از \lr{warnings.warn} با کلاس هشدار غیر-\lr{DeprecationWarning} استفاده می‌کنند) و در عین حال توسط کاربر قابل فیلتر هستند.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+
+معماری این ماژول تابع-محور \lr{(function-oriented)} است و از الگوی تزریق وابستگی \lr{(dependency injection)} برای جداسازی منطق اعتبارسنجی از شیء کانال استفاده می‌کند. هر تابع به‌جای دسترسی به فیلدهای \texttt{self}، یک شیء \texttt{channel} (از نوع \lr{Any}) دریافت می‌کند و از طریق ویژگی‌های آن شیء (\texttt{channel.attenuation}، \texttt{channel.wavelength\_nm}، \texttt{channel.\_total\_loss\_db\_override} و غیره) به داده‌ها دسترسی پیدا می‌کند. این طراحی مزایای متعددی دارد: نخست، توابع قابل استفاده مجدد برای هر شیء‌ای که پروتکل \lr{duck-typed} مشابهی داشته باشد (نه فقط \lr{FiberChannel} اصلی) هستند؛ دوم، توابع به‌راحتی با اشیاء \lr{mock} قابل آزمون هستند؛ سوم، وابستگی‌های ماژول حداقل است و تنها به ماژول‌های \texttt{qkd.exceptions}، \texttt{qkd.constants}، \texttt{qkd.datatypes} و \texttt{qkd.\_schema} نیاز دارد.
+
+ورودی‌های ماژول از طریق \texttt{import} از ماژول \lr{\_schema} فراهم می‌شوند و شامل چندین دسته از ثابت‌ها و توابع هستند. ثابت‌های فیزیکی و سخت‌گیرانه شامل: \texttt{TRANSMITTANCE\_SUBNORMAL\_THRESHOLD} (آستانه تشخیص اعداد زیر-نرمال، معمولاً $\approx 2.2 \times 10^{-308}$)، \texttt{MAX\_DISTANCE\_KM} و \texttt{WARNING\_DISTANCE\_KM} (کران‌های فیزیکی برای طول فیبر)، \texttt{MAX\_FIBER\_LOSS\_DB\_KM} (کران فیزیکی برای ضریب تضعیف)، \texttt{TYPICAL\_WAVELENGTH\_ALPHA\_RANGES} (دیکشنری بازه‌های مجاز $\alpha$ بر اساس طول‌موج)، و \texttt{WAVELENGTH\_CHECK\_TOLERANCE\_NM} (تلورانس جست‌وجوی طول‌موج) هستند. ثابت‌های تلورانس عددی شامل: \texttt{\_TRANSMITTANCE\_UNDERFLOW\_ABS\_TOL} (که برابر با \lr{\texttt{sys.float\_info.min}} است و برای مقایسه انتقال‌های زیر-نرمال به کار می‌رود)، \texttt{\_CONTRACT\_CHECK\_REL\_TOL} و \texttt{\_CONTRACT\_CHECK\_ABS\_TOL} (برای اعتبارسنجی قرارداد \lr{AttenuationConfig})، و \texttt{\_ZERO\_LOSS\_ABS\_TOL} هستند.
+
+ماژول از مکانیزم \lr{ContextVar} پایتون برای کنترل حالت سخت‌گیرانه استفاده می‌کند. تابع \texttt{get\_strict\_mode()} مقدار بولی این حالت را برمی‌گرداند و در تمامی توابع گیتینگ برای تصمیم‌گیری میان صدور استثنا یا هشدار به کار می‌رود. این مکانیزم به‌جای \lr{ClassVar} از \lr{ContextVar} استفاده می‌کند تا امکان تنظیم محلی \lr{(thread-local / context-local)} حالت سخت‌گیرانه را در تست‌ها و شبیه‌سازی‌های موازی فراهم کند؛ به این معنا که یک تست می‌تواند بدون تأثیر بر سایر تست‌ها، حالت سخت‌گیرانه را غیرفعال کند. علاوه بر این، \texttt{\_SKIP\_TRANSMITTANCE\_HEALTH} یک \lr{ContextVar} بولی دیگر است که اجازه می‌دهد در مسیرهای سریع ساخت \lr{(fast-construction paths)} از بررسی سلامت انتقال صرف‌نظر شود.
+
+دیکشنری \texttt{VALIDATED\_UNITS} نقشه‌ای از نام پارامتر به واحد آن (مانند \texttt{\{"distance\_km": "km", "fiber\_loss\_db\_km": "dB/km", ...\}}) است که در پیام‌های خطا برای ارائه توضیحات کاربر-پسند استفاده می‌شود. این رویکرد به ماژول امکان می‌دهد بدون سخت‌کدنویسی واحد در هر پیام خطا، پیام‌های یکپارچه و قابل‌توسعه تولید کند. تابع کمکی \texttt{validate\_parameter(name, value, upper\_bound)} از این دیکشنری برای استخراج واحد استفاده می‌کند و در عین حال با بررسی ویژگی‌های \texttt{shape} و \texttt{dtype} ورودی، آرایه‌های \lr{NumPy/JAX/Torch} را به‌صورت زودهنگام رد می‌کند؛ زیرا \texttt{math.isfinite} بر روی آرایه‌ها با \lr{TypeError} مبهم مواجه می‌شود. این لایه دفاعی جلوی عبور آرایه‌ها به لایه‌های پایین‌تر اعتبارسنجی که انتظار اسکالر دارند را می‌گیرد.
+
+استثنای اصلی ماژول، \lr{\texttt{ParameterValidationError}} است که از ماژول \lr{\texttt{qkd.exceptions}} فراخوانی شده و دارای امضای جامعی به صورت \lr{\texttt{(msg, *, param\_name=None, param\_value=None, context=None)}} می‌باشد. این امضای ساختاریافته به کاربر اجازه می‌دهد خطاها را به‌صورت برنامه‌نویسی پردازش کند (مانند فیلتر بر اساس \lr{\texttt{param\_name}}) و در عین حال، پیام‌های خطای خوانایی برای انسان تولید نماید. فیلد \lr{\texttt{context}} یک دیکشنری است که اطلاعات تکمیلی نظیر مقادیر مرتبط، مسیر ساخت و تلورانس‌های استفاده‌شده را در خود نگه می‌دارد؛ این داده‌ها برای دیباگ و گزارش‌گیری خودکار بسیار ارزشمند هستند.
+
+
+لاگر ماژول از طریق \texttt{logger = logging.getLogger(\_\_name\_\_)} ساخته شده و نام آن به \texttt{"qkd.\_gating"} تنظیم می‌شود. این لاگر در سطح \lr{DEBUG} برای گزارش وضعیت اعتبارسنجی موفق و در سطح \lr{WARNING} برای هشدارهای غیرسخت‌گیرانه به کار می‌رود. این دوگانگی به کاربر اجازه می‌دهد با تنظیم سطح لاگ، میزان جزئیات گزارش‌ها را کنترل کند: سطح \lr{WARNING} (پیش‌فرض) تنها هشدارهای مهم را نشان می‌دهد، در حالی که سطح \lr{DEBUG} جریان کامل اعتبارسنجی را برای دیباگ نمایش می‌دهد.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+
+الگوریتم محاسبه انتقال در تابع \texttt{transmittance\_from\_loss\_db()} با چندین محافظت عددی پیاده‌سازی شده است. کد زیر نسخه کامل این تابع را نشان می‌دهد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def transmittance_from_loss_db(total_db: float) -> float:
+		if total_db == 0.0:
+		# F-31 / P-06 / N-1: check for negative zero.
+		# ``-0.0 == 0.0`` is True in IEEE 754, so this branch
+		# activates for -0.0.  Negative zero can only arise from
+		# (a) an upstream sign error, or (b) a very small
+		# negative value underflowing (e.g. -1e-324 -> -0.0),
+		# which would represent gain.  In both cases returning
+		# transmittance=1.0 is physically unsafe, so raise
+		# unconditionally.
+		if math.copysign(1.0, total_db) < 0:
+		raise ParameterValidationError(
+		f"total_loss_db is negative zero (-0.0). ...",
+		param_name="total_loss_db",
+		param_value=total_db,
+		)
+		return 1.0
+		if total_db < 0.0:
+		raise ParameterValidationError(
+		f"total_loss_db is negative ({total_db!r}), implying "
+		f"gain rather than attenuation. This is physically "
+		f"impossible for a passive fiber channel. ...",
+		param_name="total_loss_db",
+		param_value=total_db,
+		)
+		return math.pow(10.0, -total_db / 10.0)
+	\end{lstlisting}
+\end{LTR}
+
+این پیاده‌سازی سه شاخه دارد. شاخه نخست ($L_{total} = 0$) با برابری دقیق ارزیابی می‌شود و در آن ابتدا علامت صفر با \texttt{copysign} بررسی می‌شود؛ اگر منفی باشد، استثنا صادر می‌شود زیرا $-0.0$ معمولاً نشانه یک خطای بالا-دست است. شاخه دوم ($L_{total} < 0$) به‌صورت غیرقابل-بازگشت رد می‌شود زیرا $L_{total} < 0$ به‌معنای تقویت \lr{(gain)} است که برای یک فیبر پسیو فیزیکاً محال است. شاخه سوم از \texttt{math.pow} به‌جای عملگر \texttt{**} استفاده می‌کند زیرا \texttt{math.pow} در برابر \lr{OverflowError} در پلتفرم‌های مختلف رفتار یکنواخت‌تری دارد. باید توجه داشت که برای مقادیر بسیار بزرگ $L_{total}$ (مانند $L_{total} > 308 \times 10 / \ln 10 \approx 1338$ dB)، \texttt{math.pow} به $0.0$ سرریز می‌شود که خود در تابع \texttt{check\_transmittance\_health()} به‌عنوان خطای \lr{underflow} شناسایی می‌شود.
+
+تابع \texttt{check\_transmittance\_health()} چهار سطح کنترل سلامت را به‌صورت متوالی اعمال می‌کند. این تابع پس از محاسبه انتقال در مسیر ساخت کانال فراخوانی می‌شود و آن را برای پاتولوژی‌های مختلف بررسی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def check_transmittance_health(channel, transmittance):
+		# NaN: reject unconditionally.
+		if math.isnan(transmittance):
+		raise ParameterValidationError(
+		f"Transmittance computed as NaN for distance_km="
+		f"{channel.attenuation.fiber_length!r}, ...",
+		param_name="transmittance",
+		param_value=transmittance,
+		context={...},
+		)
+		
+		# P-06: Detect negative-zero transmittance.
+		if transmittance == 0.0 and math.copysign(1.0, transmittance) < 0:
+		# ... issue PhysicalSuspicionWarning or raise in strict mode
+		
+		total_db = effective_total_loss_db(channel)
+		
+		# Underflow: exact-zero transmittance with non-zero total_db.
+		if transmittance == 0.0 and total_db > 0.0:
+		raise ParameterValidationError(
+		f"Transmittance underflowed to exactly 0.0 for ...",
+		param_name="transmittance", ...
+		)
+		
+		# Subnormal transmittance.
+		elif 0.0 < transmittance < TRANSMITTANCE_SUBNORMAL_THRESHOLD:
+		raise ParameterValidationError(
+		f"Transmittance {transmittance!r} is subnormal ...",
+		param_name="transmittance", ...
+		)
+		
+		# Range validation.
+		if not (0.0 <= transmittance <= 1.0):
+		raise ParameterValidationError(
+		f"Transmittance {transmittance!r} is out of the physical "
+		f"range [0.0, 1.0]. ...",
+		param_name="transmittance", ...
+		)
+	\end{lstlisting}
+\end{LTR}
+
+این تابع به‌ترتیب چهار بررسی را انجام می‌دهد: \lr{NaN} (رد غیرقابل-بازگشت)، صفر منفی (هشدار یا رد بر اساس حالت سخت‌گیرانه)، \lr{underflow} (یعنی $T = 0$ با $L_{total} > 0$ که رد غیرقابل-بازگشت است زیرا در فرمول‌های \lr{QKD} منجر به تقسیم بر صفر می‌شود)، \lr{subnormal} (رد غیرقابل-بازگشت زیرا اعداد زیر-نرمال نهایتاً یک بیت دقت دارند و در محاسبات به نتایج تصادفی منجر می‌شوند) و در نهایت بررسی بازه $[0, 1]$. توجه شود که هیچ‌کدام از این بررسی‌ها به‌صورت خاموش مقدار را تصحیح نمی‌کنند (\lr{clamp} نمی‌کنند)؛ زیرا چنین تصحیحی می‌تواند خطای بالا-دست را پنهان کند و به نتایج ظاهراً معتبر اما فیزیکی غلط منجر شود. این سیاست صریح در داک‌استرینگ تابع به‌صورت \textit{We explicitly do NOT clamp silently} مستند شده است.
+
+تابع \texttt{check\_attenuation\_config\_contract()} دارای دو مسیر است: مسیر \lr{override} (وقتی \texttt{\_total\_loss\_db\_override} تنظیم شده) و مسیر قرارداد استاندارد. در مسیر \lr{override}، تابع بررسی می‌کند که آیا \lr{override} به‌طور وحشتناکی با $\alpha \cdot L$ ناسازگار است یا خیر. این بررسی با تلورانس نسبی $10^{-9}$ انجام می‌شود که عمداً سخت‌گیرانه است زیرا فرض می‌شود \lr{override} نهایتاً چند \lr{ULP} از $\alpha \cdot L$ فاصله داشته باشد:
+
+\begin{equation}
+	\left| L_{override} - \alpha \cdot L \right| > 10^{-9} \cdot \max\left( \left| \alpha \cdot L \right|, 1 \right) \Rightarrow \text{خطا}
+\end{equation}
+
+در مسیر قرارداد استاندارد، یعنی در حالتی که \lr{\texttt{override}} فعال نیست، تابع با استفاده از تلورانس‌های \lr{\texttt{\_CONTRACT\_CHECK\_REL\_TOL}} و \lr{\texttt{\_CONTRACT\_CHECK\_ABS\_TOL}} بررسی می‌کند که مقدار \lr{\texttt{total\_loss\_db}} با مقدار $\alpha L$ سازگار باشد. نکتهٔ مهم در مسیر \lr{\texttt{override}} آن است که اگر $L = 0$، $\alpha = 0$ و مقدار \lr{\texttt{override}} نیز برابر با صفر باشد، تابع بدون ایجاد خطا بازمی‌گردد؛ زیرا این حالت متناظر با یک کانال بدیهی است که نیازی به بررسی ندارد. در مقابل، اگر $L > 0$ و $\alpha = 0$ باشد، یعنی با فیبری بی‌تلفات و دارای طول ناصفر مواجه باشیم، بررسی قرارداد همچنان انجام می‌شود؛ زیرا چنین حالتی از نظر فیزیکی نامعتبر است.
+
+تابع \lr{\texttt{check\_wavelength\_consistency()}} با جست‌وجو در \lr{\texttt{TYPICAL\_WAVELENGTH\_ALPHA\_RANGES}}، نزدیک‌ترین طول‌موج شناخته‌شده را تعیین می‌کند. این جست‌وجو به‌صورت ترتیبی روی طول‌موج‌های مرتب‌شده انجام می‌شود تا در صورت تساوی فاصله، نزدیک‌ترین طول‌موج کوتاه‌تر به‌طور قطعی برگزیده شود. تلورانس جست‌وجو با استفاده از \lr{\texttt{math.nextafter(WAVELENGTH\_CHECK\_TOLERANCE\_NM, float("inf"))}} تنظیم می‌گردد؛ استفاده از \lr{\texttt{nextafter}} در اینجا آگاهانه است و از ردِ طول‌موج‌هایی که در عمل روی مرز تلورانس هستند اما به‌دلیل خطاهای گردکردن \lr{IEEE-754} اندکی فراتر می‌روند، جلوگیری می‌کند. در ادامه، بررسی می‌شود که آیا $\alpha$ در بازهٔ مجاز $[\alpha_{\min}, \alpha_{\max}]$ برای آن طول‌موج قرار دارد یا خیر؛ در صورت عدم تطابق، در حالت سخت‌گیرانه استثنا صادر می‌شود و در غیر این صورت، هشدار \lr{\texttt{PhysicalSuspicionWarning}} نمایش داده می‌شود.
+
+
+تتابع \lr{\texttt{validate\_parameter(name, value, upper\_bound)}} شامل چندین سازوکار حفاظتی است. ابتدا، خودِ پارامتر \lr{\texttt{upper\_bound}} بررسی می‌شود تا نامنفی بودن آن تضمین شود؛ زیرا مقدار منفی برای این پارامتر می‌تواند همهٔ مقادیر نامنفی را به‌صورت خاموش معتبر تلقی کرده و عملاً سازوکار اعتبارسنجی را غیرفعال کند. سپس، ورودی پیش از ادامهٔ پردازش بررسی می‌شود تا از ایجاد خطاهای مبهم از نوع \lr{\texttt{TypeError}} جلوگیری شود. اگر ورودی دارای ویژگی‌های \lr{\texttt{shape}} و \lr{\texttt{dtype}} باشد، به این معنا که یک آرایه از نوع \lr{\texttt{NumPy/JAX/Torch}} است، تابع استثنا صادر می‌کند.
+
+در مرحلهٔ بعد، تابع \lr{\texttt{is\_finite\_non\_negative(value)}} درون یک بلوک \lr{\texttt{try/except}} فراخوانی می‌شود تا \lr{\texttt{TypeError}} ناشی از ورودی‌های مختلط \lr{\texttt{complex}} به \lr{\texttt{ParameterValidationError}} تبدیل شود. در نهایت، اگر شرط $value > upper\_bound$ برقرار باشد، استثنای \lr{\texttt{ParameterValidationError}} همراه با واحد متناظرِ استخراج‌شده از \lr{\texttt{VALIDATED\_UNITS}} صادر می‌شود.
+
+
+تابع مرکزی \texttt{validate\_channel()} تمامی بررسی‌های بالا را به‌صورت یکپارچه فراخوانی می‌کند و علاوه بر آن‌ها، انسجام حالت مشتق‌شده را نیز اعتبارسنجی می‌کند. این تابع برای کشف فساد حالت ناشی از \lr{pickling}، \lr{monkey-patching} یا ارتقای ماژول \lr{qkd.datatypes} طراحی شده و در \lr{API} عمومی به‌عنوان نقطه ورودی برای اعتبارسنجی مجدد در نظر گرفته شده است. تابع به‌صورت صریح در \texttt{\_\_post\_init\_\_} فراخوانی نمی‌شود زیرا آن بررسی‌ها از قبل انجام شده‌اند؛ اما کاربر می‌تواند آن را به‌صورت دستی پس از عملیاتی که ممکن است حالت را فاسد کند فراخوانی نماید. مکانیزم اختیاری \texttt{set\_validate\_on\_construction(True)} اجازه می‌دهد این تابع در انتهای هر \texttt{\_\_post\_init\_\_} به‌صورت خودکار فراخوانی شود تا اطمینان اضافی فراهم شود.
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+
+این ماژول به‌عنوان یک لایه میانی در معماری فریم‌ورک عمل می‌کند و رابط‌های مشخصی با ماژول‌های بالا-دست و پایین-دست دارد. از منظر بالا-دست، مصرف‌کننده اصلی این ماژول کلاس \lr{FiberChannel} در \texttt{qkd.channel} است که در متد \texttt{\_\_post\_init\_\_} خود توابع گیتینگ را به‌ترتیب زیر فرامی‌خواند: نخست \texttt{check\_type()} برای اطمینان از اینکه \texttt{channel.attenuation} یک \lr{AttenuationConfig} واقعی است (نه مثلاً یک دیکشنری خام که بعداً منجر به \lr{AttributeError} می‌شود)، سپس \texttt{validate\_parameter\_ranges()} برای بررسی $L \leq$ MAX\_DISTANCE\_KM و $\alpha \leq$ MAX\_FIBER\_LOSS\_DB\_KM، سپس چهار بررسی معناداری فیزیکی \lr{(\_meaningful\_alpha/distance)}، سپس \texttt{check\_total\_loss\_finite()} و \texttt{check\_attenuation\_config\_contract()}، و در نهایت بررسی‌های طول‌موج و سلامت انتقال. این ترتیب به‌گونه‌ای است که هر گیت بر اساس خروجی گیت‌های قبلی عمل کند.
+
+ماژول‌های دیگر که از این لایه استفاده می‌کنند شامل: \texttt{qkd.simulation\_driver} که در زمان ساخت کانال‌های متعدد برای شبیه‌سازی \lr{Monte Carlo}، توابع گیتینگ را به‌صورت ضمنی از طریق سازنده \lr{FiberChannel} فراخوانی می‌کند؛ \texttt{qkd.state\_manager} که پس از بارگذاری حالت کانال از دیسک، \texttt{validate\_channel()} را فراخوانی می‌کند تا از انسجام حالت بارگذاری‌شده اطمینان حاصل کند؛ و \texttt{qkd.cli} که در زمان پردازش آرگومان‌های خط فرمان، \texttt{validate\_parameter()} را برای اعتبارسنجی اولیه پارامترها پیش از ساخت کانال به کار می‌برد.
+
+از منظر پایین-دست، خروجی اصلی این ماژول مقادیر اعتبارسنجی‌شده انتقال $T$ و $L_{total}$ هستند که توسط کانال فیبر در اختیار ماژول آشکارساز \lr{(qkd.detectors)} قرار می‌گیرند. به‌طور خاص، تابع \texttt{compute\_transmittance()} انتقال نهایی را به‌عنوان یک \lr{float} در بازه $[0, 1]$ بازمی‌گرداند که سپس به‌عنوان آرگومان \texttt{channel\_transmittance} به متد \texttt{simulate\_detection()} آشکارساز ارسال می‌شود. اعتبارسنجی سخت‌گیرانه این ماژول تضمین می‌کند که این مقدار هرگز \lr{NaN}، زیر-نرمال، یا خارج از بازه فیزیکی نباشد، که در نتیجه از خطاهای خاموش در محاسبات بازده \lr{decoy-state} و نرخ کلید جلوگیری می‌کند.
+
+از منظر وابستگی‌های درون‌پروژه‌ای، این ماژول به‌صورت مستقیم به چهار ماژول زیرین وابسته است: \texttt{qkd.exceptions} برای \texttt{ParameterValidationError}؛ \texttt{qkd.constants} برای توابع کمری \texttt{is\_close} و \texttt{is\_finite\_non\_negative}؛ \texttt{qkd.datatypes} برای \texttt{AttenuationConfig}؛ و \texttt{qkd.\_schema} برای ثابت‌ها، \lr{ContextVar}ها، تایپ‌ها و سنتینل‌ها. این وابستگی‌ها عمدتاً به‌صورت \lr{static} (در زمان \lr{import}) حل می‌شوند و این ماژول بر خلاف ماژول‌هایی مانند \texttt{qkd.detectors} لایه \lr{fallback} برای حالت standalone ندارد؛ زیرا فرض بر این است که این ماژول همواره در بستر کامل بسته \lr{qkd} اجرا می‌شود.
+
+لاگر ماژول در سطح \lr{WARNING} برای هشدارهای غیرسخت‌گیرانه و در سطح \lr{DEBUG} برای گزارش جزئیات اعتبارسنجی موفق به کار می‌رود. این دو سطح به کاربران اجازه می‌دهد با تنظیم سطح لاگ، میزان جزئیات گزارش‌ها را کنترل کنند: تنظیم \texttt{logging.getLogger("qkd.\_gating").setLevel(logging.DEBUG)} جریان کامل اعتبارسنجی را برای دیباگ نمایش می‌دهد، در حالی که سطح پیش‌فرض \lr{WARNING} تنها هشدارهای مهم را نشان می‌دهد. این طراحی به‌خصوص برای دیباگ پیکربندی‌های پیچیده که در آن‌ها چندین کانال به‌صورت موازی ساخته می‌شوند (مانند شبیه‌سازی \lr{sweep} روی طول‌موج یا فاصله) مفید است.
+
+در نهایت، باید به این نکته اشاره کرد که این ماژول به‌صورت مستقیم با مکانیزم \lr{ContextVar} پایتون برای کنترل حالت سخت‌گیرانه تعامل دارد. تابع \texttt{get\_strict\_mode()} در هر فراخوانی مقدار فعلی \lr{ContextVar} را می‌خواند، که به این معنا است که تغییر حالت سخت‌گیرانه در طول اجرا (مانند \texttt{with strict\_mode\_context(False):}) به‌صورت پویا توسط تمامی توابع گیتینگ مشاهده می‌شود. این مکانیزم برای تست‌هایی که نیاز به غیرفعال‌کردن موقت حالت سخت‌گیرانه دارند (مانند تست‌های \lr{boundary case} که عمداً پیکربندی غیرفیزیکی می‌سازند) حیاتی است و در عین حال تضمین می‌کند که حالت پیش‌فرض (سخت‌گیرانه) برای کاربردهای انتشار علمی همواره فعال باشد.

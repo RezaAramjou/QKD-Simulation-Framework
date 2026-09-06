@@ -1,0 +1,1133 @@
+% =====================================================================
+% فصل جامع مستندسازی فریم‌ورک شبیه‌سازی QKD
+% بخش‌های مربوط به params.py, constants_helpers.py,
+% constants_definitions.py و constants.py
+% =====================================================================
+
+% ---------------------------------------------------------------------
+% ===== فایل اول: params.py =====
+% ---------------------------------------------------------------------
+
+\section{نمای کلی و هدف ماژول \texttt{params.py}}
+
+ماژول \texttt{params.py} به‌عنوان لایه‌ی مرکزی مدیریت و اعتبارسنجی پیکربندی در فریم‌ورک شبیه‌سازیِ توزیع کلید کوانتومی (\lr{Quantum Key Distribution}) عمل می‌کند. این ماژول یک لایه‌ی انتزاعیِ یکپارچه با محدودیت تغییرپذیری برای نگهداری پارامترهای ورودی یک اجرایِ شبیه‌سازی فراهم می‌سازد؛ از مشخصاتِ منبعِ نوری و مدلِ کانالِ فیبرِ نوری تا ساختارِ آشکارساز، نوع پروتکل، پارامترهای امنیتیِ ترکیب‌پذیر (\lr{composable security parameters}) و مدل‌های فیزیکیِ اختلال‌های خطی و غیرخطی در سیستم‌های چندکاناله. هدفِ بنیادینِ این ماژول آن است که پارامترهای اصلی پیکربندی در یک شیءِ مشخص و اعتبارسنجی‌شده متمرکز شوند و سازگاری آن‌ها با فرض‌های مدل بررسی شود تا از پخش‌شدنِ خطاهای پیکربندی در سراسرِ پایگاهِ کد جلوگیری به‌عمل آید.
+
+در معماریِ کلیِ فریم‌ورک، خروجیِ این ماژول یک نمونه از کلاس \texttt{QKDParams} است که به‌صورت یک قراردادِ داده‌ایِ نهایی (\lr{data contract}) برای موتورِ شبیه‌سازی، ماژول‌های محاسبه‌ی نرخ کلید (\lr{key rate computation}) و زیرسیستم‌های گزارش‌گیری عمل می‌کند. هر تغییری در هر یک از اجزای فریم‌ورک — اعم از \lr{OpticalSource}، \lr{FiberChannel}، \lr{ThresholdDetector} و \lr{Protocol} — باید از طریق \texttt{QKDParams} یا متدِ ایمنِ \texttt{with\_channel\_rebuilt()} عبور کند تا سازگاریِ درونیِ پارامترها حفظ شود. این الگو که گاهی «نقطه‌ی واحدِ حقیقت» (\lr{Single Source of Truth}) نامیده می‌شود، به کاهش ناهماهنگی بین پارامترهای مرتبط کمک می‌کند و شناسایی زودهنگام ناسازگاری‌ها را ساده‌تر می‌سازد.
+
+این ماژول افزون بر تعریفِ ساختارِ داده، چند مسئولیت تکمیلی را نیز بر عهده دارد. نخست، اعتبارسنجیِ جامع (\lr{validation}) که در متد \texttt{\_validate()} متمرکز شده و بازه‌ی مجازِ بیش از پنجاه پارامتر را بررسی می‌کند. دوم، سریال‌سازی و بازسازیِ بازگشتی (\lr{serialization / deserialization}) از طریق \texttt{to\_serializable\_dict()} و \texttt{from\_dict()} که امکانِ ذخیره‌سازی، بارگذاری و بازتولیدِ نتایج را فراهم می‌سازد. سوم، مدیریتِ نسخه‌سازیِ شِما (\lr{schema versioning}) با متغیر \texttt{CURRENT\_SCHEMA\_VERSION = "1.9"} که سازگاریِ نسلیِ پیکربندی‌ها را تضمین می‌کند. چهارم، ارائه‌ی توابعِ کارخانِ از پیش‌تنظیم‌شده (\lr{factory presets}) نظیر \texttt{load\_lim2014\_dedicated\_params()} و \texttt{load\_lim2014\_dwdm\_params()} که پیکربندیِ مقالاتِ مرجع را با دقت بالا بازتولید می‌کنند و به تکرارپذیریِ نتایجِ علمی کمک می‌کنند.
+
+به‌عنوان یک ماژولِ کلیدی، \texttt{params.py} با بیش از ۱۷۰۰ خطِ کد و طراحیِ عمیقاً تایپ‌محور (\lr{type-driven design})، مرزِ واسطِ میانِ کاربرِ نهایی و موتورِ فیزیکیِ فریم‌ورک را تشکیل می‌دهد. هر خطای پیکربندی که از این سد عبور کند، می‌تواند در محاسباتِ پایین‌دستی بر نتایج عددی و تحلیل امنیتی اثر بگذارد؛ از این رو، طراحیِ این ماژول بر پایه‌ی اصلِ «سریع‌شکستن» (\lr{fail-fast}) استوار است و هر پیکربندیِ ناسازگار پیش از ورود به حلقه‌ی شبیه‌سازی رد می‌شود.
+
+\section{مبانی تئوری و فیزیکی در \texttt{params.py}}
+
+تئوریِ پایه‌ی این ماژول بر سه ستونِ اصلی استوار است: تئوریِ امنیتیِ ترکیب‌پذیرِ کوانتومی، فیزیکِ اتلاف در کانال‌های نوری، و مدل‌های اختلالِ غیرخطی در سیستم‌های \lr{WDM}. در ادامه‌ی این بخش هر یک از این ستون‌ها را با جزئیات بسط می‌دهیم.
+
+\subsection{امنیتِ ترکیب‌پذیر و پارامترهای اِپسیلون}
+
+در چارچوبِ امنیتیِ ترکیب‌پذیر که توسط \lr{Renner} و \lr{König} توسعه یافته، امنیتِ یک پروتکلِ \lr{QKD} با یک پارامترِ کلی $\varepsilon$ مشخص می‌شود که احتمالِ انحرافِ خروجیِ پروتکل از توزیعِ ایده‌آل را محدود می‌کند. این پارامتر کل به چند مؤلفه‌ی مستقل تجزیه می‌شود:
+\begin{equation}
+	\varepsilon_{\text{tot}} = \varepsilon_{\text{sec}} + \varepsilon_{\text{cor}} + \varepsilon_{\text{PE}} + \varepsilon_{\text{smooth}} + \varepsilon_{\text{PA}} + \varepsilon_{\text{SIF}}
+\end{equation}
+که در آن $\varepsilon_{\text{sec}}$ امنیتِ کلی، $\varepsilon_{\text{cor}}$ صحت، $\varepsilon_{\text{PE}}$ خطای تخمینِ پارامتر، $\varepsilon_{\text{smooth}}$ هموارسازی، $\varepsilon_{\text{PA}}$ تقویتِ حریمِ خصوصی و $\varepsilon_{\text{SIF}}$ فیلترِ اطلاعاتِ جانبی را نشان می‌دهد. ماژول \texttt{params.py} اعتبارِ هر یک از این شش پارامتر را به‌صورت جداگانه بررسی می‌کند و سپس شرطِ ترکیبی را به‌صورت:
+\begin{equation}
+	\sum_i \varepsilon_i < 1.0
+\end{equation}
+اعمال می‌نماید. این شرط، شرطِ لازم برای آن است که مفهومِ «امنیتِ محاسباتیِ کوانتومی» معنای فیزیکی داشته باشد؛ چرا که $\varepsilon \geq 1$ به معنایِ نبودِ هرگونه تضمینِ امنیتی است.
+
+\subsection{\texorpdfstring{کاراییِ تصحیحِ خطا و ضریب $f_{\text{EC}}$}{کارایی تصحیح خطا و ضریب f-EC}}
+
+در مرحله‌ی تصحیحِ خطا، یک پروتکلِ کلاسیک مانند \lr{Cascade} یا \lr{LDPC} برای هم‌سازسازیِ کلیدهای آلیس و باب به‌کار می‌رود. کاراییِ این مرحله با ضریبِ $f_{\text{EC}}$ مشخص می‌شود که نسبتِ اطلاعاتِ نشت‌کرده به حدِ نظریِ \lr{Shannon} را نشان می‌دهد:
+\begin{equation}
+	\text{leak}_{\text{EC}} = f_{\text{EC}} \cdot n \cdot h_2(Q_{\mu})
+\end{equation}
+که در آن $h_2(x) = -x \log_2 x - (1-x) \log_2(1-x)$ آنتروپیِ باینری و $Q_{\mu}$ نرخِ خطای کوانتومی (\lr{QBER}) است. در فریم‌ورک، $f_{\text{EC}}$ باید در بازه‌ی $[1.0, 2.0]$ باشد و مقدارِ پیش‌فرضِ $1.16$ به‌عنوان نمونه‌ای از کاراییِ متداول در پیاده‌سازی‌های عملی در نظر گرفته می‌شود.
+
+\subsection{اتلافِ کانال و مدل‌های چند‌جزئی}
+
+اتلافِ کلِ کانال در فریم‌ورک از فرمولِ تجمعیِ زیر پیروی می‌کند:
+\begin{equation}
+	\alpha_{\text{tot}} = \alpha_{\text{fiber}} \cdot L + \alpha_{\text{filter}} + \alpha_{\text{mod}} + \alpha_{\text{circ}}
+\end{equation}
+که در آن $\alpha_{\text{fiber}}$ ضریبِ اتلافِ فیبر بر حسب \lr{dB/km}، $L$ طولِ فیبر، $\alpha_{\text{filter}}$ اتلافِ فیلتر، $\alpha_{\text{mod}}$ اتلافِ ماژولاتور و $\alpha_{\text{circ}}$ اتلافِ سیرکولاتور است. اتلافِ فیلتر خود به سه مدل تقسیم می‌شود: \lr{ideal} (بدون اتلاف)، \lr{awg} (اتلافِ ثابتِ شبکه‌ی آرایه‌ی موج‌بر، معمولاً ۳ \lr{dB}) و \lr{fbg\_serial} (اتلافِ تجمعیِ \lr{FBG} که با تعدادِ کانال‌ها رشد می‌کند):
+\begin{equation}
+	\alpha_{\text{filter}}^{\text{fbg}} = N_{\text{ch}} \cdot \alpha_{\text{FBG, per-ch}}
+\end{equation}
+
+\subsection{اختلال‌های غیرخطیِ \lr{WDM}: پراکندگیِ رامان}
+
+در حالتِ هم‌زیستیِ کانال‌های کوانتومی و کلاسیکِ \lr{WDM}، پدیده‌ی پراکندگیِ رامانِ خودبه‌خودی (\lr{Spontaneous Raman Scattering}) منبعِ اصلیِ نویزِ پس‌زمینه در کانالِ کوانتومی است. مدلِ فریم‌ورک این نویز را به‌صورت زیر محاسبه می‌کند:
+\begin{equation}
+	P_{\text{Raman}} = P_{\text{launch}} \cdot (N_{\text{WDM}} - 1) \cdot \gamma_{\text{Raman}} \cdot L_{\text{eff}}
+\end{equation}
+که در آن طولِ مؤثرِ غیرخطی $L_{\text{eff}}$ برابر است با:
+\begin{equation}
+	L_{\text{eff}} = \frac{1 - e^{-\alpha L}}{\alpha}, \qquad \alpha = 0.2 \times 0.23026 \, \text{Np/km}
+\end{equation}
+در تابعِ کارخانه‌ی \texttt{load\_lim2014\_dwdm\_params()}، توانِ لانچ به‌گونه‌ای محاسبه می‌شود که توانِ دریافتی در آشکارساز برابر با $-34$ dBm (حداقل حساسیتِ گیرنده‌های تجاریِ \lr{DWDM SFP}) باشد:
+\begin{equation}
+	P_{\text{launch}}^{\text{dBm}} = -34 + \alpha_{\text{fiber}} \cdot L + \alpha_{\text{AWG}}
+\end{equation}
+
+\subsection{فیزیکِ ماژولاسیونِ زیرحامل (\lr{SCM})}
+
+در پروتکل‌های \lr{SCM-QKD}، سیگنالِ کوانتومی روی یک زیرحاملِ فرکانسی ماژوله می‌شود. پارامتر $\beta$ (\lr{modulation\_index}) عمقِ ماژولاسیون را کنترل می‌کند و نویزِ محصولاتِ تقاطعیِ مرتبه‌ی دوم (\lr{CSO}) و مرتبه‌ی سوم (\lr{CTB}) را تحت تأثیر قرار می‌دهد. مدلِ \lr{cso\_model} بین سه حالت \lr{approximate}، \lr{discrete\_exact} و \lr{combinatorial\_uniform} انتخاب می‌شود که هر یک مرتبه‌ی دقتِ محاسبات را تعیین می‌کند.
+
+\subsection{پراکندگی‌جبرانیِ فعال}
+
+در کانال‌های طولانی، پراکندگیِ کروماتیک پالس‌ها را پهن می‌کند و نرخِ کلیکِ تک‌فوتونی را کاهش می‌دهد. پارامتر $D$ (\lr{dispersion\_parameter\_ps\_nm\_km}) این پراکندگی را با واحدِ \lr{ps/(nm·km)} مشخص می‌کند و در فیبرِ استانداردِ \lr{SMF-28} حدود $17$ ps/(nm·km) در طول‌موجِ $1550$ nm است. جبرانِ فعال با پرچمِ \texttt{active\_dispersion\_compensation} فعال می‌شود.
+
+\section{تحلیل معماری و ساختار داده‌ها در \texttt{params.py}}
+
+\subsection{کلاس \texttt{QKDParams}: یک دیتاکلاسِ ایستا}
+
+مرکزِ معماریِ این ماژول، کلاسِ \texttt{QKDParams} است که با دکوراتورهای زیر تعریف می‌شود:
+
+\begin{lstlisting}[language=Python]
+	@dataclass(frozen=True, slots=True)
+	class QKDParams:
+	protocol: ProtocolFromModule
+	source: OpticalSource
+	channel: FiberChannel
+	detector: ThresholdDetector
+	num_bits: int
+	photon_number_cap: int
+	...
+\end{lstlisting}
+
+
+
+پارامتر \texttt{frozen=True} از انتسابِ مستقیم به فیلدهای نمونه پس از ساخت جلوگیری می‌کند و هر اصلاح باید از طریقِ \texttt{dataclasses.replace()} یا \texttt{with\_channel\_rebuilt()} انجام شود. این محدودیت، ضمنِ تحمیلِ انضباطِ برنامه‌نویسی، اشتراک‌گذاریِ خواندنیِ نمونه‌ها را ساده‌تر می‌کند؛ اما به‌تنهایی تضمین‌کننده‌ی ایمنی کامل در محیط‌های همزمان نیست. دکوراتورِ \texttt{slots=True} که در پایتون ۳.۱۰ معرفی شده، می‌تواند با حذفِ \texttt{\_\_dict\_\_} سربارِ حافظه را کاهش دهد؛ میزانِ اثر آن بر سرعت و مصرف حافظه به نسخه‌ی Python و الگوی استفاده وابسته است.
+
+\subsection{دسته‌بندیِ فیلدها}
+
+فیلدهای \texttt{QKDParams} به سه گروهِ اصلی تقسیم می‌شوند:
+
+\textbf{۱. مؤلفه‌های فیزیکی (بدون مقدارِ پیش‌فرض):} \texttt{protocol}، \texttt{source}، \texttt{channel}، \texttt{detector}. این چهار مؤلفه، چهار رکنِ یک سیستمِ \lr{QKD} را تشکیل می‌دهند و باید توسط کاربر به‌صراحت ارائه شوند.
+
+\textbf{۲. پارامترهای امنیتی و محاسباتی:} \texttt{num\_bits}، \texttt{photon\_number\_cap}، \texttt{batch\_size}، \texttt{num\_workers}، \texttt{eps\_sec}، \texttt{eps\_cor}، \texttt{eps\_pe}، \texttt{eps\_smooth}، \texttt{security\_proof}، \texttt{ci\_method}. این فیلدها بسته به نقششان در مدل فیزیکی و تحلیل امنیتی، می‌توانند بر خروجی نهایی و نرخ کلید اثر بگذارند.
+\textbf{۳. پارامترهای فیزیکیِ پیشرفته (با مقادیرِ پیش‌فرض):} این گروه شامل بیش از سی فیلد است و پارامترهای \lr{SCM}، \lr{WDM}، \lr{Chapman 2018}، \lr{Lim 2014} و \lr{Ma 2005} را پوشش می‌دهد. استفاده از مقادیرِ پیش‌فرض به کاربرِ مبتدی اجازه می‌دهد بدون درگیری با جزئیاتِ فیزیکی، یک شبیه‌سازیِ پایه را اجرا کند.
+
+\subsection{پروتکل‌های تایپی و \lr{Protocol}}
+
+فریم‌ورک از دو پروتکلِ تایپی برای تعریفِ رابط‌ها استفاده می‌کند:
+
+\begin{lstlisting}[language=Python]
+	class SerializableComponent(TypingProtocol):
+	def to_config_dict(self) -> Dict[str, Any]: ...
+	
+	class QKDProtocol(SerializableComponent, TypingProtocol):
+	protocol_name: str
+\end{lstlisting}
+
+این پروتکل‌ها قراردادهایی هستند که هر مؤلفه‌ی فیزیکی باید آن‌ها را رعایت کند: متدِ \texttt{to\_config\_dict()} برای سریال‌سازی و صفتِ \texttt{protocol\_name} برای شناسایی. این طراحی امکانِ بررسیِ ایستا (\lr{static checking}) با \lr{mypy} را فراهم می‌سازد و خطاهای نوعی را پیش از اجرا کشف می‌کند.
+
+\subsection{شمارش‌ها (\lr{Enums})}
+
+ماژول از چندین شمارش برای محدود کردن مقادیرِ مجاز استفاده می‌کند: \texttt{SecurityProof} با مقادیر \lr{LIM\_2014}، \lr{MDI\_QKD}، \lr{PAPER\_2009}؛ \texttt{ConfidenceBoundMethod} با روش‌های \lr{CLOPPER\_PEARSON} و \lr{NORMAL\_APPROXIMATION}؛ \texttt{DecoderArchitecture} با حالت‌های \lr{LOCAL}، \lr{ENTANGLING} و... . این شمارش‌ها، انضباطِ دامنه‌ای را اعمال می‌کنند و از خطاهای املایی جلوگیری می‌کنند.
+
+\subsection{سیستمِ نسخه‌سازیِ شِما}
+
+ثابت \texttt{CURRENT\_SCHEMA\_VERSION = "1.9"} و تابعِ کمکی \texttt{\_parse\_schema\_version()} نسخه‌ی پیکربندی را به‌صورت یک چندتاییِ قابل‌مقایسه نمایش می‌دهند:
+
+\begin{lstlisting}[language=Python]
+	def _parse_schema_version(v: Any) -> tuple:
+	parts = [int(p) for p in v.split(".")]
+	while len(parts) > 1 and parts[-1] == 0:
+	parts.pop()
+	return tuple(parts) if parts else (0,)
+\end{lstlisting}
+
+این رویکرد تضمین می‌کند که نسخه‌های \lr{"1.9"}، \lr{"1.9.0"} و \lr{"1.9.0.0"} هم‌ارز در نظر گرفته شوند و در عین حال \lr{"1.10"} بزرگ‌تر از \lr{"1.9"} باشد (ترتیبِ عددی، نه لغوی).
+
+\subsection{محدودیت‌های سریال‌سازی}
+
+سه ثابت \texttt{MAX\_SERIALIZABLE\_LIST\_LEN = 1000}، \texttt{MAX\_SERIALIZABLE\_DICT\_LEN = 1000} و \texttt{MAX\_SERIALIZABLE\_RECURSION\_DEPTH = 20} مرزهای امنیتیِ سریال‌سازی را تعیین می‌کنند. این محدودیت‌ها از حملاتِ انکارِ سرویسِ مبتنی بر ساختارهای بازگشتیِ عمیق یا لیست‌های بسیار بزرگ جلوگیری می‌کنند و سازگار با توصیه‌های \lr{OWASP} برای رمزگشاییِ \lr{JSON} هستند.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی در \texttt{params.py}}
+
+\subsection{فرمولِ واحدِ اتلافِ کل}
+
+نقطه‌ی حقیقتِ واحد برای محاسبه‌ی اتلاف، تابعِ مستقلِ زیر است:
+
+\begin{lstlisting}[language=Python]
+	def _compute_total_loss_db_from_scalars(
+	*, distance_km, fiber_loss_db_km, filter_model,
+	filter_awg_loss_db, N_channels,
+	filter_fbg_loss_per_channel_db,
+	modulator_insertion_loss_db,
+	circulator_insertion_loss_db,
+	) -> float:
+	if filter_model == "awg":
+	filter_loss = filter_awg_loss_db
+	elif filter_model == "fbg_serial":
+	filter_loss = N_channels * filter_fbg_loss_per_channel_db
+	elif filter_model == "ideal":
+	filter_loss = 0.0
+	else:
+	raise ParameterValidationError(...)
+	return (distance_km * fiber_loss_db_km
+	+ filter_loss
+	+ modulator_insertion_loss_db
+	+ circulator_insertion_loss_db)
+\end{lstlisting}
+
+این تابع به‌صورت معناداری \lr{keyword-only} است (نشانه‌ی \lr{\texttt{*}}) تا از اشتباهِ جایگاهیِ آرگومان‌ها جلوگیری شود. این تابع توسط سه مسیرِ مجزا فراخوانی می‌شود: \texttt{\_compute\_total\_loss\_db()} (متدِ کلاس)، \texttt{from\_dict()} و توابعِ کارخانه‌ی \lr{\texttt{load\_lim2014\_*}}. این الگو از یکپارچگیِ فرمول اطمینان می‌دهد و خطرِ انحرافِ تدریجیِ (\lr{drift}) بین مسیرهای مختلف را از بین می‌برد.
+
+\subsection{اعتبارسنجیِ امنیتِ ترکیب‌پذیر}
+
+حلقه‌ی اعتبارسنجیِ پارامترهای اِپسیلون در متدِ \texttt{\_validate()} به‌صورت زیر پیاده‌سازی شده است:
+
+\begin{lstlisting}[language=Python]
+	for eps_name, eps_val in (("eps_sec", self.eps_sec),
+	("eps_cor", self.eps_cor),
+	("eps_pe", self.eps_pe),
+	("eps_smooth", self.eps_smooth),
+	("eps_pa", self.eps_pa),
+	("eps_sif", self.eps_sif)):
+	if not isinstance(eps_val, (int, float)) or isinstance(eps_val, bool):
+	raise ParameterValidationError(...)
+	if not math.isfinite(eps_val):
+	raise ParameterValidationError(...)
+	if eps_val <= 0.0:
+	raise ParameterValidationError(...)
+	if eps_val >= 1.0:
+	raise ParameterValidationError(...)
+	
+	total_epsilon = (self.eps_sec + self.eps_cor + self.eps_pe
+	+ self.eps_smooth + self.eps_pa + self.eps_sif)
+	if not math.isfinite(total_epsilon) or total_epsilon >= 1.0:
+	raise ParameterValidationError(...)
+\end{lstlisting}
+
+نکته‌ی ظریفِ این پیاده‌سازی، بررسیِ جداگانه‌ی هر مؤلفه پیش از جمع زدن است. این رویکرد از یک خطای نامحسوس جلوگیری می‌کند: اگر یکی از مؤلفه‌ها \lr{NaN} باشد، جمعِ کلی نیز \lr{NaN} خواهد شد و مقایسه‌ی $\text{NaN} \geq 1.0$ همواره \lr{False} برمی‌گرداند و در نتیجه یک پارامترِ نامعتبر به‌صورت خاموش عبور می‌کند. بررسیِ \texttt{math.isfinite()} در سطحِ مؤلفه این حفره را می‌بندد.
+
+\subsection{الگوریتمِ تبدیلِ ایمنِ شمارش‌ها}
+
+تابعِ \texttt{\_coerce\_enum()} یک الگوریتمِ چندمرحله‌ای برای تبدیلِ ورودی‌های متنوع به اعضایِ شمارش ارائه می‌دهد:
+
+\begin{lstlisting}[language=Python]
+	def _coerce_enum(enum_cls, value):
+	if isinstance(value, enum_cls):
+	return value
+	if isinstance(value, str):
+	if enum_cls not in _ENUM_LOOKUP_CACHE:
+	_ENUM_LOOKUP_CACHE[enum_cls] = _build_enum_lookup(enum_cls)
+	table = _ENUM_LOOKUP_CACHE[enum_cls]
+	s = value.strip()
+	hit = table.get(s) or table.get(s.upper())
+	if hit is not None:
+	return hit
+	if isinstance(value, bool):
+	raise ParameterValidationError(...)
+	try:
+	return enum_cls(value)
+	except (ValueError, TypeError) as e:
+	candidates = [m.name for m in enum_cls]
+	if isinstance(value, str):
+	matches = difflib.get_close_matches(
+	value.strip().upper(),
+	[c.upper() for c in candidates], n=1)
+	if matches:
+	suggestion = f" Did you mean '{matches[0]}'?"
+	raise ParameterValidationError(...) from e
+\end{lstlisting}
+
+این تابع از یک کشِ ایستا (\lr{\_ENUM\_LOOKUP\_CACHE}) استفاده می‌کند تا جدولِ جستجویِ نادیده‌بگیرِ بزرگی و کوچکیِ حروف تنها یک‌بار برای هر شمارش ساخته شود. علاوه بر این، با استفاده از \texttt{difflib.get\_close\_matches()} پیشنهادِ هوشمندانه‌ای به کاربر ارائه می‌دهد؛ مثلاً اگر کاربر \lr{"lim2014"} را تایپ کند، پیام \lr{Did you mean 'LIM\_2014'?} دریافت می‌کند. این تجربه‌ی کاربریِ غنی، در پیکربندی‌های پیچیده‌ی علمی زمانِ قابل‌توجهی صرفه‌جویی می‌کند.
+
+\subsection{سریال‌سازیِ بازگشتی و حفاظت در برابر نشتِ seed}
+
+تابعِ \texttt{\_to\_serializable()} یک الگوریتمِ بازگشتی برای تبدیلِ ساختارهای داده‌ی پیچیده‌ی پایتون به فرمتِ \lr{JSON-compatible} است:
+
+\begin{lstlisting}[language=Python]
+	def _to_serializable(o, _depth=0):
+	if _depth > MAX_SERIALIZABLE_RECURSION_DEPTH:
+	raise ParameterValidationError(...)
+	if (not isinstance(o, type)
+	and hasattr(o, "to_config_dict")
+	and callable(o.to_config_dict)):
+	return _to_serializable(o.to_config_dict(), _depth + 1)
+	if isinstance(o, np.generic):
+	return o.item()
+	if isinstance(o, np.ndarray):
+	if o.size > MAX_SERIALIZABLE_LIST_LEN:
+	raise ParameterValidationError(...)
+	return o.tolist()
+	if isinstance(o, Enum):
+	return o.value
+	if dataclasses.is_dataclass(o) and not isinstance(o, type):
+	return {f.name: _to_serializable(getattr(o, f.name), _depth + 1)
+		for f in dataclasses.fields(o)}
+	if isinstance(o, (set, frozenset)):
+	_ordered = sorted(o, key=repr)
+	return [_to_serializable(i, _depth + 1) for i in _ordered]
+	...
+\end{lstlisting}
+
+این تابع چند نکته‌ی مهم دارد: نخست، محدودیتِ عمقِ بازگشت (\lr{20}) از سرریزِ پشته جلوگیری می‌کند. دوم، آرایه‌های \lr{NumPy} به‌صورت خودکار به لیست تبدیل می‌شوند با بررسیِ اندازه. سوم، مجموعه‌ها (\lr{set}) به‌صورت مرتب سریال‌سازی می‌شوند تا هشِ خروجی تکرارپذیر باشد و قابل استفاده در سیستم‌های کنترلِ نسخه باشد.
+
+تابعِ \texttt{\_redact\_seed\_recursive()} لایه‌ی دفاعیِ مضاعفی است که اطمینان می‌دهد هیچ فیلدِ شبیهِ seed (مانند \texttt{master\_seed}، \texttt{seed}، \texttt{random\_seed}) نمی‌تواند به خروجیِ سریال‌سازی راه یابد. این محافظت از نشتِ تصادفیِ seed در گزارش‌های آزمایشی — که ممکن است در مخزنِ عمومیِ \lr{Git} منتشر شوند — جلوگیری می‌کند و امنیتِ عملیاتیِ شبیه‌سازی‌های مبتنی بر اعدادِ تصادفیِ شبه‌تصادفی را حفظ می‌نماید.
+
+\subsection{متد \texttt{from\_dict}: بازسازیِ سازگار}
+
+متدِ کلاسی \texttt{from\_dict()} یک پیاده‌سازیِ طولانی و دقیق از الگوی «مصرف‌کنـد-سپس‌شناسایی‌ناشناخته» (\lr{consume-then-detect-unknowns}) است. این متد با استفاده از \texttt{\_coerce\_type()} که هر کلید را از دیکشنری \texttt{pop} می‌کند، در پایان می‌تواند هر کلیدِ باقی‌مانده را به‌عنوان «ناشناخته» شناسایی کند و خطای دقیقی ارائه دهد:
+
+\begin{lstlisting}[language=Python]
+	d_copy = {k: v for k, v in d_copy.items() if not k.startswith("_")}
+	if d_copy:
+	raise ConfigurationError(
+	f"Unknown parameter keys provided: {sorted(d_copy.keys())}")
+\end{lstlisting}
+
+این رویکرد در تجربه‌ی کاربریِ پیکربندی‌های علمی بسیار ارزشمند است؛ چرا که اشتباهاتِ املایی نظیر \lr{eps\_secc} به‌جای \lr{eps\_sec} بلافاصله شناسایی می‌شوند و از نتایجِ خاموشِ نادرست جلوگیری می‌کنند.
+
+\subsection{متد \texttt{with\_channel\_rebuilt} و حفاظتِ یکپارچگیِ اتلاف}
+
+هنگامی که کاربر می‌خواهد طولِ فیبر یا ضرایبِ اتلاف را تغییر دهد، نمی‌تواند به‌سادگی از \texttt{dataclasses.replace()} استفاده کند؛ چرا که فیلدِ \texttt{channel.total\_loss\_db} باید با فیلدهای مبدأ همگام بماند. متدِ \texttt{with\_channel\_rebuilt()} این مشکل را با محاسبه‌ی پیشینِ اتلافِ جدید و بازسازیِ کانال حل می‌کند:
+
+\begin{lstlisting}[language=Python]
+	def with_channel_rebuilt(self, **changes):
+	if "distance_km" in changes:
+	new_distance_km = float(changes.pop("distance_km"))
+	else:
+	new_distance_km = self.channel.distance_km
+	_new = {f.name: getattr(self, f.name) for f in dataclasses.fields(self)}
+	_new.update(changes)
+	new_total_loss = _compute_total_loss_db_from_scalars(
+	distance_km=new_distance_km,
+	fiber_loss_db_km=_new["fiber_loss_db_km"],
+	...
+	)
+	new_channel = FiberChannel.from_total_loss(new_distance_km, new_total_loss)
+	return dataclasses.replace(self, channel=new_channel, **changes)
+\end{lstlisting}
+
+علاوه بر این، متدِ \texttt{\_validate()} دارای گاردِ سازگاریِ اتلاف است:
+
+\begin{lstlisting}[language=Python]
+	_expected_total_loss = self._compute_total_loss_db()
+	if abs(self.channel.total_loss_db - _expected_total_loss) > 1e-9 * max(1.0, abs(_expected_total_loss)):
+	raise ParameterValidationError(
+	f"channel.total_loss_db ({self.channel.total_loss_db}) does not match "
+	f"recomputed loss ({_expected_total_loss}). Use "
+	f"QKDParams.with_channel_rebuilt() or from_dict() when changing "
+	f"loss-affecting fields.")
+\end{lstlisting}
+
+این گارد از ناسازگاریِ پنهان بین فیلدها جلوگیری می‌کند: اگر کاربر از طریق \texttt{replace()} فیلدِ \texttt{filter\_model} را بدون بازسازیِ کانال تغییر دهد، اتلافِ ذخیره‌شده در کانال دیگر با فیلدهای مبدأ تطابق نخواهد داشت و از نادرست شدن تدریجیِ نتایج جلوگیری می‌کند.
+\subsection{توابعِ کارخانه‌ی \lr{Lim 2014}}
+
+دو تابعِ \texttt{load\_lim2014\_dedicated\_params()} و \texttt{load\_lim2014\_dwdm\_params()} پیکربندی‌های مقاله‌ی مرجع \lr{Lim et al. (2014)} را بازتولید می‌کنند. در تابعِ دوم، محاسبه‌ی توانِ لانچ بر اساسِ فرمولِ زیر است:
+
+\begin{lstlisting}[language=Python]
+	if wdm_channel_power_dbm is None:
+	_fiber_loss_db = distance_km * params.fiber_loss_db_km
+	wdm_channel_power_dbm = -34.0 + _fiber_loss_db + _awg_filter_loss_db
+	if wdm_channel_power_dbm > 30.0:
+	raise ParameterValidationError(...)
+\end{lstlisting}
+
+این فرمول طوری تنظیم شده است که توانِ دریافتی در گیرنده‌ی کلاسیک نزدیک به $-34$ dBm (حساسیتِ گیرنده‌های تجاری) باقی بماند و در نتیجه‌ی مقایسه‌ی عادلانه‌ای بینِ سناریوهای فاصله‌ی مختلف میسر شود.
+
+\section{ارسال و دریافت با سایر ماژول‌ها در \texttt{params.py}}
+
+\subsection{وابستگی‌های ورودی}
+
+ماژول \texttt{params.py} به‌صورت گسترده‌ای از سایر بخش‌های فریم‌ورک واردات (\lr{import}) انجام می‌دهد. این وابستگی‌ها را می‌توان در پنج دسته‌ی منطقی قرار داد:
+
+\textbf{۱. مؤلفه‌های فیزیکی:} \texttt{OpticalSource} از \texttt{.sources}، \texttt{FiberChannel} از \texttt{.channel}، \texttt{ThresholdDetector} از \texttt{.detectors}. این سه کلاس ساختمان‌های داده‌ایِ اجزای فیزیکی هستند که \texttt{QKDParams} در خود نگه می‌دارد.
+
+\textbf{۲. پروتکل‌ها:} \texttt{Protocol} از \texttt{.protocols} به‌همراه کلاس‌های \texttt{BB84DecoyProtocol}، \texttt{MDIQKDProtocol}، \texttt{B92Protocol} و \texttt{RedundantTransmissionProtocol} که در متدِ \texttt{from\_dict()} به‌صورت داخلی وارد می‌شوند.
+
+\textbf{۳. نوع‌های داده و شمارش‌ها:} از \texttt{.datatypes} شامل \texttt{DoubleClickPolicy}، \texttt{SecurityProof}، \texttt{ConfidenceBoundMethod}، \texttt{PulseTypeConfig}، \texttt{SourceStatisticsType}، \texttt{DecoderArchitecture}، \texttt{SourceErrorModel} و \texttt{PulseEnsembleConfig}.
+
+\textbf{۴. استثناها:} \texttt{ParameterValidationError} و \texttt{ConfigurationError} از \texttt{.exceptions} که در تمام مسیرهای خطا استفاده می‌شوند.
+
+\textbf{۵. ثابت‌ها و ابزارها:} \texttt{LP\_SOLVER\_METHODS} و \texttt{DEFAULT\_POISSON\_TAIL\_THRESHOLD} از \texttt{.constants}، \texttt{parse\_bool} از \texttt{.utils.validation}، \texttt{AfterpulseModel} از \texttt{.detectors}.
+
+\subsection{خروجی‌ها و نقاطِ مصرف}
+
+خروجیِ اصلیِ ماژول، نمونه‌های \texttt{QKDParams} است که توسط چندین مصرف‌کننده‌ی پایین‌دستی استفاده می‌شود:
+
+\begin{itemize}
+	\item \textbf{موتورِ شبیه‌سازی:} از فیلدهای \texttt{protocol}، \texttt{source}، \texttt{channel}، \texttt{detector} و \texttt{num\_bits} برای اجرای حلقه‌ی اصلیِ تولید و اندازه‌گیری استفاده می‌کند.
+	\item \textbf{محاسبه‌ی نرخِ کلید:} از \texttt{security\_proof}، \texttt{ci\_method}، \texttt{f\_error\_correction}، تمامی پارامترهای \lr{\texttt{eps\_*}} و \texttt{photon\_number\_cap} برای محاسبه‌ی نرخِ کلیدِ نهایی استفاده می‌کند.
+	\item \textbf{حلقه‌ی بهینه‌سازی:} از \texttt{auto\_optimize\_lim2014} و \texttt{auto\_optimize\_ma2005} برای تصمیم‌گیری در موردِ اجرایِ بهینه‌سازیِ پارامترهای منبع استفاده می‌کند.
+	\item \textbf{سیستمِ گزارش‌گیری:} از \texttt{to\_serializable\_dict()} برای تولیدِ \lr{JSON} قابلِ بازتولید استفاده می‌کند.
+\end{itemize}
+
+\subsection{قراردادِ سریال‌سازی}
+
+متد \texttt{to\_serializable\_dict()} یک دیکشنریِ تودرتو با ساختارِ زیر تولید می‌کند:
+
+\begin{lstlisting}[language=Python]
+	{
+		"schema_version": "1.9",
+		"protocol_name": "bb84-decoy",
+		"protocol_config": {...},
+		"source_config": {...},
+		"channel_config": {...},
+		"detector_config": {...},
+		"num_bits": ..., "eps_sec": ..., ...
+	}
+\end{lstlisting}
+
+این ساختار با ورودیِ \texttt{from\_dict()} همخوانی دارد و هدف آن حفظ هم‌ارزیِ رفت‌وبرگشت (\lr{round-trip identity}) در شرایطِ متداول است؛ به‌طوری که بازسازیِ نمونه از روی دیکشنریِ سریال‌سازی‌شده، شیئی با ویژگی‌های عملکردی یکسان ارائه می‌دهد. اگر خروجیِ \texttt{to\_serializable\_dict()} یک نمونه را به \texttt{from\_dict()} بدهیم، نمونه‌ای هم‌ارزِ اصلی به‌دست می‌آید. این ویژگی در تست‌های خودکار (\lr{test\_round\_trip\_identity}) به‌صورت سیستماتیک بررسی می‌شود.
+
+% ---------------------------------------------------------------------
+% ===== فایل دوم: constants_helpers.py =====
+% ---------------------------------------------------------------------
+
+\section{نمای کلی و هدف ماژول \texttt{constants\_helpers.py}}
+
+ماژول \texttt{constants\_helpers.py} مجموعه‌ای از توابعِ خالص (\lr{pure functions}) برای اعتبارسنجیِ عددی، نرمال‌سازیِ احتمالات و تبدیل‌های یکانی (\lr{unit conversions}) را در فریم‌ورکِ \lr{QKD} ارائه می‌کند. اگرچه این ماژول از نظرِ حجمی کوچک به‌نظر می‌رسد (تنها حدود ۲۱۵ خط)، و به‌عنوان ابزار کمکی برای بهبود یکنواختیِ محاسباتِ عددی و کاهش خطاهای ناشی از مقایسه‌های اعشاری در فریم‌ورک به‌کار می‌رود. تمامی مقایسه‌های ممیزِ شناور، تمامی اعتبارسنجی‌های بازه‌ی احتمال و تمامی تبدیل‌های \lr{dB-to-linear} در این فریم‌ورک از طریق این ماژول عبور می‌کنند و این تمرکز، اطمینان می‌دهد که خطاهای عددی به‌صورت یکسان در سراسرِ پایگاهِ کد شناسایی می‌شوند.
+
+هدفِ بنیادینِ این ماژول رفعِ یک مشکلِ کلاسیک در محاسباتِ علمیِ پایتون است: مقایسه‌های نامعتبرِ اعدادِ اعشاری. در ریاضیاتِ ممیزِ شناور، تساویِ دقیقِ \texttt{a == b} تقریباً همواره نادرست است؛ چرا که خطاهای گردسازی در طولِ محاسبات تجمع می‌کنند. به‌عنوان مثال، \texttt{0.1 + 0.2 == 0.3} در پایتون \texttt{False} برمی‌گرداند. این ماژول با ارائه‌ی تابعِ \texttt{is\_close()} که از تOLERانس‌های مطلق و نسبی استفاده می‌کند، این مشکل را به‌صورت سیستماتیک حل می‌کند.
+
+علاوه بر این، ماژول مسئولیتِ حفاظت از یکپارچگیِ محاسباتِ آنتروپی را بر عهده دارد. آنتروپیِ شانون، $H(p) = -\sum p_i \log p_i$، در مرزهای $p = 0$ و $p = 1$ دارایِ رفتارِ نامطلوب است: در $p = 0$ عبارتِ $0 \log 0$ از نظرِ ریاضی به $0$ میل می‌کند، اما در محاسباتِ عددی به \lr{NaN} یا $-\infty$ منجر می‌شود. تابعِ \texttt{clamp\_probability()} با محدود کردنِ احتمالات به بازه‌ی $[\varepsilon, 1 - \varepsilon]$ این مشکل را برطرف می‌سازد و امکانِ ارزیابیِ پایدارِ آنتروپی را در طولِ شبیه‌سازی فراهم می‌کند.
+
+\section{مبانی تئوری و فیزیکی در \texttt{constants\_helpers.py}}
+
+\subsection{تحلیلِ عددیِ ممیزِ شناور}
+
+استاندارد \lr{IEEE 754} که در پایتون از طریقِ نوع \texttt{float} پیاده‌سازی شده، اعدادِ اعشاری را با ۵۳ بیتِ مانتیس (\lr{mantissa}) ارائه می‌دهد که تقریباً معادلِ ۱۵ رقمِ اعشارِ معنادار است. با این حال، خطای ماشین (\lr{machine epsilon}) که به‌صورت $\varepsilon_{\text{mach}} = 2^{-52} \approx 2.22 \times 10^{-16}$ تعریف می‌شود، حدِ پایینِ خطاهای نسبی را مشخص می‌کند. در فریم‌ورکِ \lr{QKD}، جایی که احتمالاتِ بسیار کوچک (مانند $10^{-10}$) با احتمالاتِ بزرگ (نزدیک به ۱) در یک محاسبه ترکیب می‌شوند، درکِ این محدودیت حیاتی است.
+
+برای مقایسه‌ی دو عدد $a$ و $b$ در حضورِ خطای گردسازی، فرمولِ استانداردِ زیر به‌کار می‌رود:
+\begin{equation}
+	|a - b| \leq \max(\text{rel\_tol} \cdot \max(|a|, |b|), \text{abs\_tol})
+\end{equation}
+که در آن $\text{rel\_tol}$ تلورانسِ نسبی و $\text{abs\_tol}$ تلورانسِ مطلق است. تابع \texttt{math.isclose()} پایتون این فرمول را پیاده‌سازی می‌کند و تابعِ \texttt{is\_close()} فریم‌ورک با استفاده از تلورانس‌های متمرکز در \texttt{constants\_definitions.py} این رفتار را بومی‌سازی می‌کند.
+
+\subsection{آنتروپیِ شانون و ناپایداریِ عددی}
+
+در محاسباتِ نرخِ کلیدِ \lr{QKD}، آنتروپیِ شانونِ نرخِ خطای کوانتومی به‌کرات محاسبه می‌شود:
+\begin{equation}
+	H_2(Q) = -Q \log_2 Q - (1-Q) \log_2(1-Q)
+\end{equation}
+این تابع در $Q = 0$ و $Q = 1$ به‌صورت ریاضی به‌صورت $\lim_{x \to 0^+} x \log x = 0$ تعریف می‌شود، اما در محاسباتِ عددی $\log(0) = -\infty$ و در نتیجه $0 \cdot (-\infty) = $ NaN تولید می‌شود. راه‌حلِ استاندارد، محدود کردنِ (\lr{clamping}) احتمالات به بازه‌ی $[\delta, 1 - \delta]$ با $\delta$ کوچک (مانند $10^{-12}$) است:
+\begin{equation}
+	p_{\text{clamped}} = \min(\max(p, \delta), 1 - \delta)
+\end{equation}
+این رویکرد، خطای ناشی از تغییرِ $\delta$ را در حدِ $O(\delta \log \delta)$ نگه می‌دارد که برای $\delta = 10^{-12}$ خطی در حدِ $10^{-11}$ بیت است — بسیار کوچک‌تر از دقتِ امنیتیِ موردِ نیاز.
+
+\subsection{نرمال‌سازیِ \lr{L1} و توزیعِ احتمال}
+
+یک توزیعِ احتمالِ گسسته باید شرطِ $\sum_i p_i = 1$ را برآورده کند. در محاسباتِ عددی، خطاهای گردسازی می‌توانند باعث شوند که مجموع از ۱ منحرف شود. نرمال‌سازیِ \lr{L1} این مشکل را با تقسیمِ هر درایه بر مجموع حل می‌کند:
+\begin{equation}
+	p_i^{\text{norm}} = \frac{p_i}{\sum_j p_j}
+\end{equation}
+با این حال، اگر $\sum_j p_j = 0$، این فرمول به‌تقسیم بر صفر منجر می‌شود. در این حالت، یک \lr{fallback} قطعی به یک بردارِ یک‌داغ (\lr{one-hot}) که تمامِ جرم را در اندیسِ صفر قرار می‌دهد، استفاده می‌شود. این انتخاب، گزینه‌ای قراردادی برای جلوگیری از توقف شبیه‌سازی در مواجهه با بردارهای صفر است؛ هرچند از نظر تئوری اطلاعات، قرار دادن کل جرم روی یک اندیس با مفهوم توزیع حداکثر آنتروپی (یکنواخت) متفاوت است.
+
+\subsection{تبدیلِ دسی‌بل به خطی}
+
+در مخابراتِ نوری، اتلاف و تقویت به‌صورت سنتی با واحدِ دسی‌بل (\lr{dB}) بیان می‌شوند:
+\begin{equation}
+	x_{\text{dB}} = 10 \log_{10}(x_{\text{linear}})
+\end{equation}
+تبدیلِ معکوس، که در فریم‌ورک پیاده‌سازی شده، به‌صورت زیر است:
+\begin{equation}
+	x_{\text{linear}} = 10^{x_{\text{dB}}/10}
+\end{equation}
+این تبدیل به‌دلیلِ ماهیتِ نماییِ آن، دارایِ خطرِ سرریز (\lr{overflow}) است: برای $x_{\text{dB}} = 3080$، خروجی برابر با $10^{308}$ است که در نزدیکیِ حدِ بالایِ \texttt{float64} ($\approx 1.8 \times 10^{308}$) قرار دارد. برای $x_{\text{dB}} = 3100$، سرریز به $+\infty$ رخ می‌دهد. تابع \texttt{db\_to\_linear()} با بررسیِ صریحِ این حد، از تولیدِ \lr{inf} جلوگیری می‌کند.
+
+\subsection{بردارِ احتمالِ معتبر}
+
+یک بردارِ احتمالِ معتبر باید چهار شرط را برآورده کند: یک‌بعدی بودن، مقدارِ حقیقیِ متناهی، نامنفی بودنِ هر درایه (با تلورانس)، و مجموع برابر با ۱ (با تلورانس). این شروط چهارگانه پایه‌ی ریاضیِ تمامِ توزیع‌های احتمالی است که در فریم‌ورک استفاده می‌شود — از توزیعِ پواسونِ فوتون‌ها تا توزیعِ پسینِ (\lr{posterior}) خطا.
+
+\section{تحلیل معماری و ساختار داده‌ها در \texttt{constants\_helpers.py}}
+
+\subsection{فهرستِ توابعِ عمومی}
+
+ماژول با تعریفِ یک چندتاییِ \lr{Final} از نامِ توابعِ عمومی آغاز می‌شود:
+
+\begin{lstlisting}[language=Python]
+	PUBLIC_FUNCTION_NAMES: Final[tuple[str, ...]] = (
+	"clamp_probabilities",
+	"clamp_probability",
+	"db_to_linear",
+	"is_close",
+	"is_finite_non_negative",
+	"is_prob_vector",
+	"is_valid_probability",
+	"renormalize_probabilities",
+	)
+	__all__ = list(PUBLIC_FUNCTION_NAMES)
+\end{lstlisting}
+
+این الگو دو مزیت دارد: نخست، فهرستِ \lr{API} عمومی به‌صورت یک منبعِ واحد نگهداری می‌شود و امکانِ بازبینیِ آسان را فراهم می‌سازد. دوم، از آنجا که این چندتایی با \texttt{Final} علامت‌گذاری شده، بررسی‌گرهای نوع ایستا هشدار می‌دهند اگر به‌اشتباه مقدارِ آن تغییر کند. ماژولِ \texttt{constants.py} از همین فهرست برای بازصادراتِ (\lr{re-export}) توابع استفاده می‌کند.
+
+\subsection{توابعِ کمکیِ خصوصی}
+
+دو تابعِ خصوصیِ \texttt{\_is\_real\_scalar()} و \texttt{\_to\_real\_scalar()} لایه‌ی اولیه‌ی فیلترینگِ نوع را تشکیل می‌دهند:
+
+\begin{lstlisting}[language=Python]
+	def _is_real_scalar(value: Any) -> bool:
+	return isinstance(value, (Real, np.integer, np.floating)) and \
+	not isinstance(value, (bool, np.bool_))
+\end{lstlisting}
+
+نکته‌ی ظریفِ این پیاده‌سازی، حذفِ صریحِ \texttt{bool} از مجموعه‌ی اعدادِ حقیقی است. در پایتون، \texttt{bool} یک زیرکلاسِ \texttt{int} است و در نتیجه \texttt{isinstance(True, int)} مقدارِ \texttt{True} برمی‌گرداند. این رفتار می‌تواند منجر به خطاهای خاموش شود: مثلاً \texttt{True + True} برابر با \texttt{2} است. در فریم‌ورکِ \lr{QKD}، جایی که احتمالات باید اعدادِ حقیقیِ کوچک باشند، یک \texttt{True} یا \texttt{False} به‌اشتباه به‌عنوان احتمال می‌تواند منجر به نرخِ کلیدِ نادرست شود. حذفِ صریحِ \texttt{bool} این حفره را می‌بندد.
+
+\subsection{تابعِ \texttt{\_to\_real\_1d\_array()}: اعتبارسنجیِ آرایه‌ای}
+
+این تابع کمکی، ورودی‌های متنوع را به آرایه‌ی یک‌بعدیِ \texttt{float64} تبدیل می‌کند و چندین اعتبارسنجیِ حیاتی انجام می‌دهد:
+
+\begin{lstlisting}[language=Python]
+	def _to_real_1d_array(values, *, name, allow_empty):
+	arr = np.asarray(values)
+	if arr.dtype == np.bool_:
+	raise TypeError(f"{name} must contain only real numeric values, not booleans.")
+	if arr.ndim == 0:
+	raise ValueError(f"{name} must be a 1D array, but a scalar was provided.")
+	if arr.ndim != 1:
+	raise ValueError(f"{name} must be a 1D array, but got {arr.ndim}D input.")
+	if not allow_empty and arr.size == 0:
+	raise ValueError(f"{name} must not be empty.")
+	if np.iscomplexobj(arr):
+	raise TypeError(f"{name} must contain only real values.")
+	arr = arr.astype(np.float64, copy=False)
+	if not np.all(np.isfinite(arr)):
+	raise ValueError(f"{name} must contain only finite values.")
+	return arr
+\end{lstlisting}
+
+این تابع چندین فیلترِ دفاعی دارد: رد کردنِ \texttt{bool}، رد کردنِ آرایه‌های چندبعدی، رد کردنِ مقادیرِ مختلط، و رد کردنِ \lr{NaN} و \lr{Inf}. این رویکردِ چندلایه، تطبیق‌پذیریِ نوع (\lr{type strictness}) را با پیام‌های خطای دقیق ترکیب می‌کند.
+
+\subsection{تایپ‌هینت‌های \lr{ArrayLike} و \lr{NDArray}}
+
+ماژول از تایپ‌هینت‌های \lr{NumPy} برای بیانِ دقیقِ قراردادِ توابع استفاده می‌کند:
+
+\begin{lstlisting}[language=Python]
+	from numpy.typing import ArrayLike, NDArray
+	
+	def clamp_probabilities(probs: ArrayLike) -> NDArray[np.float64]: ...
+\end{lstlisting}
+
+\texttt{ArrayLike} یک نوعِ «پذیرنده» است که شاملِ لیست، چندتایی، و آرایه‌های \lr{NumPy} می‌شود — هر چیزی که \texttt{np.asarray()} بتواند آن را تبدیل کند. \texttt{NDArray[np.float64]} نوعِ خروجیِ دقیق را مشخص می‌کند. این ترکیب، هم انعطاف‌پذیریِ پایتونِ اردوگانی (\lr{duck-typing}) را حفظ می‌کند و هم دقتِ تایپ‌هینت را ارائه می‌دهد.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی در \texttt{constants\_helpers.py}}
+
+\subsection{تابع \texttt{is\_close()}: مقایسه‌ی ایمن}
+
+پیاده‌سازیِ این تابع ساده اما حیاتی است:
+
+\begin{lstlisting}[language=Python]
+	def is_close(a, b, *, rel_tol=NUMERIC_REL_TOL, abs_tol=NUMERIC_ABS_TOL):
+	a_val = _to_real_scalar(a, name="a")
+	b_val = _to_real_scalar(b, name="b")
+	return math.isclose(a_val, b_val, rel_tol=rel_tol, abs_tol=abs_tol)
+\end{lstlisting}
+
+با استفاده از \texttt{math.isclose()} پایتون (نسخه‌ی ۳.۵ به بعد)، این تابع از فرمولِ استاندارد استفاده می‌کند. تلورانس‌های پیش‌فرض از \texttt{constants\_definitions.py} وارد می‌شوند (\texttt{NUMERIC\_REL\_TOL = 1e-9} و \texttt{NUMERIC\_ABS\_TOL = 1e-12}) که به‌دقت تنظیم شده‌اند تا هم حساسیتِ کافی برای محاسباتِ امنیتی داشته باشند و هم در برابرِ خطاهای گردسازی مقاوم باشند.
+
+\subsection{تابع \texttt{is\_valid\_probability()}: اعتبارسنجیِ بازه‌ی احتمال}
+
+\begin{lstlisting}[language=Python]
+	def is_valid_probability(p: Any) -> bool:
+	if not _is_real_scalar(p):
+	return False
+	p_val = float(p)
+	return math.isfinite(p_val) and -NUMERIC_ABS_TOL <= p_val <= 1.0 + NUMERIC_ABS_TOL
+\end{lstlisting}
+
+این تابع یک تلورانسِ کوچک $\varepsilon = 10^{-12}$ در هر دو مرز اضافه می‌کند. این تلورانس به مقادیرِ نظیرِ $-10^{-15}$ (که از خطای گردسازی ناشی می‌شوند) اجازه می‌دهد به‌عنوان $0$ معتبر شناخته شوند. این انعطاف در محاسباتِ بازگشتی، جایی که خطاهای کوچک تجمع می‌کنند، حیاتی است.
+
+\subsection{تابع \texttt{clamp\_probability()}: برشِ احتمال}
+
+\begin{lstlisting}[language=Python]
+	def clamp_probability(p: Real) -> float:
+	p_val = _to_real_scalar(p, name="p")
+	return min(max(p_val, ENTROPY_PROB_CLAMP), 1.0 - ENTROPY_PROB_CLAMP)
+\end{lstlisting}
+
+این تابع با فرمولِ $\min(\max(p, \delta), 1 - \delta)$ عمل می‌کند که در آن $\delta = $ ENTROPY\_PROB\_CLAMP. این فرمول، \lr{p} را در بازه‌ی $[\delta, 1 - \delta]$ نگه می‌دارد. همان‌طور که پیش‌تر ذکر شد، این برش برای پایداریِ محاسباتِ آنتروپی حیاتی است.
+
+\subsection{تابع \texttt{clamp\_probabilities()}: نسخه‌ی برداری}
+
+نسخه‌ی برداری از تابعِ قبلی، با استفاده از \texttt{np.clip()}:
+
+\begin{lstlisting}[language=Python]
+	def clamp_probabilities(probs: ArrayLike) -> NDArray[np.float64]:
+	arr = _to_real_1d_array(probs, name="probs", allow_empty=True)
+	return np.clip(arr, ENTROPY_PROB_CLAMP, 1.0 - ENTROPY_PROB_CLAMP)
+\end{lstlisting}
+
+پارامترِ \texttt{allow\_empty=True} به این معناست که یک بردارِ خالی نیز مجاز است و خروجیِ آن نیز خالی خواهد بود. این رفتار برای توابعِ پایین‌دستی که ممکن است با لیست‌های خالی سروکار داشته باشند، مفید است.
+
+\subsection{تابع \texttt{renormalize\_normalize\_probabilities()}: نرمال‌سازی با \lr{fallback}}
+
+این تابع، پیچیده‌ترین تابعِ ماژول است:
+
+\begin{lstlisting}[language=Python]
+	def renormalize_probabilities(probs: ArrayLike) -> NDArray[np.float64]:
+	arr = _to_real_1d_array(probs, name="probs", allow_empty=False)
+	p_clamped = clamp_probabilities(arr)
+	total_p = float(np.sum(p_clamped))
+	
+	if total_p < NUMERIC_ABS_TOL:
+	warnings.warn(
+	"renormalize_probabilities: total mass ≈ 0 after clamping; "
+	"falling back to deterministic one-hot at index 0.",
+	RuntimeWarning, stacklevel=2)
+	p_new = np.zeros_like(p_clamped)
+	p_new[0] = 1.0
+	return p_new
+	
+	return p_clamped / total_p
+\end{lstlisting}
+
+این پیاده‌سازی چند نکته‌ی مهم دارد. نخست، ورودی‌های خالی رد می‌شوند (\texttt{allow\_empty=False}). دوم، پیش از نرمال‌سازی، احتمالات بریده می‌شوند تا از تقسیم بر صفرِ ناشی از $0 \log 0$ جلوگیری شود. سوم، اگر کلِ جرم پس از برش بسیار کوچک باشد، یک هشدارِ \texttt{RuntimeWarning} صادر می‌شود و یک \lr{one-hot} برگردانده می‌شود. این \lr{fallback} قطعی، رفتارِ تابع را در حضورِ ورودی‌های نامعتبر قابل‌پیش‌بینی می‌کند — یک ویژگیِ حیاتی برای سیستم‌های تولیدی.
+
+\subsection{تابع \texttt{db\_to\_linear()}: تبدیلِ ایمن}
+
+\begin{lstlisting}[language=Python]
+	def db_to_linear(val_db: Real) -> float:
+	val_db_f = _to_real_scalar(val_db, name="val_db")
+	exponent = val_db_f / 10.0
+	if exponent > 308:
+	raise OverflowError(f"db_to_linear({val_db_f}) would overflow to infinity.")
+	result = math.pow(10.0, exponent)
+	if result == 0.0 and val_db_f != 0.0:
+	raise OverflowError(f"db_to_linear({val_db_f}) underflows to zero.")
+	return result
+\end{lstlisting}
+
+این تابع دو محافظتِ حیاتی دارد. نخست، اگر $x_{\text{dB}}/10 > 308$، سرریزِ $10^{308}$ به $+\infty$ پیش‌بینی شده و یک \texttt{OverflowError} صادر می‌شود. دوم، در صورتی که ورودی غیرصفر باشد اما خروجی به دلیل محدودیت‌های نمایشِ ممیز شناور به صفر تقریب داده شود (\lr{underflow})، سیستم با صدور خطا یا هشدار مانع از جریان یافتن مقادیر صفرِ ناخواسته در محاسبات حساسِ بعدی می‌شود؛ مگر آنکه این رفتار به‌وضوح در مدل فیزیکی تعریف شده باشد. این محافظت‌ها از تولیدِ خاموشِ $\infty$ یا $0$ در محاسباتِ پایین‌دستی جلوگیری می‌کنند.
+
+\subsection{تابع \texttt{is\_prob\_vector()}: اعتبارسنجیِ بردارِ احتمال}
+
+\begin{lstlisting}[language=Python]
+	def is_prob_vector(p: ArrayLike) -> bool:
+	try:
+	arr = _to_real_1d_array(p, name="p", allow_empty=False)
+	except (TypeError, ValueError) as exc:
+	msg = str(exc)
+	if ("must be a 1D array" in msg
+	or "must contain only" in msg
+	or "must not be empty" in msg):
+	return False
+	raise
+	
+	if np.any(arr < -NUMERIC_ABS_TOL):
+	return False
+	return bool(np.isclose(np.sum(arr), 1.0, atol=PROB_SUM_TOL, rtol=0.0))
+\end{lstlisting}
+
+این تابع به‌جای صدور خطا، \texttt{False} برمی‌گرداند — یک الگوی متفاوت از سایر توابع. این رفتار برای استفاده در شرط‌های \texttt{if} طراحی شده است: کاربر می‌تواند بپرسد «آیا این یک بردارِ احتمالِ معتبر است؟» بدون آنکه استثنا رخ دهد. با این حال، خطاهای ساختاری (مانندِ مختلط بودن) همچنان به‌صورت استثنا ظاهر می‌شوند، چرا که آن‌ها خطاهای برنامه‌نویسی هستند نه خطاهای داده.
+
+\section{ارسال و دریافت با سایر ماژول‌ها در \texttt{constants\_helpers.py}}
+
+\subsection{وابستگی‌های ورودی}
+
+این ماژول تنها از دو منبع واردات انجام می‌دهد:
+
+\begin{lstlisting}[language=Python]
+	import math
+	import warnings
+	from numbers import Real
+	from typing import Any, Final
+	
+	import numpy as np
+	from numpy.typing import ArrayLike, NDArray
+	
+	from .constants_definitions import (
+	ENTROPY_PROB_CLAMP,
+	NUMERIC_ABS_TOL,
+	NUMERIC_REL_TOL,
+	PROB_SUM_TOL,
+	)
+\end{lstlisting}
+
+همچنین یک \texttt{assert} در زمانِ واردات اجرا می‌شود:
+
+\begin{lstlisting}[language=Python]
+	assert 0.0 < ENTROPY_PROB_CLAMP < 0.5, (
+	f"ENTROPY_PROB_CLAMP must be in (0, 0.5), got {ENTROPY_PROB_CLAMP}"
+	)
+\end{lstlisting}
+
+این \texttt{assert} یک \lr{contract check} است که در زمانِ بارگذاریِ ماژول اجرا می‌شود و اطمینان می‌دهد که مقدارِ \texttt{ENTROPY\_PROB\_CLAMP} در بازه‌ی منطقی $(0, 0.5)$ قرار دارد. اگر به‌اشتباه مقدارِ $0.6$ تنظیم شود، کلِ فریم‌ورک از بارگذاری باز می‌ایستد و خطای صریح صادر می‌شود.
+
+\subsection{نقاطِ مصرف}
+
+توابعِ این ماژول توسط چندین ماژولِ دیگر فریم‌ورک استفاده می‌شوند:
+
+\begin{itemize}
+	\item \textbf{ماژولِ منابع نوری (\texttt{sources.py}):} برای اعتبارسنجیِ توزیعِ احتمالِ تعدادِ فوتون و محاسبه‌ی احتمالاتِ نهایی.
+	\item \textbf{ماژولِ آشکارسازها (\texttt{detectors.py}):} برای محاسبه‌ی احتمالاتِ کلیک و نرمال‌سازیِ پس ازِ تطبیقِ با \lr{dark count}.
+	\item \textbf{ماژولِ کانال (\texttt{channel.py}):} برای تبدیلِ اتلافِ \lr{dB} به خطی و محاسبه‌ی نرخِ انتقال.
+	\item \textbf{ماژولِ محاسبه‌ی نرخِ کلید (\texttt{keyrate.py}):} برای محاسبه‌ی آنتروپی و مقایسه‌های عددی.
+	\item \textbf{ماژولِ ثابت‌ها (\texttt{constants.py}):} برای بازصادراتِ عمومی از طریقِ فسادِ (\lr{facade}).
+\end{itemize}
+
+\subsection{قراردادِ رابط}
+
+این ماژول چند قراردادِ رابطِ مهم را رعایت می‌کند:
+
+\textbf{۱. خالص‌بودن (\lr{purity}):} هیچ‌یک از توابع دارای اثرِ جانبی نیستند. ورودی‌ها تغییر نمی‌کنند و وضعیتِ سراسری خوانده نمی‌شود (به‌جز ثابت‌های \texttt{Final} که تنها خوانده می‌شوند).
+
+\textbf{۲. قطعیت (\lr{determinism}):} برای ورودیِ یکسان، خروجی همواره یکسان است. تنها استثنا صدورِ هشدار (\texttt{warnings.warn}) در حالتِ \lr{fallback} است که یک اثرِ جانبیِ قابل‌قبول است.
+
+\textbf{۳. اعتبارسنجیِ پیش از اجرا:} تمام توابع ورودی را پیش از پردازشِ اصلی اعتبارسنجی می‌کنند. این الگو، \lr{fail-fast} نامیده می‌شود و از اجرایِ محاسباتِ نادرست جلوگیری می‌کند.
+
+\textbf{۴. پیام‌های خطای دقیق:} تمام خطاها نامِ پارامترِ متناظر را در بر دارند، که اشکال‌زدایی را ساده می‌کند.
+
+% ---------------------------------------------------------------------
+% ===== فایل سوم: constants_definitions.py =====
+% ---------------------------------------------------------------------
+
+\section{نمای کلی و هدف ماژول \texttt{constants\_definitions.py}}
+
+ماژول \texttt{constants\_definitions.py} منبعِ مرکزیِ ثابت‌ها و نوع‌های تایپیِ فریم‌ورکِ \lr{QKD} است. این ماژول کوچک (تنها ۶۳ خط) نقشِ یک \lr{axiomatic foundation} را ایفا می‌کند: تمامی مقادیرِ عددیِ موردِ استفاده در فریم‌ورک — از تلورانس‌های عددی تا ثابت‌های فیزیکیِ بنیادین — در اینجا تعریف می‌شوند و در هیچ جایِ دیگری از پایگاهِ کد بازتعریف نمی‌گردند. این تمرکز، امکانِ تنظیمِ دقیق و یکنواختِ رفتارِ عددیِ کلِ فریم‌ورک را از یک نقطه‌ی واحد فراهم می‌سازد.
+
+هدفِ بنیادینِ این ماژول، رفعِ یک مشکلِ رایج در پروژه‌های علمیِ بزرگ است: پخش‌شدنِ مقادیرِ جادویی (\lr{magic numbers}) در سراسرِ کد. در غیابِ این ماژول، ممکن است مقدارِ $10^{-9}$ به‌عنوانِ تلورانسِ نسبی در یک فایل، مقدارِ $10^{-8}$ در فایلی دیگر و $1e-10$ در فایلی سوم به‌کار رود. این ناهماهنگی منجر به رفتارِ ناسازگار و اشکال‌زداییِ دشوار می‌شود. با متمرکز کردنِ تمام ثابت‌ها در این ماژول، فریم‌ورک رفتاری یکنواخت و قابلِ توضیح ارائه می‌دهد.
+
+علاوه بر ثابت‌های عددی، این ماژول مسئولیتِ تعریفِ نوع‌های تایپیِ مشترک را نیز بر عهده دارد. \texttt{LPSolverMethod} به‌عنوان یک \lr{Literal Type}، گزینه‌های مجازِ حلقه‌ی \lr{LP} را محدود می‌کند و امکانِ بررسیِ ایستا را فراهم می‌سازد. فهرستِ \texttt{PUBLIC\_CONSTANT\_NAMES} به‌عنوان یک مرجعِ مرتب، ترتیبِ سریال‌سازی و خروجیِ گزارش‌گیری را پایدار نگه می‌دارد و در نتیجه گزارش‌های تولیدشده توسط نسخه‌های مختلفِ فریم‌ورک قابلِ مقایسه باقی می‌مانند.
+
+\section{مبانی تئوری و فیزیکی در \texttt{constants\_definitions.py}}
+
+\subsection{سلسله‌مراتبِ تلورانس}
+
+یکی از مفاهیمِ کلیدیِ این ماژول، سلسله‌مراتبِ تلورانس است که در داک‌استرینگِ ماژول به‌صورت زیر توضیح داده شده است:
+
+\begin{equation}
+	\text{ENTROPY\_PROB\_CLAMP} \leq \text{NUMERIC\_ABS\_TOL} \ll \text{PROB\_SUM\_TOL}
+\end{equation}
+
+این سلسله‌مراتب بر پایه‌ی تحلیلِ دقیقِ انتشارِ خطا (\lr{error propagation}) طراحی شده است. فرض کنید یک بردارِ احتمالِ به طولِ $N$ داریم که هر درایه با خطایِ مطلقِ حداکثر $\varepsilon_{\text{abs}}$ ذخیره شده است. خطای تجمعی در مجموعِ بردار برابر است با:
+\begin{equation}
+	\left| \sum_i p_i - 1 \right| \leq N \cdot \varepsilon_{\text{abs}}
+\end{equation}
+
+برای آنکه این خطا از تلورانسِ مجموع $\varepsilon_{\text{sum}}$ فراتر نرود، باید:
+\begin{equation}
+	\varepsilon_{\text{abs}} \leq \frac{\varepsilon_{\text{sum}}}{N}
+\end{equation}
+
+با مقادیرِ فریم‌ورک ($\varepsilon_{\text{abs}} = 10^{-12}$ و $\varepsilon_{\text{sum}} = 10^{-8}$، این شرط برای $N < 10^4$ برقرار است. برای بردارهای بسیار بلند، ممکن است نیاز به بازنگری در \lr{PROB\_SUM\_TOL} باشد.
+
+\subsection{خطای ماشین و \lr{Y1\_SAFE\_THRESHOLD}}
+
+ثابتِ \lr{Y1\_SAFE\_THRESHOLD} برای محافظت از محاسباتِ تک‌فوتونی (\lr{single-photon yield}) طراحی شده است. در پروتکل‌های \lr{Decoy-State}، تخمینِ $Y_1$ (بازدهیِ تک‌فوتونی) یک مرحله‌ی بحرانی است که در آن، نسبت‌های عددیِ بسیار کوچک محاسبه می‌شوند. اگر مخرجِ این نسبت‌ها به خطای ماشین نزدیک شود، نتیجه ممکن است ناپایدار یا غیرقابل‌اعتماد شود.
+
+فرمولِ محاسبه‌ی این آستانه به‌صورت زیر است:
+\begin{equation}
+	\text{Y1\_SAFE\_THRESHOLD} = \max(10^{-12}, 10^4 \cdot \varepsilon_{\text{mach}})
+\end{equation}
+که در آن $\varepsilon_{\text{mach}} \approx 2.22 \times 10^{-16}$ خطای ماشینِ \lr{IEEE 754 double} است. ضریبِ $10^4$ یک حاشیه‌ی امنیتی است که با تجربه‌ی عددی به‌دست آمده و کمک می‌کند که آستانه در برابر خطاهای گردکردن و شرایط مرزی محافظت شود.
+
+\subsection{ثابت‌های فیزیکیِ \lr{SI 2019}}
+
+سه ثابتِ فیزیکیِ این ماژول بر اساسِ بازتعریفِ \lr{SI 2019} مقداردهی شده‌اند که در آن این مقادیر با تعریف‌های مرجع \lr{SI 2019} سازگار هستند:
+
+\begin{equation}
+	h = 6.62607015 \times 10^{-34} \, \text{J}\cdot\text{s}
+\end{equation}
+\begin{equation}
+	k_B = 1.380649 \times 10^{-23} \, \text{J/K}
+\end{equation}
+\begin{equation}
+	e = 1.602176634 \times 10^{-19} \, \text{C}
+\end{equation}
+
+ثابتِ پلانک $h$ در محاسبه‌ی انرژیِ فوتون $E = h\nu$، ثابتِ بولتزمن $k_B$ در محاسبه‌ی نویزِ حرارتی، و بارِ الکترون $e$ در محاسبه‌ی نویزِ نوارِ عبور \lr{shot noise} استفاده می‌شوند. این دقت با تعریف‌های مرجع و محاسبات مبتنی بر \lr{SI} سازگار است.
+
+\subsection{بذرِ تولیدنده‌ی عددِ تصادفیِ \lr{PCG64}}
+
+ثابتِ \texttt{MAX\_SEED\_INT\_PCG64} حدِ بالایِ بذرِ مجاز برای تولیدنده‌ی عددِ تصادفیِ \lr{PCG64} را مشخص می‌کند:
+
+\begin{equation}
+	\text{MAX\_SEED\_INT\_PCG64} = 2^{63} - 1 = 9223372036854775807
+\end{equation}
+
+این مقدار برابر با $2^{63} - 1$ است که حدِ بالایِ \texttt{int64} با علامت است. تولیدکننده‌ی \lr{PCG64} بذرِ ۱۲۸ بیتی می‌پذیرد، اما در فریم‌ورک تنها ۶۳ بیت برای سازگاری با \lr{JSON} و سیستم‌های سریال‌سازی استفاده می‌شود. این محدودیت، سازگاری با \lr{JavaScript} (که اعدادِ صحیحِ بزرگ‌تر از $2^{53}$ را به‌دقت نمایش نمی‌دهد) را قربانی می‌کند، اما در عوض تکرارپذیریِ ساده‌تر را فراهم می‌سازد.
+
+\subsection{آستانه‌ی دمِ پواسون}
+
+ثابت \texttt{DEFAULT\_POISSON\_TAIL\_THRESHOLD = 1e-9} برای کنترلِ دقتِ تقریبِ دمِ توزیعِ پواسون استفاده می‌شود. در محاسباتِ \lr{Decoy-State}، توزیعِ پواسونِ تعدادِ فوتون دارای دم‌های طولانی است که در محاسباتِ عددی باید بریده شوند. این آستانه تعیین می‌کند که در کجا دم بریده شود:
+\begin{equation}
+	P(n > n_{\text{max}}) < \varepsilon_{\text{tail}}
+\end{equation}
+با $\varepsilon_{\text{tail}} = 10^{-9}$، می‌توان $n_{\text{max}}$ را با دقتِ بالا محاسبه کرد و در عین حال زمانِ محاسبه را معقول نگه داشت.
+
+\subsection{روش‌های \lr{LP Solver}}
+
+نوعِ \texttt{LPSolverMethod} سه روشِ حلِ \lr{LP} را مشخص می‌کند:
+\begin{itemize}
+	\item \texttt{"highs"}: روشِ پیش‌فرض که \lr{HiGHS} را با تشخیصِ خودکارِ روش (\lr{dual simplex} یا \lr{interior point}) فراخوانی می‌کند.
+	\item \texttt{"highs-ds"}: \lr{Dual Simplex} — مناسب برای مسائلِ کوچک و متوسط.
+	\item \texttt{"highs-ipm"}: \lr{Interior Point Method} — مناسب برای مسائلِ بزرگِ تنک.
+\end{itemize}
+
+این سه گزینه از کتابخانه‌ی \lr{SciPy} (نسخه‌ی ۱.۹ به بعد) استفاده می‌کنند که \lr{HiGHS} را به‌عنوان حلقه‌ی اصلی به‌کار می‌گیرد. \lr{HiGHS} یکی از سریع‌ترین و پایدارترین حلقه‌های \lr{LP} متن‌باز است.
+
+\section{تحلیل معماری و ساختار داده‌ها در \texttt{constants\_definitions.py}}
+
+\subsection{استفاده‌ی گسترده از \texttt{Final}}
+
+یکی از ویژگی‌های برجسته‌ی این ماژول، استفاده‌ی سیستماتیک از نوعِ \texttt{Final} است:
+
+\begin{lstlisting}[language=Python]
+	from typing import Final, Literal, TypeAlias
+	
+	MAX_SEED_INT_PCG64: Final[int] = (1 << 63) - 1
+	NUMERIC_ABS_TOL: Final[float] = 1e-12
+	NUMERIC_REL_TOL: Final[float] = 1e-9
+	EPS: Final[float] = float(np.finfo(float).eps)
+\end{lstlisting}
+
+نوعِ \texttt{Final} که در \lr{PEP 591} معرفی شده، به بررسی‌گرهای نوع ایستا می‌گوید که این متغیرها نباید دوباره مقداردهی شوند. این محدودیت، امنیتِ ثابت‌ها را در سطحِ تحلیلِ ایستا تضمین می‌کند و از تغییرِ تصادفیِ آن‌ها — که می‌تواند منجر به رفتارِ نادرستِ فریم‌ورک شود — جلوگیری می‌کند.
+
+\subsection{نوعِ \texttt{Literal} و \lr{TypeAlias}}
+
+نوعِ \texttt{LPSolverMethod} یک نمونه‌ی نمادین از کاربردِ \texttt{Literal} است:
+
+\begin{lstlisting}[language=Python]
+	LPSolverMethod: TypeAlias = Literal["highs", "highs-ds", "highs-ipm"]
+	LP_SOLVER_METHODS: Final[tuple[LPSolverMethod, ...]] = ("highs", "highs-ds", "highs-ipm")
+\end{lstlisting}
+
+در اینجا \texttt{Literal} یک نوعِ تایپی ایجاد می‌کند که تنها سه رشته‌ی مشخص را می‌پذیرد. این نوع به‌عنوان \lr{TypeAlias} نام‌گذاری شده و سپس در یک چندتاییِ \lr{Final} به‌عنوان مرجعِ اجرایی استفاده می‌شود. این الگوی دوگانه — نوع برای بررسیِ ایستا و چندتایی برای بررسیِ پویا — امکانِ اعتبارسنجیِ هر دو در نوع و زمانِ اجرا را فراهم می‌سازد.
+
+\subsection{فهرستِ \texttt{PUBLIC\_CONSTANT\_NAMES}}
+
+این فهرستِ مرتب، ترتیبِ سریال‌سازی و گزارش‌گیری را پایدار نگه می‌دارد:
+
+\begin{lstlisting}[language=Python]
+	PUBLIC_CONSTANT_NAMES: Final[tuple[str, ...]] = (
+	"MAX_SEED_INT_PCG64",
+	"MAX_SEED_INT_UINT32",
+	"LP_SOLVER_METHODS",
+	"MIN_SUCCESSFUL_Z1_BASIS_EVENTS_FOR_PHASE_EST",
+	"EPS",
+	"NUMERIC_ABS_TOL",
+	"NUMERIC_REL_TOL",
+	"Y1_SAFE_THRESHOLD",
+	"ENTROPY_PROB_CLAMP",
+	"PROB_SUM_TOL",
+	"DEFAULT_POISSON_TAIL_THRESHOLD",
+	"LP_CONSTRAINT_VIOLATION_TOL",
+	"CONST_PLANCK",
+	"CONST_BOLTZMANN",
+	"CONST_ELECTRON_CHARGE",
+	)
+\end{lstlisting}
+
+این ترتیبِ خاص تصادفی نیست: ثابت‌های عددیِ صحیح ابتدا، سپس تلورانس‌ها، و در پایان ثابت‌های فیزیکی. این ترتیب در خروجیِ \texttt{as\_dict()} ماژولِ \texttt{constants.py} منعکس می‌شود و گزارش‌های تولیدشده در نسخه‌های مختلفِ فریم‌ورک قابلِ مقایسه باقی می‌مانند.
+
+\subsection{ثابتِ \texttt{MIN\_SUCCESSFUL\_Z1\_BASIS\_EVENTS\_FOR\_PHASE\_EST}}
+
+این ثابتِ خاص، حداقلِ تعدادِ رویدادِ موفقِ \lr{Z1} (تک‌فوتون در پایه‌ی \lr{Z}) برای تخمینِ نرخِ خطای فاز را مشخص می‌کند:
+\begin{equation}
+	n_{Z1}^{\min} = 10
+\end{equation}
+اگر تعدادِ رویدادها کمتر از این مقدار باشد، تخمینِ خطای فاز به‌شدت ناپایدار می‌شود و می‌تواند به نتایجِ غیرفیزیکی منجر گردد. این حداقل، یک تعهدِ عملی است که با تجربه‌ی عددی به‌دست آمده و در پروتکل‌های \lr{MDI-QKD} و \lr{Decoy-State BB84} کاربرد دارد.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی در \texttt{constants\_definitions.py}}
+
+\subsection{محاسبه‌ی \lr{EPS} از \lr{NumPy}}
+
+ثابتِ \texttt{EPS} به‌صورت پویا از \lr{NumPy} محاسبه می‌شود:
+
+\begin{lstlisting}[language=Python]
+	EPS: Final[float] = float(np.finfo(float).eps)
+\end{lstlisting}
+
+تابع \texttt{np.finfo(float).eps} مقدارِ خطای ماشین را برای نوعِ \texttt{float} برمی‌گرداند، که برابر با $2^{-52} \approx 2.22044605 \times 10^{-16}$ است. این مقدار به \texttt{float} ساده تبدیل می‌شود تا با توابعِ ماژولِ \texttt{math} سازگار باشد. این رویکرد، خودسازگاری با پلتفرم را تضمین می‌کند: اگر فریم‌ورک در آینده به \texttt{float128} مهاجرت کند، \texttt{EPS} به‌صورت خودکار به‌روز می‌شود.
+
+\subsection{محاسبه‌ی \lr{Y1\_SAFE\_THRESHOLD} با ماکزیمم}
+
+این ثابت با فرمولی دو-بخشی محاسبه می‌شود:
+
+\begin{lstlisting}[language=Python]
+	_Y1_EPS_MULTIPLIER: Final[float] = 1e4
+	Y1_SAFE_THRESHOLD: Final[float] = max(1e-12, _Y1_EPS_MULTIPLIER * EPS)
+\end{lstlisting}
+
+فرمولِ ریاضی:
+\begin{equation}
+	\text{Y1\_SAFE\_THRESHOLD} = \max(10^{-12}, 10^4 \cdot \varepsilon_{\text{mach}})
+\end{equation}
+
+استفاده از \texttt{max} تضمین می‌کند که حتی اگر \lr{EPS} به‌طور غیرعادی کوچک شود (مثلاً در یک پلتفرمِ با دقتِ چهارگانه)، آستانه هرگز از $10^{-12}$ پایین‌تر نیاید. این حدِ پایین، پایداریِ عددی را در شرایطِ غیرعادی تضمین می‌کند.
+
+\subsection{تنظیمِ \texttt{ENTROPY\_PROB\_CLAMP} برابر با \texttt{NUMERIC\_ABS\_TOL}}
+
+\begin{lstlisting}[language=Python]
+	ENTROPY_PROB_CLAMP: Final[float] = NUMERIC_ABS_TOL
+\end{lstlisting}
+
+این انتخابِ آگاهانه به این معناست که برشِ احتمال برای محاسباتِ آنتروپی در همان سطحِ تلورانسِ مطلقِ کلی انجام می‌شود. این یکپارچگی، رفتارِ یکنواخت را تضمین می‌کند: اگر یک احتمال به $-10^{-15}$ برسد (که با تلورانسِ مطلق به‌عنوان $0$ پذیرفته می‌شود)، در محاسباتِ آنتروپی نیز به $10^{-12}$ بریده می‌شود و در نتیجه محاسباتِ متوالی سازگار باقی می‌مانند.
+
+\subsection{محاسبه‌ی \texttt{LP\_CONSTRAINT\_VIOLATION\_TOL}}
+
+\begin{lstlisting}[language=Python]
+	LP_CONSTRAINT_VIOLATION_TOL: Final[float] = NUMERIC_REL_TOL
+\end{lstlisting}
+
+این تلورانس، حدِ مجازِ نقضِ محدودیت‌ها در حلقه‌ی \lr{LP} را مشخص می‌کند. استفاده از \texttt{NUMERIC\_REL\_TOL = 1e-9} تضمین می‌کند که حلقه‌ی \lr{LP} محدودیت‌ها را با دقتی در حدِ تلورانسِ نسبیِ کلی فریم‌ورک رعایت کند. این تنظیم، تعادلِ مناسبی بینِ سخت‌گیریِ بیش‌ازحد (که باعثِ شکستِ حلقه می‌شود) و سهل‌گیریِ بیش‌ازحد (که منجر به نتایجِ نادرست می‌شود) برقرار می‌سازد.
+
+\subsection{ثابت‌های \lr{SI 2019}}
+
+ثابت‌های فیزیکی به‌صورت مستقیم و با دقتِ کامل تعریف می‌شوند:
+
+\begin{lstlisting}[language=Python]
+	CONST_PLANCK: Final[float] = 6.62607015e-34       # J·s (exact, 2019 SI)
+	CONST_BOLTZMANN: Final[float] = 1.380649e-23       # J/K (exact, 2019 SI)
+	CONST_ELECTRON_CHARGE: Final[float] = 1.602176634e-19  # C (exact, 2019 SI)
+\end{lstlisting}
+
+این مقادیر از بازتعریفِ \lr{SI 2019} گرفته شده‌اند که در آن این سه ثابت به‌صورت دقیق (\lr{exact}) تعریف می‌شوند — نه اندازه‌گیری شده. این بدان معناست که در نظامِ \lr{SI}، این اعداد بدونِ خطا هستند و در نتیجه فریم‌ورک از بالاترین دقتِ ممکن برخوردار است.
+
+\subsection{ماکروی بذرِ \lr{PCG64}}
+
+\begin{lstlisting}[language=Python]
+	MAX_SEED_INT_PCG64: Final[int] = (1 << 63) - 1
+	MAX_SEED_INT_UINT32: Final[int] = (1 << 32) - 1
+\end{lstlisting}
+
+استفاده از عملگرِ \lr{\texttt{<<}} (شیفتِ چپ) به‌جای \lr{\texttt{**}} (توان)، یک بهینه‌سازیِ جزئی است که در سطحِ بایت‌کد پایتون، سریع‌تر اجرا می‌شود. فرمولِ ریاضی:
+\begin{equation}
+	\text{MAX\_SEED\_INT\_PCG64} = 2^{63} - 1
+\end{equation}
+\begin{equation}
+	\text{MAX\_SEED\_INT\_UINT32} = 2^{32} - 1
+\end{equation}
+
+این دو مقدار، حدِ بالایِ بذرِ مجاز برای دو تولیدکننده‌ی متفاوت را مشخص می‌کنند: \lr{PCG64} (۶۳ بیت) و تولیدکننده‌های مبتنی بر \lr{uint32} (مانند \lr{MT19937}).
+
+\section{ارسال و دریافت با سایر ماژول‌ها در \texttt{constants\_definitions.py}}
+
+\subsection{عدمِ وابستگیِ ورودی}
+
+این ماژول تقریباً هیچ وابستگیِ ورودی ندارد:
+
+\begin{lstlisting}[language=Python]
+	from __future__ import annotations
+	from typing import Final, Literal, TypeAlias
+	import numpy as np
+\end{lstlisting}
+
+تنها وابستگیِ خارجی، \lr{NumPy} است که برای محاسبه‌ی \texttt{EPS} استفاده می‌شود. این استقلال، ماژول را به یک پایه‌ی صلبِ فریم‌ورک تبدیل می‌کند: هیچ ماژولِ دیگری نمی‌تواند بر آن تأثیر بگذارد و در نتیجه رفتارِ آن کاملاً قابل‌پیش‌بینی است.
+
+\subsection{نقاطِ مصرف}
+
+این ماژول توسط دو مصرف‌کننده‌ی اصلی استفاده می‌شود:
+
+\begin{itemize}
+	\item \textbf{ماژولِ \texttt{constants\_helpers.py}:} تمامی تلورانس‌های عددی و آستانه‌های احتمال از این ماژول وارد می‌شوند.
+	\item \textbf{ماژولِ \texttt{constants.py}:} به‌عنوان فسادِ (\lr{facade}) عمومی، تمامی نام‌های ثابت عمومی و توابعِ کمکی را بازصادرات می‌کند.
+\end{itemize}
+
+علاوه بر این، چندین ماژولِ دیگر نیز به‌صورت مستقیم از این ماژول واردات انجام می‌دهند — به‌ویژه \texttt{params.py} که \texttt{LP\_SOLVER\_METHODS} و \texttt{DEFAULT\_POISSON\_TAIL\_THRESHOLD} را استفاده می‌کند.
+
+\subsection{قراردادِ \texttt{PUBLIC\_CONSTANT\_NAMES}}
+
+این فهرست، قراردادی برای ماژول‌های پایین‌دستی است:
+
+\begin{lstlisting}[language=Python]
+	__all__ = list(PUBLIC_CONSTANT_NAMES)
+\end{lstlisting}
+
+این بدان معناست که \lr{\texttt{from .constants\_definitions import *}} تنها نام‌های فهرست‌شده را وارد می‌کند. این قرارداد، مرزِ \lr{API} عمومی را به‌روشنی مشخص می‌کند و از وابستگیِ تصادفی به ثابت‌های خصوصی جلوگیری می‌کند.
+
+% ---------------------------------------------------------------------
+% ===== فایل چهارم: constants.py =====
+% ---------------------------------------------------------------------
+
+\section{نمای کلی و هدف ماژول \texttt{constants.py}}
+
+ماژول \texttt{constants.py} فسادِ (\lr{facade}) عمومیِ لایه‌ی ثابت‌ها و توابعِ کمکیِ فریم‌ورکِ \lr{QKD} است. این ماژول کوچک (تنها ۵۶ خط) نقشِ یک \lr{public API surface} را ایفا می‌کند: تمامی ماژول‌های بیرونی که نیاز به دسترسی به ثابت‌ها یا توابعِ کمکی دارند، تنها از این ماژول واردات انجام می‌دهند و هرگز به‌صورت مستقیم به \texttt{constants\_definitions.py} یا \texttt{constants\_helpers.py} ارجاع نمی‌دهند. این لایه‌ی واسط، انعطاف‌پذیریِ معماری را به‌شدت افزایش می‌دهد: اگر در آینده تصمیم به بازسازیِ داخلیِ این دو ماژول گرفته شود، تنها \texttt{constants.py} نیاز به به‌روزرسانی خواهد داشت و سایر ماژول‌ها بی‌تأثیر باقی می‌مانند.
+
+هدفِ بنیادینِ این ماژول، پیاده‌سازیِ الگوی \lr{Facade Pattern} است که توسط \lr{Gamma et al.} در کتابِ کلاسیکِ الگوهای طراحی معرفی شده. در این الگو، یک واسطِ ساده، زیرسیستم‌های پیچیده‌تر را پنهان می‌کند و یک نقطه‌ی دسترسیِ یکپارچه فراهم می‌سازد. در فریم‌ورکِ \lr{QKD}، این الگو به‌ویژه ارزشمند است؛ چرا که تعدادِ ثابت‌ها و توابعِ کمکی در طولِ زمانِ توسعه افزایش می‌یابد و در نبودِ یک فساد، وابستگی‌های مستقیمِ پیچیده‌ای شکل می‌گیرد که بازسازی را دشوار می‌سازد.
+
+علاوه بر نقشِ فساد، این ماژول مسئولیتِ ارائه‌ی متاداده‌ی نسخه و یک تابعِ کمکیِ \texttt{as\_dict()} را نیز بر عهده دارد. متغیر \texttt{\_\_version\_\_ = "4.3.0"} نسخه‌ی فعلیِ \lr{API} را مشخص می‌کند و امکانِ بررسیِ سازگاری در زمانِ اجرا را فراهم می‌سازد. تابع \texttt{as\_dict()} یک دیکشنریِ مرتب از تمامی ثابت‌های عمومی تولید می‌کند که برای گزارش‌گیری، لاگ‌گذاری و ردیابیِ آزمایش‌ها استفاده می‌شود.
+
+\section{مبانی تئوری و فیزیکی در \texttt{constants.py}}
+
+\subsection{الگوی فساد در مهندسی نرم‌افزار}
+
+الگوی فساد بر پایه‌ی اصلِ \lr{Law of Demeter} (قانونِ دمتر) استوار است: یک ماژول نباید درباره‌ی ساختارِ داخلیِ ماژول‌هایِ دیگر بداند. در نبودِ فساد، اگر ماژول \lr{A} نیاز به ثابتِ \lr{X} داشته باشد، باید بداند که \lr{X} در کدام زیرماژول قرار دارد. این دانش، وابستگیِ غیرضروری ایجاد می‌کند و بازسازی را دشوار می‌سازد.
+
+فساد این مشکل را با ارائه‌ی یک نقطه‌ی واحدِ دسترسی حل می‌کند. ماژول \lr{A} تنها از \texttt{constants} واردات انجام می‌دهد و در نتیجه از ساختارِ داخلیِ فریم‌ورک بی‌خبر باقی می‌ماند. این رزایلی، در پروژه‌هایِ بزرگ که تعدادِ ماژول‌ها به‌صورت نمایی رشد می‌کند، حیاتی است.
+
+\subsection{پایداریِ رابط و نسخه‌سازی}
+
+در مهندسیِ نرم‌افزارِ حرفه‌ای، \lr{API stability} یک ارزشِ بنیادین است. کاربرانِ یک کتابخانه انتظار دارند که نسخه‌های جدید، رفتارِ نسخه‌های قبلی را حفظ کنند یا با هشدارِ روشن تغییر دهند. ماژول \texttt{constants.py} با ارائه‌ی یک فهرستِ صریحِ \texttt{\_\_all\_\_}، \lr{API} عمومیِ خود را به‌روشنی تعریف می‌کند:
+\begin{equation}
+	\text{\_\_all\_\_} = \text{PUBLIC\_CONSTANT\_NAMES} \cup \text{PUBLIC\_FUNCTION\_NAMES} \cup \{\text{as\_dict}\}
+\end{equation}
+
+این تعریفِ صریح، ابزاری برای \lr{semantic versioning} فراهم می‌سازد: هر تغییری در \texttt{\_\_all\_\_} به‌عنوان یک تغییرِ ناسازگار (\lr{breaking change}) تلقی می‌شود و نیازمندِ افزایشِ نسخه‌ی اصلی است.
+
+\subsection{ثابت‌های فیزیکیِ تکمیلی}
+
+علاوه بر ثابت‌های تعریف‌شده در \texttt{constants\_definitions.py}، این ماژول دو ثابتِ فیزیکیِ تکمیلی را نیز تعریف می‌کند:
+
+\begin{lstlisting}[language=Python]
+	CONST_PLANCK = 6.62607015e-34          # J*s
+	CONST_SPEED_OF_LIGHT = 2.99792458e8    # m/s
+\end{lstlisting}
+
+سرعتِ نور در خلأ، $c = 2.99792458 \times 10^8$ m/s، یکی از ثابت‌های دقیقِ \lr{SI 2019} است که در محاسبه‌ی طول‌موجِ به‌فرکانس ($\lambda = c/\nu$) و محاسبه‌ی زمانِ پروازِ فوتون در فیبر استفاده می‌شود. جالب توجه است که \texttt{CONST\_PLANCK} در این ماژول نیز تعریف شده — یک تعریفِ موازی با \texttt{constants\_definitions.py}. این تعریفِ موازی، اگرچه از نظرِ اصلِ \lr{DRY} (\lr{Don't Repeat Yourself}) ناقص به‌نظر می‌رسد، اما سازگاریِ با przeszłe را تضمین می‌کند: کدهای قدیمی که از \texttt{constants.CONST\_PLANCK} استفاده می‌کردند، همچنان کار خواهند کرد.
+
+\section{تحلیل معماری و ساختار داده‌ها در \texttt{constants.py}}
+
+\subsection{ساختارِ واردات}
+
+ساختارِ وارداتِ این ماژول، الگوی فساد را به‌روشنی نشان می‌دهد:
+
+\begin{lstlisting}[language=Python]
+	from .constants_definitions import (
+	CONST_BOLTZMANN, CONST_PLANCK, CONST_ELECTRON_CHARGE,
+	DEFAULT_POISSON_TAIL_THRESHOLD, ENTROPY_PROB_CLAMP, EPS,
+	LP_CONSTRAINT_VIOLATION_TOL, LP_SOLVER_METHODS, LPSolverMethod,
+	MAX_SEED_INT_PCG64, MAX_SEED_INT_UINT32,
+	MIN_SUCCESSFUL_Z1_BASIS_EVENTS_FOR_PHASE_EST,
+	NUMERIC_ABS_TOL, NUMERIC_REL_TOL, PROB_SUM_TOL,
+	PUBLIC_CONSTANT_NAMES, Y1_SAFE_THRESHOLD,
+	)
+	from .constants_helpers import (
+	PUBLIC_FUNCTION_NAMES, clamp_probabilities, clamp_probability,
+	db_to_linear, is_close, is_finite_non_negative, is_prob_vector,
+	is_valid_probability, renormalize_probabilities,
+	)
+\end{lstlisting}
+
+دو بلوکِ واردات، دو منبعِ مجزا را نشان می‌دهند: ثابت‌ها از \texttt{constants\_definitions} و توابع از \texttt{constants\_helpers}. هر دو بلوک تمامی نام‌های عمومی را به‌صورت صریح فهرست می‌کنند — نه از \lr{\texttt{*}} استفاده می‌کنند. این صراحت، اگرچه کد را طولانی‌تر می‌کند، اما وابستگی‌ها را به‌روشنی مستند می‌سازد و از وارداتِ تصادفیِ نام‌های خصوصی جلوگیری می‌کند.
+
+\subsection{تعریفِ \texttt{\_\_all\_\_} پویا}
+
+\begin{lstlisting}[language=Python]
+	__version__ = "4.3.0"
+	
+	__all__ = [*PUBLIC_CONSTANT_NAMES, *PUBLIC_FUNCTION_NAMES, "as_dict"]
+\end{lstlisting}
+
+این تعریفِ پویا، \texttt{\_\_all\_\_} را از دو منبعِ مرجع می‌سازد. مزیتِ این رویکرد آن است که اگر در آینده یک ثابت جدید به \texttt{PUBLIC\_CONSTANT\_NAMES} اضافه شود، به‌صورت خودکار به \lr{API} عمومی نیز اضافه می‌شود — بدون آنکه نیاز به ویرایشِ دستیِ \texttt{constants.py} باشد. این \lr{Single Source of Truth}، بارِ نگهداری را به‌شدت کاهش می‌دهد.
+
+\subsection{تابع \texttt{as\_dict()}}
+
+تنها تابعِ تعریف‌شده در این ماژول، \texttt{as\_dict()} است:
+
+\begin{lstlisting}[language=Python]
+	def as_dict() -> dict[str, Any]:
+	"""
+	Return public constants from this module as an ordered dictionary copy.
+	"""
+	module_globals = globals()
+	return {name: module_globals[name] for name in PUBLIC_CONSTANT_NAMES}
+\end{lstlisting}
+
+این تابع با استفاده از \texttt{globals()} تمامی ثابت‌های عمومی را به‌صورت یک دیکشنریِ مرتب برمی‌گرداند. ترتیبِ کلیدها به ترتیبِ \texttt{PUBLIC\_CONSTANT\_NAMES} است، که این تضمین را فراهم می‌سازد که خروجی در نسخه‌های مختلفِ فریم‌ورک پایدار بماند. این پایداری برای گزارش‌گیری و مقایسه‌ی آزمایش‌ها حیاتی است.
+
+\subsection{عدمِ استفاده از \texttt{Final}}
+
+جالب توجه است که ثابت‌های تعریف‌شده در این ماژول (\texttt{CONST\_PLANCK} و \texttt{CONST\_SPEED\_OF\_LIGHT}) با \texttt{Final} علامت‌گذاری نشده‌اند. این یک ناسازگاریِ سبکی با \texttt{constants\_definitions.py} است که در آینده باید اصلاح شود. در نسخه‌ی فعلی، این دو ثابت از نظرِ فنی قابل‌تغییر هستند، اما در عمل هرگز تغییر نمی‌کنند.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی در \texttt{constants.py}}
+
+\subsection{پیاده‌سازیِ \texttt{as\_dict()}}
+
+پیاده‌سازیِ این تابع، اگرچه کوتاه است، اما چند نکته‌ی ظریف دارد:
+
+\begin{lstlisting}[language=Python]
+	def as_dict() -> dict[str, Any]:
+	module_globals = globals()
+	return {name: module_globals[name] for name in PUBLIC_CONSTANT_NAMES}
+\end{lstlisting}
+
+نخست، استفاده از \texttt{globals()} به‌جای \texttt{getattr(module, name)} یک بهینه‌سازیِ کوچک است: \texttt{globals()} مستقیماً به دیکشنریِ ماژول دسترسی دارد، در حالی که \texttt{getattr} نیاز به جستجویِ صفت دارد.
+
+دوم، استفاده از \lr{dictionary comprehension} به‌جای حلقه‌ی \texttt{for}، هم خوانایی را افزایش می‌دهد و هم از نظرِ بایت‌کد پایتون، کارآمدتر است.
+
+سوم، ترتیبِ کلیدها در خروجی دقیقاً برابر با ترتیبِ \texttt{PUBLIC\_CONSTANT\_NAMES} است، چرا که دیکشنریِ پایتون (از نسخه‌ی ۳.۷ به بعد) ترتیبِ درج را حفظ می‌کند. این تضمینِ ترتیب، برای تولیدِ \lr{hash} پایدار و مقایسه‌ی \lr{JSON} حیاتی است.
+
+\subsection{مقدارِ \lr{SI 2019} سرعتِ نور}
+
+\begin{lstlisting}[language=Python]
+	CONST_SPEED_OF_LIGHT = 2.99792458e8    # m/s
+\end{lstlisting}
+
+این مقدار، طبقِ \lr{SI 2019}، دقیق و غیرقابل‌تغییر است. فرمولِ ریاضی:
+\begin{equation}
+	c = 299\,792\,458 \, \text{m/s}
+\end{equation}
+این ثابت در محاسباتِ زیر استفاده می‌شود:
+\begin{itemize}
+	\item تبدیلِ طول‌موج به فرکانس: $\nu = c/\lambda$
+	\item محاسبه‌ی زمانِ پرواز در فیبر: $t = L \cdot n / c$ که $n$ ضریبِ شکستِ فیبر است.
+	\item محاسبه‌ی انرژیِ فوتون: $E = h\nu = hc/\lambda$
+\end{itemize}
+
+\subsection{تعریفِ موازیِ \texttt{CONST\_PLANCK}}
+
+همان‌طور که پیش‌تر ذکر شد، \texttt{CONST\_PLANCK} هم در این ماژول و هم در \texttt{constants\_definitions.py} تعریف شده است. مقدارِ هر دو یکسان است:
+\begin{equation}
+	h = 6.62607015 \times 10^{-34} \, \text{J}\cdot\text{s}
+\end{equation}
+
+این تعریفِ موازی، در نگاهِ اول نقضِ اصلِ \lr{DRY} به‌نظر می‌رسد، اما در عمل یک \lr{compatibility shim} است. در گذشته، \texttt{CONST\_PLANCK} تنها در \texttt{constants.py} تعریف می‌شد. با ظهورِ \texttt{constants\_definitions.py}، تعریفِ اصلی به آن ماژول منتقل شد، اما برای حفظِ سازگاری با کدهای قدیمی، تعریفِ موازی در اینجا نگه داشته شد. در آینده، با حذفِ تدریجیِ کدهای قدیمی، این تعریفِ موازی نیز باید حذف شود.
+
+\subsection{ترکیبِ \lr{API} از دو منبع}
+
+ساختارِ \texttt{\_\_all\_\_} نشان می‌دهد که چگونه دو منبع در یک \lr{API} یکپارچه ترکیب می‌شوند:
+
+\begin{lstlisting}[language=Python]
+	__all__ = [*PUBLIC_CONSTANT_NAMES, *PUBLIC_FUNCTION_NAMES, "as_dict"]
+\end{lstlisting}
+
+این ترکیب، سه دسته از نام‌ها را در بر می‌گیرد:
+\begin{enumerate}
+	\item ثابت‌های عمومی (از \texttt{constants\_definitions})
+	\item توابعِ کمکیِ عمومی (از \texttt{constants\_helpers})
+	\item تابعِ \texttt{as\_dict} (تعریف‌شده در این ماژول)
+\end{enumerate}
+
+این الگو، یک \lr{API} یکپارچه را ارائه می‌دهد که در آن تمامی منابعِ موردِ نیاز کاربر در یک نقطه در دسترس است.
+
+\section{ارسال و دریافت با سایر ماژول‌ها در \texttt{constants.py}}
+
+\subsection{وابستگی‌های ورودی}
+
+این ماژول تنها به دو ماژولِ داخلی وابسته است:
+
+\begin{itemize}
+	\item \texttt{constants\_definitions.py}: برای تمامی ثابت‌ها و نوع‌های تایپی.
+	\item \texttt{constants\_helpers.py}: برای تمامی توابعِ کمکی.
+\end{itemize}
+
+وابستگیِ خارجیِ تنها، کتابخانه‌ی استانداردِ \texttt{typing} (برای نوعِ \texttt{Any}) است. این استقلالِ کم، این ماژول را به یک نقطه‌ی سبک و سریع تبدیل می‌کند.
+
+\subsection{نقاطِ مصرف}
+
+این ماژول توسط اکثرِ ماژول‌های فریم‌ورک استفاده می‌شود:
+
+\begin{itemize}
+	\item \textbf{ماژولِ \texttt{params.py}:} از \texttt{LP\_SOLVER\_METHODS} و \texttt{DEFAULT\_POISSON\_TAIL\_THRESHOLD} استفاده می‌کند.
+	\item \textbf{ماژولِ \texttt{sources.py}:} از \texttt{clamp\_probabilities}، \texttt{is\_valid\_probability} و ثابت‌های تلورانس استفاده می‌کند.
+	\item \textbf{ماژولِ \texttt{detectors.py}:} از \texttt{db\_to\_linear} و \texttt{is\_close} استفاده می‌کند.
+	\item \textbf{ماژولِ \texttt{channel.py}:} از \texttt{db\_to\_linear} و ثابت‌های فیزیکی استفاده می‌کند.
+	\item \textbf{اسکریپت‌های آزمایشی:} از \texttt{as\_dict()} برای گزارش‌گیری و ثبتِ پیکربندی استفاده می‌کنند.
+\end{itemize}
+
+\subsection{قراردادِ نسخه‌گذاری}
+
+متغیر \texttt{\_\_version\_\_ = "4.3.0"} یک قراردادِ مهم را ارائه می‌دهد. این نسخه‌بندی از \lr{Semantic Versioning} پیروی می‌کند:
+\begin{itemize}
+	\item \lr{Major (4)}: تغییراتِ ناسازگارِ \lr{API}.
+	\item \lr{Minor (3)}: افزودنِ قابلیت‌های جدید به‌صورت سازگار.
+	\item \lr{Patch (0)}: اصلاحِ خطاها و بهبودِ عملکرد.
+\end{itemize}
+
+ماژول‌های پایین‌دستی می‌توانند با بررسیِ این نسخه، سازگاریِ خود را تضمین کنند:
+\begin{equation}
+	\text{compatible} \iff \text{major}_{\text{required}} = \text{major}_{\text{actual}}
+\end{equation}
+
+این قرارداد، در آینده‌ی فریم‌ورک که ممکن است \lr{API} تغییراتِ اساسی تجربه کند، حیاتی خواهد بود.
+
+\subsection{جمع‌بندیِ معماریِ چهار ماژول}
+
+چهار ماژولِ بررسی‌شده در این فصل، یک معماریِ لایه‌ایِ تمیز را تشکیل می‌دهند. در پایینِ لایه‌بندی، \texttt{constants\_definitions.py} به‌عنوان منبعِ نهاییِ ثابت‌ها قرار دارد. در لایه‌ی بعدی، \texttt{constants\_helpers.py} توابعِ کمکیِ عددی را بر پایه‌ی این ثابت‌ها ارائه می‌دهد. در لایه‌ی فساد، \texttt{constants.py} یک \lr{API} یکپارچه از این دو ماژول فراهم می‌سازد. در بالاترین لایه، \texttt{params.py} از این \lr{API} برای ساختِ شیءِ پیکربندیِ مرکزیِ \texttt{QKDParams} استفاده می‌کند.
+
+این جداسازیِ لایه‌ها، چند مزیتِ کلیدی دارد. نخست، \lr{Single Source of Truth} برای هر مفهوم: ثابت‌ها تنها در یک نقطه تعریف می‌شوند، توابعِ کمکی تنها در یک نقطه پیاده‌سازی می‌شوند، و پیکربندیِ مرکزی تنها از یک کلاس نشأت می‌گیرد. دوم، قابلیتِ آزمونپذیریِ بالا: هر لایه می‌تواند به‌صورت مستقل آزمون شود. سوم، انعطاف‌پذیریِ بازسازی: تغییراتِ داخلی در یک لایه، بر لایه‌های بالاتر تأثیر نمی‌گذارد. این معماری، نمونه‌ای از بهترین شیوه‌های مهندسیِ نرم‌افزار در پروژه‌هایِ علمیِ بزرگ است.

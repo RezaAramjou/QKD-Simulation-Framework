@@ -1,0 +1,717 @@
+\sloppy
+\emergencystretch=5em
+\hbadness=10000
+\vbadness=10000
+\tolerance=2000
+\providecolor{codebg}{RGB}{248,248,248}
+\providecolor{codeframe}{RGB}{200,200,200}
+\providecolor{keyword}{RGB}{0,0,180}
+\providecolor{string}{RGB}{163,21,21}
+\providecolor{comment}{RGB}{0,128,0}
+\lstset{
+	basicstyle=\ttfamily\scriptsize,
+	breaklines=true,
+	breakatwhitespace=false,
+	columns=fullflexible,
+	keepspaces=true,
+	frame=single,
+	framesep=2pt,
+	showstringspaces=false,
+	backgroundcolor=\color{codebg},
+	rulecolor=\color{codeframe},
+	keywordstyle=\color{keyword}\bfseries,
+	stringstyle=\color{string},
+	commentstyle=\color{comment}\itshape,
+	numberstyle=\tiny\color{gray},
+	numbers=left,
+	numbersep=6pt,
+	xleftmargin=14pt,
+	framexleftmargin=14pt,
+	literate=
+	{ą}{{\v{a}}}1 {ę}{{\k{e}}}1 {ż}{{\.z}}1 {ś}{{\'s}}1
+	{ł}{{\l}}1 {ć}{{\'c}}1 {ń}{{\'n}}1 {ó}{{\'o}}1 {ź}{{\'z}}1
+	{→}{{$\rightarrow$}}1 {←}{{$\leftarrow$}}1 {≠}{{$\neq$}}1
+}
+
+\section{نمای‌ کلی و هدف ماژول}
+
+فایل \lr{\texttt{qkd/proofs/base.py}} ستون فقرات لایه اثبات‌های امنیتی در فریم‌ورک شبیه‌سازی توزیع کلید کوانتومی است. این ماژول یک \lr{Abstract Base Class} به نام \lr{\texttt{FiniteKeyProof}} معرفی می‌کند که قرارداد رابطی همه اثبات‌های امنیتی کلید متناهی را در سراسر سیستم استاندارد می‌سازد. اثبات‌های امنیتی کلید متناهی به دسته‌ای از الگوریتم‌ها گفته می‌شود که به جای اتکای صرف به حد asymptotic توزیع کلید، تأمین امنیت برای طول کلید متناهی را با پارامتر امنیتی $\varepsilon_{\text{sec}}$ قابل اثبات تضمین می‌کنند. در دنیای واقعی، تعداد پالس‌های ارسالی همواره محدود است و الگوهای asymptotic مانند \lr{Gottesman-Lo-Lütkenhaus-Preskill} سنتی به تنهایی پاسخگو نیستند؛ از این رو لایه‌بندی صریحی از تقسیم $\varepsilon$-بودجه، تخمین پارامتر، محاسبه بازده تک‌فوتونی و کسر فاز خطا ضروری می‌شود.
+
+هدف اصلی این ماژول، فراهم آوردن یک رابط یکپارچه برای همه زیرکلاس‌های اثبات است؛ به گونه‌ای که هر زیرکلاس فقط به پیاده‌سازی چهار متد انتزاعی \lr{\texttt{notation\_map}}، \lr{\texttt{allocate\_epsilons}}، \lr{\texttt{get\_epsilon\_policy}} و \lr{\texttt{estimate\_yields\_and\_errors}} بپردازد و مابقی خدمات مشترک شامل محاسبه کران‌های آماری، آنتروپی باینری، تقسیم ایمن، تشخیص خطاهای عددی و گزارش‌گیری \lr{audit} را از کلاس پایه به ارث ببرد. این طراحی از الگوی \lr{Template Method} پیروی می‌کند و اطمینان می‌دهد که هر پیاده‌سازی اثبات، بدون توجه به اینکه مبتنی بر چارچوب \lr{Ma 2005} باشد یا \lr{Lim 2014} یا \lr{GLLP}، خروجی‌ها و رفتار سازگار و قابل مقایسه تولید می‌کند. به علاوه، کلاس پایه لایه‌ای از دفاع عددی شامل \lr{clamp} احتمالات، \lr{safe divide}، \lr{safe log} و تشخیص مقادیر نامتناهی را فراهم می‌سازد که در محاسبات آنتروپی و \lr{log-likelihood} اهمیت حیاتی دارد.
+
+این فایل علاوه بر کلاس پایه، چندین \lr{dataclass} مورد نیاز برای انتقال داده میان لایه‌ها را تعریف می‌کند. این \lr{dataclass}ها شامل \lr{\texttt{TallyCounts}} برای ثبت شمارش‌های آماری، \lr{\texttt{EpsilonAllocation}} برای ذخیره تقسیم بودجه $\varepsilon$، \lr{\texttt{SolverDiagnostics}} برای گزارش وضعیت \lr{solver} برنامه‌ریزی خطی، \lr{\texttt{DecoyEstimates}} برای نگهداری کران‌های پایین بازده تک‌فوتونی و کران بالای خطای تک‌فوتونی و نهایتاً \lr{\texttt{KeyCalculationResult}} برای ارائه نتیجه نهایی محاسبه طول کلید امن است. همه این ساختارها با \lr{\texttt{@dataclass(frozen=True)}} تعریف شده‌اند تا از تغییر ناخواسته پس از ساخت جلوگیری شود و قابلیت \lr{hashing} و استفاده به عنوان کلید در \lr{cache} را داشته باشند. این تصمیم طراحی در اثبات‌های امنیتی بحرانی است، زیرا هرگونه جهش ناگهانی در مقادیر میانی می‌تواند به نتیجه نهایی رنگ امنیتی بزند.
+
+وظیفه نهایی این ماژول، تضمین یکپارچگی و تکرارپذیری نتایج امنیتی است. به همین دلیل، متغیرهای محیطی مانند \lr{run\_id}، \lr{lib\_version}، نسخه \lr{numpy} و \lr{scipy} در گزارش‌های \lr{audit} ثبت می‌شوند تا هر اجرا به طور کامل قابل بازتولید باشد. این ویژگی برای گزارش‌های امنیتی حساس که نیاز به بازبینی توسط شخص ثالث دارند، الزامی است.
+
+\section{مبانی تئوری و فیزیکی}
+
+\subsection{امنیت قابل ترکیب و تقسیم بودجه \texorpdfstring{$\varepsilon$}{epsilon}}
+
+تعریف مدرن امنیت در QKD بر پایه مفهوم \lr{composable security} استوار است که نخستین بار توسط \lr{Ben-Or} و همکاران و سپس توسط \lr{Canetti} بسط داده شد. در این چارچوب، امنیت یک پروتکل با یک پارامتر $\varepsilon_{\text{sec}} \in (0,1)$ کمیت‌سازی می‌شود که نشان می‌دهد فاصله آماری میان خروجی پروتکل و یک حالت ایده‌آل (توزیع کلید یکنواخت و مستقل از اطلاعات دشمن) چقدر است. اگر $\rho_{\text{real}}$ حالت نهایی مشترک آلیس، باب و ایو و $\rho_{\text{ideal}}$ حالت ایده‌آل باشد، شرط امنیت به صورت زیر نوشته می‌شود:
+\begin{equation}
+	\frac{1}{2}\,\|\rho_{\text{real}} - \rho_{\text{ideal}}\|_1 \;\le\; \varepsilon_{\text{sec}},
+\end{equation}
+که در آن $\|\cdot\|_1$ نرم رد ماتریس چگالی است. این تعریف به ما اجازه می‌دهد پروتکل QKD را مانند یک جعبه سیاه با سایر پروتکل‌های رمزنگاری ترکیب کنیم و جمع کل $\varepsilon$ها از قانون زیر پیروی کند:
+\begin{equation}
+	\varepsilon_{\text{total}} \;\le\; \sum_i \varepsilon_i.
+\end{equation}
+در فایل \lr{\texttt{base.py}}، این بودجه به چهار مؤلفه شکسته می‌شود:
+\begin{equation}
+	\varepsilon_{\text{sec}} \;=\; \varepsilon_{\text{PE}} + \varepsilon_{\text{EC}} + \varepsilon_{\text{PA}} + \varepsilon_{\text{sm}},
+\end{equation}
+که در آن $\varepsilon_{\text{PE}}$ احتمال شکست تخمین پارامتر، $\varepsilon_{\text{EC}}$ احتمال شکست تصحیح خطا، $\varepsilon_{\text{PA}}$ احتمال شکست تقویت حریم خصوصی و $\varepsilon_{\text{sm}}$ پارامتر هموارسازی در \lr{smooth min-entropy} است. این تقسیم در \lr{\texttt{EpsilonAllocation}} ذخیره شده و در متد \lr{\texttt{validate}} با یک \lr{policy function} بررسی می‌شود که مجموع $\varepsilon$ها از کل مجاز تجاوز نکند.
+
+\subsection{تخمین پارامتر و کران‌های آماری}
+
+در پروتکل‌های \lr{Decoy-State}، آلیس به طور تصادفی شدت پالس را میان چندین حالت (سیگنال، \lr{decoy} کم‌شدت و خلأ) تغییر می‌دهد و باب تعداد آشکارسازی‌ها و خطاها را در هر حالت می‌شمارد. هدف، تخمین کران پایین بازده تک‌فوتونی $Y_1^L$ و کران بالای خطای تک‌فوتونی $e_1^U$ است. به دلیل ماهیت تصادفی این شمارش‌ها، تخمین قطعی ممکن نیست و باید از کران‌های آماری استفاده کرد. این ماژول سه روش را پشتیبانی می‌کند: \lr{Clopper-Pearson}، \lr{Hoeffding} و \lr{Gaussian}.
+
+\lr{Clopper-Pearson} دقیق‌ترین روش و بر پایه توزیع \lr{Beta} است. اگر $k$ آشکارسازی از $n$ پالس مشاهده شود، کران پایین و بالا برای احتمال واقعی $p$ به این شکل به دست می‌آیند:
+\begin{align}
+	p_{\text{lower}} &= B\!\left(\frac{\alpha}{2};\, k,\, n-k+1\right), \\
+	p_{\text{upper}} &= B\!\left(1-\frac{\alpha}{2};\, k+1,\, n-k\right),
+\end{align}
+که در آن $B(q; a, b)$ تابع \lr{quantile} توزیع \lr{Beta} و $\alpha$ احتمال شکست است. این کران‌ها محافظه‌کارانه‌ترین کران ممکن هستند و در عین حال نیازمند محاسبه \lr{\texttt{beta.ppf}} از \lr{SciPy} با نسخه حداقل 1.8 می‌باشند؛ به همین دلیل فایل در ابتدا بررسی نسخه انجام می‌دهد. \lr{Hoeffding} تقریبی‌تر اما ساده‌تر است:
+\begin{equation}
+	p \;\in\; \left[\hat{p} - \sqrt{\frac{\ln(1/\alpha)}{2n}},\; \hat{p} + \sqrt{\frac{\ln(1/\alpha)}{2n}}\right],
+\end{equation}
+که در آن $\hat{p} = k/n$. در نهایت \lr{Gaussian} از تقریب نرمال استفاده می‌کند:
+\begin{equation}
+	p \;\in\; \left[\hat{p} - z_{1-\alpha/2}\sqrt{\frac{\hat{p}(1-\hat{p})}{n}},\; \hat{p} + z_{1-\alpha/2}\sqrt{\frac{\hat{p}(1-\hat{p})}{n}}\right].
+\end{equation}
+این سه روش در متد \lr{\texttt{get\_bounds}} با توجه به \lr{\texttt{ci\_method}} در \lr{\texttt{QKDParams}} انتخاب می‌شوند.
+
+\subsection{آنتروپی باینری و تقویت حریم خصوصی}
+
+آنتروپی باینری \lr{Shannon} یک عنصر محوری در محاسبه طول کلید امن است:
+\begin{equation}
+	h(p) \;=\; -p\,\log_2(p) - (1-p)\,\log_2(1-p).
+\end{equation}
+در اثبات‌های مبتنی بر \lr{GLLP} و \lr{Ma 2005}، طول کلید امن به صورت زیر به دست می‌آید:
+\begin{equation}
+	\ell \;=\; s_{z,1}^L\left[1 - h\!\left(e_{\text{ph}}^U\right)\right] - \lambda_{\text{EC}} - 6\,\log_2\!\left(\frac{19}{\varepsilon_{\text{sec}}}\right) - \log_2\!\left(\frac{2}{\varepsilon_{\text{cor}}}\right),
+\end{equation}
+که در آن $s_{z,1}^{L}$ کران پایین تعداد آشکارسازی‌های تک‌فوتونی در پایهٔ $Z$، $e_{\mathrm{ph}}^{U}$ کران بالای خطای فاز، $\lambda_{\mathrm{EC}}$ میزان نشت اطلاعات ناشی از تصحیح خطا و $\varepsilon_{\mathrm{cor}}$ پارامتر صحت است. محاسبهٔ $h(p)$ در نزدیکی کران‌های $p = 0$ و $p = 1$، به‌دلیل حضور عبارت‌های $p\log p$ و $(1-p)\log(1-p)$، از نظر عددی ناپایدار می‌شود؛ هرچند طبق قرارداد ریاضی، $0\log 0 = 0$ در نظر گرفته می‌شود. ازاین‌رو، متد \lr{\texttt{binary\_entropy}} با استفاده از \lr{\texttt{np.clip}} مقدار $p$ را به بازهٔ $[\delta, 1-\delta]$ محدود می‌کند، که در آن
+\[
+\delta = \texttt{ENTROPY\_PROB\_CLAMP}.
+\]
+این محدودسازی، همراه با استفاده از \lr{\texttt{np.nan\_to\_num}}، تضمین می‌کند که خروجی همواره مقداری متناهی و قابل‌استفاده باشد.
+
+
+\subsection{برنامه‌ریزی خطی در تخمین \lr{Decoy}}
+
+تخمین $Y_1^L$ معمولاً به حل یک مسأله برنامه‌ریزی خطی (\lr{LP}) نیاز دارد. در چارچوب \lr{Ma 2005}، این مسأله با حداقل‌سازی $Y_1$ تحت قیود فیزیکی که از معادلات تعادل بازده به دست می‌آیند، صورت می‌گیرد. اگر \lr{solver} نتواند جواب بهینه پیدا کند یا باقی‌مانده \lr{LP} بزرگ باشد، \lr{\texttt{SolverDiagnostics}} این وضعیت را ثبت می‌کند و متد \lr{\texttt{\_conservative\_decoy\_estimate}} یک تخمین محافظه‌کارانه با $Y_1^L = 0$ و $e_1^U = 0.5$ برمی‌گرداند. این مقدار به معنای آن است که در بدترین حالت، هیچ تک‌فوتونی امن قابل استخراج نیست و طول کلید صفر می‌شود.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+
+\subsection{واردسازی وابستگی‌ها}
+
+فایل با یک مجموعه \lr{try/except} ساختارمند برای واردسازی وابستگی‌های داخلی و خارجی آغاز می‌شود. این الگو دو هدف را دنبال می‌کند: نخست، در صورت نبود یک وابستگی، پیام خطای روشنی با \lr{\texttt{ConfigurationError}} تولید شود و دوم، بررسی نسخه \lr{SciPy} حداقل 1.8 تضمین گردد. این بررسی به دلیل رفتار متفاوت \lr{\texttt{beta.ppf}} در نسخه‌های قدیمی ضروری است. کد مربوطه به این شکل است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		try:
+		import scipy
+		from scipy import special
+		from scipy.stats import beta
+		if tuple(map(int, scipy.__version__.split('.')[:2])) < (1, 8):
+		raise ConfigurationError(
+		"SciPy >= 1.8 is required for reliable beta.ppf behavior.",
+		code=QKDErrorCode.CONFIG,
+		context={"installed_version": scipy.__version__,
+			"required_version": ">=1.8"}
+		)
+		except ImportError as exc:
+		raise ConfigurationError(
+		"SciPy is required for Clopper-Pearson confidence intervals.",
+		code=QKDErrorCode.CONFIG,
+		cause=exc
+		) from exc
+	\end{lstlisting}
+\end{LTR}
+
+در خط اول، \lr{\texttt{scipy}} به عنوان ماژول اصلی وارد می‌شود. در خط دوم، زیرماژول \lr{\texttt{special}} برای توابع خاص ریاضی مانند \lr{\texttt{betainc}} و در خط سوم توزیع \lr{beta} برای محاسبه \lr{quantile} در کران‌های \lr{Clopper-Pearson} وارد می‌شوند. خط چهارم نسخه را تجزیه و مقایسه می‌کند و در صورت عدم تطابق، استثنای سفارشی با \lr{\texttt{QKDErrorCode.CONFIG}} پرتاب می‌کند. این کد طراحی شده تا در محیط‌های عملیاتی که نسخه‌های قدیمی \lr{SciPy} ممکن است نصب باشند، پیش از وقوع خطای عددی غیرقابل ردیابی، متوقف شود.
+
+علاوه بر این، یک واردسازی امن برای \lr{\texttt{mpmath}} وجود دارد که در صورت موجود بودن، امکان محاسبات با دقت دلخواه را فراهم می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		try:
+		import mpmath
+		except ImportError:
+		mpmath = None
+	\end{lstlisting}
+\end{LTR}
+
+این الگو از نوع \lr{optional dependency} است؛ یعنی اگر \lr{\texttt{mpmath}} نصب نباشد، برنامه متوقف نمی‌شود بلکه متغیر \lr{\texttt{mpmath}} روی \lr{\texttt{None}} تنظیم می‌شود و کد می‌تواند با استفاده از شرط \lr{\texttt{use\_mpmath}} تصمیم بگیرد که از مسیر دقت بالا استفاده کند یا خیر.
+
+\subsection{ثابت‌های ماژول و \texorpdfstring{\lr{TypeAlias}}{TypeAlias}}
+
+دو ثابت نمادین در سطح ماژول برای کلیدهای آماری تعریف می‌شوند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		TALLY_KEY_Z_SIGNAL = "Z_signal"
+		TALLY_KEY_X_SIGNAL = "X_signal"
+	\end{lstlisting}
+\end{LTR}
+
+این دو ثابت نشان‌دهنده پایه‌های اندازه‌گیری در پروتکل \lr{BB84} هستند. پایه $Z$ پایه محاسباتی استاندارد و پایه $X$ پایه \lr{Hadamard} است. در \lr{Decoy-State}، آلیس و باب پس از تبادل، آمار را بر اساس پایه تفکیک می‌کنند تا بتوانند خطای فاز $e_{\text{ph}}$ را به صورت جداگانه از خطای بیت $e_{\text{bit}}$ تخمین بزنند. استفاده از ثابت به جای رشته خام، خطاهای تایپی را حذف می‌کند و در بازبینی کد به وضوح مشخص می‌کند که چه کلیدی مورد نظر است.
+
+همچنین \lr{\texttt{T = TypeVar("T")}} برای استفاده در توابع عمومی تعریف شده و \lr{\texttt{\_\_version\_\_ = "4.2.0"}} نسخه فعلی ماژول را مشخص می‌کند. این نسخه در گزارش‌های \lr{audit} درج می‌شود تا در صورت بروز مشکل، نسخه دقیق کد قابل ردیابی باشد.
+
+\subsection{شمارش‌ها و \lr{Enum}های خطا}
+
+\lr{\texttt{ProofMode}} یک \lr{Enum} سه‌حالتی است که رفتار سیستم در مواجهه با خطاهای عددی و هشدارها را تعیین می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class ProofMode(Enum):
+		PRODUCTION = auto()
+		DEBUG = auto()
+		AUDIT = auto()
+	\end{lstlisting}
+\end{LTR}
+
+حالت \lr{PRODUCTION} حالت پیش‌فرض است که در آن خطاهای غیربحرانی با هشدار \lr{log} می‌شوند و اجرا ادامه می‌یابد. حالت \lr{DEBUG} برای محیط توسعه است و اطلاعات بیشتری در \lr{log} ثبت می‌کند. حالت \lr{AUDIT} سخت‌گیرانه‌ترین حالت است که در آن هر گونه انحراف از شرط‌های فیزیکی یا عددی به استثنای کامل منجر می‌شود. این حالت برای کاربردهای حساس مانند \lr{certification} یا بازبینی توسط شخص ثالث طراحی شده است. متدهای \lr{\texttt{is\_audit\_mode}} و \lr{\texttt{is\_debug\_mode}} در کلاس پایه به این \lr{Enum} متکی‌اند تا تصمیم‌گیری در مورد رفتار خطا را ساده کنند.
+
+\lr{\texttt{ErrorCode}} شش کد خطای متمایز را تعریف می‌کند که در گزارش نتیجه محاسبه کلید استفاده می‌شوند تا علت دقیق تولید نشدن کلید قابل ردیابی باشد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class ErrorCode(Enum):
+		INSUFFICIENT_STATISTICS = auto()
+		LP_INFEASIBLE = auto()
+		NUMERICAL_CLAMP_APPLIED = auto()
+		LEAKAGE_EXCEEDS_ENTROPY = auto()
+		HIGH_SOLVER_RESIDUAL = auto()
+		SAFE_DIVIDE_FALLBACK = auto()
+	\end{lstlisting}
+\end{LTR}
+
+هر یک از این کدها به یک شرایط مشخص اشاره دارد. \lr{INSUFFICIENT\_STATISTICS} زمانی فعال می‌شود که $Y_1^L$ از آستانه \lr{\texttt{min\_y1\_threshold}} کمتر باشد. \lr{LP\_INFEASIBLE} نشان‌دهنده ناپذیرفتگی مسأله برنامه‌ریزی خطی است. \lr{NUMERICAL\_CLAMP\_APPLIED} هشدار می‌دهد که یک مقدار منفی به صفر \lr{clamp} شده است. \lr{LEAKAGE\_EXCEEDS\_ENTROPY} بحرانی‌ترین کد است و نشان می‌دهد که نشت تصحیح خطا و تقویت حریم خصوصی از آنتروپی قابل استخراج بیشتر شده است. \lr{HIGH\_SOLVER\_RESIDUAL} باقی‌مانده بالای \lr{solver} را علامت می‌زند و \lr{SAFE\_DIVIDE\_FALLBACK} نشان می‌دهد که تقسیم ایمن به مقدار پیش‌فرض بازگشته است.
+
+\subsection{\lr{Dataclass}های داده}
+
+\subsubsection{\lr{TallyCounts}}
+
+این \lr{dataclass} ساده اما حیاتی است و دو فیلد دارد: \lr{detections} و \lr{errors}. هر دو از نوع \lr{\texttt{int}} و با مقدار پیش‌فرض صفر تعریف شده‌اند. با استفاده از \lr{\texttt{@dataclass(frozen=True)}} غیرقابل تغییر شده و در متد \lr{\texttt{\_\_post\_init\_\_}} دو شرط اعتبارسنجی دارد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass(frozen=True)
+		class TallyCounts:
+		detections: int = 0
+		errors: int = 0
+		
+		def __post_init__(self):
+		if self.detections < 0 or self.errors < 0:
+		raise QKDParamError(
+		"Tally counts cannot be negative.",
+		code=QKDErrorCode.PARAM_VALIDATION,
+		context={"detections": self.detections, "errors": self.errors}
+		)
+		if self.errors > self.detections:
+		raise QKDParamError(
+		f"Error count ({self.errors}) cannot exceed detection count ({self.detections}).",
+		code=QKDErrorCode.PARAM_VALIDATION,
+		context={"detections": self.detections, "errors": self.errors}
+		)
+	\end{lstlisting}
+\end{LTR}
+
+شرط نخست عدم منفی بودن شمارش‌ها را تضمین می‌کند که یک ضرورت فیزیکی است. شرط دوم منطقی‌تر است: تعداد خطاها نمی‌تواند از تعداد آشکارسازی‌ها بیشتر باشد، زیرا هر خطا نیازمند یک آشکارسازی است. استفاده از \lr{\texttt{frozen=True}} اطمینان می‌دهد که پس از ساخت، شمارش‌ها قابل تغییر نیستند و در نتیجه در سراسر محاسبات ثابت می‌مانند. این ویژگی برای صحت‌سنجی نتایج و جلوگیری از تغییرات ناخواسته در طول محاسبات بسیار مهم است.
+
+\subsubsection{\lr{EpsilonAllocation}}
+
+این ساختار تقسیم بودجه $\varepsilon$ را در چهار مؤلفه نگه می‌دارد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass
+		class EpsilonAllocation:
+		eps_sec: float
+		eps_pe: float
+		eps_smooth: float
+		eps_pa: float
+		
+		def validate(self, policy: Callable[["EpsilonAllocation"], float]) -> None:
+		consumed = policy(self)
+		if consumed > self.eps_sec:
+		raise QKDParamError(
+		f"Epsilon allocation exceeds budget: {consumed:.2e} > {self.eps_sec:.2e}",
+		code=QKDErrorCode.PARAM_VALIDATION,
+		context={"consumed": consumed, "budget": self.eps_sec,
+			"policy": policy.__name__}
+		)
+	\end{lstlisting}
+\end{LTR}
+
+برخلاف \lr{TallyCounts}، این کلاس \lr{frozen} نیست زیرا ممکن است زیرکلاس‌ها در طول زمان تخصیص را تنظیم کنند. متد \lr{\texttt{validate}} یک \lr{policy function} می‌گیرد که جمع موزون $\varepsilon$ها را محاسبه می‌کند و اگر از کل بودجه $\varepsilon_{\text{sec}}$ تجاوز کند، استثنا پرتاب می‌کند. این الگو به زیرکلاس‌ها اجازه می‌دهد سیاست‌های متفاوتی برای تخصیص $\varepsilon$ پیاده‌سازی کنند (مثلاً تخصیص مساوی، تخصیص بر اساس اهمیت نسبی یا تخصیص بهینه) بدون آنکه کلاس پایه وابستگی به سیاست خاصی داشته باشد.
+
+\subsubsection{\lr{SolverDiagnostics}}
+
+این \lr{dataclass} برای ثبت اطلاعات مربوط به حل مسأله \lr{LP} در تخمین \lr{Decoy} به کار می‌رود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass(frozen=True)
+		class SolverDiagnostics:
+		solver_name: str
+		is_success: bool
+		status_message: str
+		residual_norm: Optional[float] = None
+		timings: Dict[str, float] = field(default_factory=dict)
+		numeric_diagnostics: Dict[str, Any] = field(default_factory=dict)
+	\end{lstlisting}
+\end{LTR}
+
+فیلد \lr{\texttt{solver\_name}} نام \lr{solver} (مانند \lr{scipy.optimize.linprog} یا \lr{cvxopt}) را ذخیره می‌کند. \lr{\texttt{is\_success}} نشان می‌دهد که آیا \lr{solver} به راه‌حل بهینه دست یافته است یا خیر. \lr{\texttt{status\_message}} پیام متنی \lr{solver} را نگه می‌دارد. \lr{\texttt{residual\_norm}} نرم باقی‌مانده مسأله را نشان می‌دهد و در تشخیص کیفیت راه‌حل کاربرد دارد. دو فیلد \lr{\texttt{timings}} و \lr{\texttt{numeric\_diagnostics}} از نوع \lr{\texttt{Dict}} با \lr{\texttt{default\_factory=dict}} هستند تا در صورت عدم ارائه مقدار، دیکشنری خالی ایجاد شود. استفاده از \lr{\texttt{default\_factory}} به جای مقدار پیش‌فرض مستقیم، از مشکل معروف \lr{mutable default argument} در پایتون جلوگیری می‌کند.
+
+\subsubsection{\lr{DecoyEstimates}}
+
+این ساختار خروجی اصلی مرحله تخمین \lr{Decoy} است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass(frozen=True)
+		class DecoyEstimates:
+		yield_1_lower_bound: float
+		error_rate_1_upper_bound: float
+		is_feasible: bool
+		failure_prob_used: float
+		diagnostics: SolverDiagnostics
+		
+		def __repr__(self) -> str:
+		return (f"DecoyEstimates(Y1_L={self.yield_1_lower_bound:.2e}, "
+		f"e1_U={self.error_rate_1_upper_bound:.3f}, feasible={self.is_feasible})")
+		
+		def as_serializable(self) -> Dict[str, Any]:
+		data = asdict(self, dict_factory=_json_safe_dict)
+		data['metadata'] = {
+			'schema_version': '1.2', 'lib_version': __version__,
+			'numpy_version': np.__version__, 'scipy_version': scipy.__version__,
+		}
+		return data
+	\end{lstlisting}
+\end{LTR}
+
+دو فیلد اصلی \lr{\texttt{yield\_1\_lower\_bound}} (یعنی $Y_1^L$) و \lr{\texttt{error\_rate\_1\_upper\_bound}} (یعنی $e_1^U$) هستند که مستقیماً در فرمول طول کلید وارد می‌شوند. \lr{\texttt{is\_feasible}} نشان می‌دهد که آیا \lr{LP} یک راه‌حل قابل قبول پیدا کرده است یا خیر. \lr{\texttt{failure\_prob\_used}} احتمال شکستی است که در محاسبه کران‌ها استفاده شده (معمولاً $\varepsilon_{\text{PE}}$). متد \lr{\texttt{as\_serializable}} با استفاده از \lr{\texttt{\_json\_safe\_dict}} نوع‌های \lr{numpy} و \lr{Enum} را به نوع‌های بومی پایتون تبدیل می‌کند و متادیتای نسخه را اضافه می‌کند تا خروجی به راحتی به \lr{JSON} سریال‌سازی شود.
+
+\subsubsection{\lr{KeyCalculationResult}}
+
+این \lr{dataclass} مهم‌ترین خروجی کل اثبات امنیتی است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass(frozen=True)
+		class KeyCalculationResult:
+		secure_key_length: int
+		privacy_amplification_term: float
+		error_correction_leakage: float
+		phase_error_rate_upper_bound: float
+		diagnostics: Any = field(default_factory=dict, repr=False)
+		error_codes: list[ErrorCode] = field(default_factory=list)
+		weak_gllp_rate: Optional[float] = None
+		tagged_fraction_bound: Optional[float] = None
+	\end{lstlisting}
+\end{LTR}
+
+چهار فیلد اصلی \lr{\texttt{secure\_key\_length}} ($\ell$)، \lr{\texttt{privacy\_amplification\_term}} (جریمه تقویت حریم خصوصی)، \lr{\texttt{error\_correction\_leakage}} ($\lambda_{\text{EC}}$) و \lr{\texttt{phase\_error\_rate\_upper\_bound}} ($e_{\text{ph}}^U$) هستند. \lr{\texttt{diagnostics}} از نوع \lr{\texttt{Any}} تعریف شده تا هم لیست رشته و هم دیکشنری ساختاریافته را بپذیرد. دو فیلد اختیاری \lr{\texttt{weak\_gllp\_rate}} و \lr{\texttt{tagged\_fraction\_bound}} برای مقایسه با چارچوب \lr{GLLP} سنتی طراحی شده‌اند. \lr{\texttt{tagged\_fraction\_bound}} کسر فوتون‌های برچسب‌خورده (تک‌فوتون‌هایی که اطلاعات فاز آن‌ها نشت کرده) را نشان می‌دهد و در فرمول \lr{GLLP} نرخ کلید را به صورت زیر محدود می‌کند:
+\begin{equation}
+	R_{\text{GLLP}} \;\ge\; q\,\left[Q_1\,(1 - h(e_1^U)) - Q_{\mu}\,f\,h(E_{\mu})\right],
+\end{equation}
+که در آن $Q_1$ بازده تک‌فوتونی، $Q_{\mu}$ بازده سیگنال، $E_{\mu}$ خطای بیت سیگنال و $f$ کارایی تصحیح خطا است.
+
+\subsection{کلاس پایه انتزاعی \lr{FiniteKeyProof}}
+
+این کلاس با \lr{\texttt{ABC}} به عنوان کلاس پایه انتزاعی تعریف شده و سه ویژگی کلاسی دارد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		class FiniteKeyProof(ABC):
+		__implementation_version__: str = "0.0.0"
+		allowed_ci_methods: frozenset[ConfidenceBoundMethod] = frozenset(ConfidenceBoundMethod)
+		min_y1_threshold: float = 1e-9
+	\end{lstlisting}
+\end{LTR}
+
+\lr{\texttt{\_\_implementation\_version\_\_}} به زیرکلاس‌ها اجازه می‌دهد نسخه پیاده‌سازی خود را ثبت کنند. \lr{\texttt{allowed\_ci\_methods}} یک \lr{frozenset} از روش‌های مجاز کران آماری است که به صورت پیش‌فرض همه روش‌های \lr{\texttt{ConfidenceBoundMethod}} را شامل می‌شود؛ زیرکلاس‌ها می‌توانند آن را محدودتر کنند. \lr{\texttt{min\_y1\_threshold}} آستانه $10^{-9}$ برای $Y_1^L$ است که اگر کمتر از آن باشد، تخمین به عنوان غیر قابل اتکا در نظر گرفته می‌شود. این آستانه بر اساس تجربه عملی تنظیم شده تا از تولید کلید نامعتبر در شرایط آمار ضعیف جلوگیری کند.
+
+متد سازنده \lr{\texttt{\_\_init\_\_}} مجموعه‌ای از تنظیمات اولیه را انجام می‌دهد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def __init__(self, params: QKDParams, mode: ProofMode = ProofMode.PRODUCTION):
+		self.p = params
+		self.mode = mode
+		self.logger = logging.getLogger(self.__class__.__name__)
+		self.run_id = getattr(params, 'run_id', 'no-run-id')
+		self.min_prob_clamp = getattr(params, 'entropy_clamp', ENTROPY_PROB_CLAMP)
+		self.use_mpmath = getattr(params, 'use_mpmath', False) and mpmath is not None
+		
+		self.logger.info("event=init run_id=%s proof=%s version=%s numpy=%s scipy=%s",
+		self.run_id, self.__class__.__name__, self.__implementation_version__,
+		np.__version__, scipy.__version__)
+		
+		self.validate_physical_params()
+		self._check_notation_map()
+		
+		if self.p.ci_method not in self.allowed_ci_methods:
+		msg = f"CI method '{self.p.ci_method.name}' is not recommended for this proof."
+		if self.is_audit_mode():
+		raise QKDParamError(
+		msg,
+		code=QKDErrorCode.PARAM_VALIDATION,
+		context={"ci_method": self.p.ci_method.name,
+			"allowed": [m.name for m in self.allowed_ci_methods]}
+		)
+		self.logger.warning("[%s] %s", self.run_id, msg)
+		
+		self.eps_alloc = self.allocate_epsilons()
+		self.eps_alloc.validate()
+	\end{lstlisting}
+\end{LTR}
+
+در خطوط نخست، پارامترهای QKD و حالت اجرا ذخیره می‌شوند. سپس یک \lr{logger} اختصاصی با نام کلاس ایجاد می‌شود تا لاگ‌ها به راحتی فیلتر شوند. \lr{\texttt{run\_id}} شناسه یکتای اجرا است که در صورت عدم تنظیم، مقدار \lr{\texttt{'no-run-id'}} می‌گیرد. \lr{\texttt{min\_prob\_clamp}} حد \lr{clamp} احتمالات در محاسبه آنتروپی است که از پارامترها خوانده می‌شود و در صورت نبود، از ثابت \lr{\texttt{ENTROPY\_PROB\_CLAMP}} استفاده می‌کند. \lr{\texttt{use\_mpmath}} پرچمی است که در صورت تنظیم در پارامترها و موجود بودن \lr{mpmath}، فعال می‌شود. سپس متدهای \lr{\texttt{validate\_physical\_params}} و \lr{\texttt{\_check\_notation\_map}} فراخوانی می‌شوند تا صحت پارامترها و پیاده‌سازی زیرکلاس بررسی شود. در ادامه، اگر روش \lr{CI} مورد استفاده در فهرست مجاز نباشد، در حالت \lr{AUDIT} استثنا پرتاب می‌شود و در غیر این صورت هشدار داده می‌شود. نهایتاً، \lr{\texttt{allocate\_epsilons}} فراخوانی شده و اعتبارسنجی می‌شود.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+
+\subsection{تبدیل نوع‌ها برای \lr{JSON}}
+
+تابع کمکی \lr{\texttt{\_json\_safe\_dict}} یک \lr{dict\_factory} برای \lr{\texttt{asdict}} است که نوع‌های \lr{numpy} و \lr{Enum} را به نوع‌های بومی پایتون تبدیل می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _json_safe_dict(data: Iterable[Tuple[str, Any]]) -> Dict[str, Any]:
+		"""Recursively converts numpy/enum types to native Python types for JSON."""
+		d: Dict[str, Any] = {}
+		for key, value in data:
+		if isinstance(value, (np.integer, np.int64)):
+		d[key] = int(value)
+		elif isinstance(value, (np.floating, np.float64)):
+		d[key] = float(value)
+		elif isinstance(value, np.ndarray):
+		if value.size > 1000:
+		d[key] = {'data': value[:1000].tolist(), 'truncated': True}
+		else:
+		d[key] = value.tolist()
+		elif isinstance(value, np.bool_):
+		d[key] = bool(value)
+		elif isinstance(value, Enum):
+		d[key] = value.name
+		elif isinstance(value, dict):
+		d[key] = _json_safe_dict(value.items())
+		else:
+		d[key] = value
+		return d
+	\end{lstlisting}
+\end{LTR}
+
+این تابع برای هر جفت کلید-مقدار، نوع مقدار را بررسی می‌کند. اگر \lr{np.integer} یا \lr{np.int64} باشد به \lr{\texttt{int}} تبدیل می‌شود. اگر \lr{np.floating} یا \lr{np.float64} باشد به \lr{\texttt{float}} تبدیل می‌شود. برای آرایه‌های \lr{numpy}، اگر اندازه از 1000 تجاوز کند، تنها 1000 عنصر اول به همراه پرچم \lr{\texttt{truncated}} ذخیره می‌شوند تا حجم گزارش \lr{audit} کنترل‌پذیر بماند. این تصمیم طراحی بر اساس تجربه عملی اتخاذ شده، زیرا در شبیه‌سازی‌های بزرگ آرایه‌های ده‌ها هزار عنغانی می‌توانند گزارش را غیرقابل مدیریت کنند. \lr{np.bool\_} به \lr{\texttt{bool}} و \lr{Enum} به نام آن تبدیل می‌شود. اگر مقدار خود دیکشنری باشد، فراخوانی بازگشتی انجام می‌شود. این تابع در متدهای \lr{\texttt{as\_serializable}} \lr{DecoyEstimates} و \lr{KeyCalculationResult} استفاده می‌شود.
+
+\subsection{کران‌های آماری در عمل}
+
+متد \lr{\texttt{get\_bounds}} مهم‌ترین تابع آماری کلاس پایه است. این متد کران پایین و بالا را برای یک احتمال ناشناخته $p$ بر اساس $k$ موفقیت در $n$ آزمایش با احتمال شکست \lr{\texttt{failure\_prob}} محاسبه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def get_bounds(self, k: int, n: int, failure_prob: float,
+		sided: Literal["two", "one_upper", "one_lower"] = "two",
+		diagnostics: Dict | None = None) -> Tuple[float, float]:
+		k, n = int(k), int(n)
+		if not (0 <= k <= n):
+		raise QKDParamError(
+		f"k must be in [0, n], got k={k}, n={n}.",
+		code=QKDErrorCode.PARAM_VALIDATION,
+		context={"k": k, "n": n}
+		)
+		if not (1e-300 < failure_prob < 1):
+		raise QKDParamError(
+		f"Failure probability must be in (1e-300, 1), got {failure_prob}.",
+		param_name="failure_prob",
+		param_value=failure_prob,
+		code=QKDErrorCode.PARAM_VALIDATION
+		)
+		if n == 0: return (0.0, 1.0)
+		alpha = float(failure_prob if sided != "two" else failure_prob / 2.0)
+		
+		if diagnostics is not None:
+		diagnostics['alpha_used'] = alpha
+		
+		sided_arg = "two-sided" if sided == "two" else ("upper" if sided == "one_upper" else "lower")
+		
+		if self.p.ci_method == ConfidenceBoundMethod.CLOPPER_PEARSON:
+		interval = qkd_math.clopper_pearson_bounds(k, n, failure_prob, side=sided_arg)
+		lower, upper = interval.lower, interval.upper
+		elif self.p.ci_method == ConfidenceBoundMethod.HOEFFDING:
+		interval = qkd_math.hoeffding_bounds(k, n, failure_prob, side=sided_arg)
+		lower, upper = interval.lower, interval.upper
+		elif self.p.ci_method == ConfidenceBoundMethod.GAUSSIAN:
+		interval = qkd_math.gaussian_bounds(k, n, failure_prob, side=sided_arg)
+		lower, upper = interval.lower, interval.upper
+		else:
+		raise QKDSimulationError(
+		f"CI method '{self.p.ci_method.name}' not implemented.",
+		code=QKDErrorCode.CONFIG,
+		context={"ci_method": self.p.ci_method.name}
+		)
+		
+		self._assert_finite("lower bound", lower)
+		self._assert_finite("upper bound", upper)
+		return (lower, upper)
+	\end{lstlisting}
+\end{LTR}
+
+ابتدا $k$ و $n$ به \lr{\texttt{int}} تبدیل می‌شوند تا از خطاهای نوع \lr{numpy} جلوگیری شود. شرط $0 \le k \le n$ یک ضرورت منطقی است: تعداد موفقیت‌ها نمی‌تواند از تعداد آزمایش‌ها بیشتر باشد یا منفی باشد. شرط $10^{-300} < $ \lr{\texttt{failure\_prob}} $ < 1$ محدوده معتبر احتمال شکست را تضمین می‌کند. کران پایین $10^{-300}$ به جای صفر تنظیم شده تا از خطاهای عددی در محاسبات \lr{log} جلوگیری شود. اگر $n = 0$ باشد، یعنی هیچ آزمایشی انجام نشده، کران پیش‌فرض $(0, 1)$ برگردانده می‌شود که نشان‌دهنده عدم اطلاع است.
+
+پارامتر \lr{\texttt{sided}} سه حالت دارد: \lr{two} برای کران دو طرفه، \lr{one\_upper} برای کران بالا فقط و \lr{one\_lower} برای کران پایین فقط. در حالت دو طرفه، $\alpha$ به دو نیم تقسیم می‌شود تا کران از هر دو طرف پوشش $1-\alpha$ داشته باشد. این تنظیم به صورت زیر فرمول‌بندی می‌شود:
+\begin{equation}
+	\alpha_{\text{eff}} = \begin{cases}
+		\alpha/2 & \text{if } \text{sided} = \text{two}, \\
+		\alpha   & \text{otherwise}.
+	\end{cases}
+\end{equation}
+
+سپس بر اساس \lr{\texttt{ci\_method}} در پارامترها، تابع مربوطه از ماژول \lr{\texttt{qkd\_math}} فراخوانی می‌شود. هر سه تابع یک شیء \lr{interval} با ویژگی‌های \lr{\texttt{lower}} و \lr{\texttt{upper}} برمی‌گردانند. در پایان، متد \lr{\texttt{\_assert\_finite}} مقادیر را بررسی می‌کند تا اطمینان حاصل شود که متناهی هستند. در حالت \lr{AUDIT}، مقدار نامتناهی به استثنا منجر می‌شود.
+
+\subsection{محاسبه آنتروپی باینری}
+
+متد \lr{\texttt{binary\_entropy}} آنتروپی باینری را به صورت برداری محاسبه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def binary_entropy(self, p_err: float | np.ndarray | list) -> float | np.ndarray:
+		p = np.asarray(p_err, dtype=np.float64)
+		p = np.clip(p, self.min_prob_clamp, 1.0 - self.min_prob_clamp)
+		with np.errstate(divide='ignore', invalid='ignore',
+		over='raise' if self.is_audit_mode() else 'warn'):
+		h = -p * np.log2(p) - (1 - p) * np.log2(1 - p)
+		h = np.nan_to_num(h, nan=0.0)
+		return h.item() if isinstance(p_err, (float, int)) else h
+	\end{lstlisting}
+\end{LTR}
+
+ورودی می‌تواند یک عدد، یک لیست یا یک آرایه \lr{numpy} باشد. در خط دوم، ورودی به آرایه \lr{\texttt{float64}} تبدیل می‌شود. در خط سوم، مقدار $p$ به بازه $[\delta, 1-\delta]$ محدود می‌شود که در آن $\delta = $ \lr{\texttt{min\_prob\_clamp}}. این \lr{clip} از محاسبه $\log(0)$ که به $-\infty$ منجر می‌شود، جلوگیری می‌کند. محاسبه آنتروپی به صورت زیر انجام می‌شود:
+\begin{equation}
+	h(p) = -p\,\log_2(p) - (1-p)\,\log_2(1-p),
+\end{equation}
+که با توجه به \lr{clip}، همواره مقدار متناهی خواهد داشت. با این حال، به دلیل احتمال سرریز در محاسبات \lr{log} برای مقادیر بسیار کوچک، از \lr{\texttt{np.errstate}} برای کنترل رفتار خطا استفاده می‌شود. در حالت \lr{AUDIT}، سرریز به استثنا تبدیل می‌شود و در غیر این صورت هشدار داده می‌شود. در نهایت، \lr{\texttt{np.nan\_to\_num}} هر مقدار \lr{NaN} باقی‌مانده را به صفر تبدیل می‌کند. اگر ورودی اصلی یک عدد بوده، خروجی هم به صورت اسکالر با \lr{\texttt{.item()}} برگردانده می‌شود.
+
+\subsection{متدهای ایمن عددی}
+
+کلاس پایه چهار متد کمکی برای مدیریت شرایط عددی بحرانی دارد. متد \lr{\texttt{\_safe\_log}} برای محاسبه لگاریتم طبیعی با حداقل مقدار ایمن استفاده می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _safe_log(self, x: float) -> float:
+		if x < 1e-300:
+		if self.is_audit_mode():
+		raise QKDSimulationError(
+		"Log argument too small in AUDIT mode.",
+		code=QKDErrorCode.SIMULATION,
+		context={"x": x}
+		)
+		self.logger.warning("Log argument %e is smaller than safe limit, clamping.", x)
+		x = 1e-300
+		return math.log(x)
+	\end{lstlisting}
+\end{LTR}
+
+اگر $x$ کمتر از $10^{-300}$ باشد، در حالت \lr{AUDIT} استثنا پرتاب می‌شود و در غیر این صورت $x$ به $10^{-300}$ \lr{clamp} می‌شود تا از خطای \lr{\texttt{math domain error}} جلوگیری شود. این متد در محاسبات \lr{log-likelihood} و \lr{relative entropy} که در برخی اثبات‌های امنیتی به کار می‌روند، حیاتی است.
+
+متد \lr{\texttt{\_safe\_divide}} برای تقسیم ایمن با مخرج نزدیک به صفر است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _safe_divide(self, num: float, den: float, default: float = 0.0,
+		name: str = '', error_codes: list | None = None) -> float:
+		if abs(den) < NUMERIC_ABS_TOL:
+		if error_codes is not None:
+		error_codes.append(ErrorCode.SAFE_DIVIDE_FALLBACK)
+		self.logger.warning("Denominator for '%s' is near zero (%e). Returning default value %f.",
+		name, den, default)
+		return default
+		return num / den
+	\end{lstlisting}
+\end{LTR}
+
+اگر قدر مطلق مخرج کمتر از \lr{\texttt{NUMERIC\_ABS\_TOL}} باشد، مقدار \lr{\texttt{default}} (پیش‌فرض صفر) برگردانده می‌شود و در صورت ارائه لیست \lr{\texttt{error\_codes}}، کد \lr{\texttt{SAFE\_DIVIDE\_FALLBACK}} به آن اضافه می‌شود. این متد در محاسباتی مانند نسبت خطا به آشکارسازی که ممکن است مخرج صفر داشته باشند، ضروری است.
+
+متد \lr{\texttt{\_clamp\_nonneg}} مقادیر منفی کوچک را به صفر تبدیل می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _clamp_nonneg(self, x: float, name: str, error_codes: list | None = None) -> float:
+		if x < 0:
+		if error_codes is not None:
+		error_codes.append(ErrorCode.NUMERICAL_CLAMP_APPLIED)
+		if x < -NUMERIC_ABS_TOL and self.is_audit_mode():
+		raise QKDSimulationError(
+		f"Negative value for {name} ({x}) exceeded tolerance in AUDIT mode.",
+		code=QKDErrorCode.SIMULATION,
+		context={"name": name, "value": x, "tolerance": -NUMERIC_ABS_TOL}
+		)
+		self.logger.debug("Clamped negative value for %s: %e -> 0.0", name, x)
+		return 0.0
+		return x
+	\end{lstlisting}
+\end{LTR}
+
+مقادیر منفی کوچک (در حد تلورانس) به صفر \lr{clamp} می‌شوند زیرا در محاسبات عددی با نوسانات ممیز شناور، ممکن است مقادیری که باید صفر باشند، منفی کوچک گزارش شوند. اما مقادیر منفی بزرگ در حالت \lr{AUDIT} به استثنا منجر می‌شوند، زیرا نشان‌دهنده خطای منطقی جدی است.
+
+متد \lr{\texttt{\_clamp\_key\_length}} طول کلید نهایی را به عدد صحیح نامنفی تبدیل می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _clamp_key_length(self, l_float: float) -> int:
+		return int(max(0.0, math.floor(l_float)))
+	\end{lstlisting}
+\end{LTR}
+
+ابتدا با \lr{\texttt{max(0.0, ...)}} اطمینان حاصل می‌شود که مقدار منفی نیست، سپس با \lr{\texttt{math.floor}} به عدد صحیح پایین گرد می‌شود و نهایتاً به \lr{\texttt{int}} تبدیل می‌شود. این رفتار محافظه‌کارانه تضمین می‌کند که طول کلید هرگز بیش از مقدار مجاز ریاضی نباشد.
+
+\subsection{مدیریت زمان‌سنجی و گزارش‌گیری \lr{Audit}}
+
+متد \lr{\texttt{\_timed}} یک \lr{context manager} برای ثبت زمان اجرای قطعات کد است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@contextmanager
+		def _timed(self, timings: Dict, key: str) -> Generator:
+		t0 = time.perf_counter()
+		yield
+		timings[key] = time.perf_counter() - t0
+	\end{lstlisting}
+\end{LTR}
+
+با استفاده از \lr{\texttt{time.perf\_counter}} که بالاترین دقت زمان‌سنجی را ارائه می‌دهد، زمان شروع و پایان ثبت شده و اختلاف در دیکشنری \lr{\texttt{timings}} با کلید مربوطه ذخیره می‌شود. این اطلاعات در \lr{\texttt{SolverDiagnostics}} برای شناسایی گلوگاه‌های عملکرد به کار می‌رود.
+
+متد \lr{\texttt{audit\_dump}} یک گزارش کامل از اجرا تولید می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def audit_dump(self, result: KeyCalculationResult, decoy: DecoyEstimates,
+		stats: Dict, start_time: float) -> Dict:
+		dump = {
+			"params": self.p.to_summary_dict(redact=True),
+			"mode": self.mode.name,
+			"proof_implementation": f"{self.__class__.__name__} v{self.__implementation_version__}",
+			"stats_map": {k: asdict(v) for k, v in stats.items()},
+			"decoy_estimates": decoy.as_serializable(),
+			"key_calculation_result": result.as_serializable(),
+			"timestamps": {'start': start_time, 'end': time.time()},
+		}
+		if self.is_audit_mode():
+		y1_margin = decoy.yield_1_lower_bound - self.min_y1_threshold
+		e1_margin = 0.5 - decoy.error_rate_1_upper_bound
+		dump['sensitivity_summary'] = {'y1_margin': y1_margin, 'e1_margin': e1_margin}
+		return dump
+	\end{lstlisting}
+\end{LTR}
+
+گزارش شامل پارامترها (با \lr{\texttt{redact=True}} برای حذف اطلاعات حساس مانند کلیدها)، حالت اجرا، نسخه پیاده‌سازی، آمار کامل، تخمین‌های \lr{Decoy}، نتیجه محاسبه کلید و زمان‌بندی است. در حالت \lr{AUDIT}، یک خلاصه حساسیت اضافه می‌شود که حاشیه $Y_1^L$ نسبت به آستانه و حاشیه $e_1^U$ نسبت به حد 0.5 (حد بی‌اطلاعی) را نشان می‌دهد. این حاشیه‌ها معیار مهمی برای سنجش کیفیت اجرا هستند؛ هرچه حاشیه بیشتر، اجرا امن‌تر است.
+
+\subsection{توضیح تصمیم کلید}
+
+متد \lr{\texttt{explain\_key\_decision}} یک پیام متنی قابل فهم برای انسان تولید می‌کند که علت تولید نشدن کلید را توضیح می‌دهد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def explain_key_decision(self, result: KeyCalculationResult, decoy: DecoyEstimates) -> str:
+		if result.secure_key_length > 0:
+		return f"Secure key generated. Final length: {result.secure_key_length} bits."
+		reasons = []
+		if ErrorCode.INSUFFICIENT_STATISTICS in result.error_codes:
+		reasons.append(f"insufficient single-photon yield (Y1_L={decoy.yield_1_lower_bound:.2e} "
+		f"< threshold={self.min_y1_threshold:.2e})")
+		if ErrorCode.LP_INFEASIBLE in result.error_codes:
+		reasons.append("decoy-state analysis was infeasible")
+		if ErrorCode.LEAKAGE_EXCEEDS_ENTROPY in result.error_codes:
+		reasons.append(f"information leakage ({result.error_correction_leakage + result.privacy_amplification_term:.2f}) "
+		"exceeded available entropy")
+		if not reasons:
+		reasons.append("an unspecified condition led to a non-positive key length")
+		return f"No secure key generated because {', and '.join(reasons)}."
+	\end{lstlisting}
+\end{LTR}
+
+اگر طول کلید مثبت باشد، پیام موفقیت برگردانده می‌شود. در غیر این صورت، بر اساس \lr{\texttt{error\_codes}} در نتیجه، دلایل مختلف جمع‌آوری می‌شوند. اگر هیچ کد خطای مشخصی وجود نداشته باشد، پیام عمومی نمایش داده می‌شود. این متد برای \lr{logging} و گزارش به کاربر نهایی بسیار مفید است و تشخیص علت مشکلات را ساده می‌کند.
+
+\subsection{مشتق کردن \lr{Seed} فرزند با \lr{HMAC}}
+
+تابع \lr{\texttt{derive\_child\_seed}} برای تولید \lr{seed}های قطعی و قابل بازتولید از یک \lr{master seed} استفاده می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@lru_cache(maxsize=128)
+		def derive_child_seed(master_seed: int, index: int) -> int:
+		"""Deterministically derives a child seed. Not for cryptographic use."""
+		key = str(master_seed).encode()
+		msg = str(index).encode()
+		digest = hmac.new(key, msg, digestmod=hashlib.sha256).digest()
+		return int.from_bytes(digest[:8], 'big') % MAX_SEED_INT_PCG64 or 1
+	\end{lstlisting}
+\end{LTR}
+
+این تابع با استفاده از \lr{HMAC-SHA256} یک \lr{seed} فرزند از \lr{master seed} و یک اندیس تولید می‌کند. کلید \lr{HMAC} از \lr{master seed} و پیام از اندیس ساخته می‌شود. سپس 8 بایت اول \lr{digest} به عدد صحیح تبدیل شده و با \lr{\texttt{MAX\_SEED\_INT\_PCG64}} (حداکثر مقدار مجاز برای \lr{PCG64}) modulo می‌شود. عبارت \lr{\texttt{or 1}} اطمینان می‌کند که نتیجه هرگز صفر نباشد زیرا \lr{PCG64} به \lr{seed} غیر صفر نیاز دارد. این تابع با \lr{\texttt{@lru\_cache(maxsize=128)}} کش می‌شود تا در فراخوانی‌های مکرر با همان ورودی، محاسبه مجدد انجام نشود. این مهم است زیرا در شبیه‌سازی‌های بزرگ با هزاران \lr{seed} فرزند، صرفه‌جویی در زمان محاسبه قابل توجه است.
+
+از نظر ریاضی، این تابع به صورت زیر عمل می‌کند:
+\begin{equation}
+	\text{seed}_i = \left(\text{int}_{64}\!\left(\text{HMAC}_{\text{SHA256}}(M, i)\right) \bmod N_{\max}\right) \;\vee\; 1,
+\end{equation}
+که در آن $M$ دانهٔ اصلی (\lr{master seed})، $i$ اندیس و $N_{\max} = \text{\lr{\texttt{MAX\_SEED\_INT\_PCG64}}}$ است. عملگر $\lor$ در اینجا به معنای \lr{OR} بیتی است تا صفر بودن احتمالیِ خروجیِ حاصل را به یک تبدیل کند. توجه شود که در مستندات کد (\lr{docstring}) به‌صراحت اشاره شده است که این تابع برای مصارف غیررمزنگاری طراحی شده و صرفاً برای تولید دانه‌های (\lr{seed}های) تکرارپذیر در شبیه‌سازی به کار می‌رود.
+
+
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+
+\subsection{ورودی‌های ماژول}
+
+ماژول \lr{\texttt{base.py}} مجموعه‌ای از وابستگی‌های داخلی و خارجی دارد. وابستگی‌های خارجی شامل \lr{numpy} برای محاسبات برداری، \lr{scipy} برای توابع آماری و توزیع \lr{beta}، و \lr{mpmath} (اختیاری) برای دقت بالا هستند. وابستگی‌های داخلی به صورت زیر ساختارمند شده‌اند:
+
+\begin{itemize}
+	\item \lr{\texttt{qkd.params.QKDParams}}: کلاس پارامترهای QKD که تمام تنظیمات شبیه‌سازی را در خود نگه می‌دارد. این کلاس در سازنده \lr{\texttt{FiniteKeyProof}} وارد می‌شود و در سراسر طول عمر نمونه در دسترس است.
+	\item \lr{\texttt{qkd.datatypes.ConfidenceBoundMethod}}: \lr{Enum} که روش کران آماری را مشخص می‌کند. این مقدار در \lr{\texttt{QKDParams.ci\_method}} ذخیره شده و در متد \lr{\texttt{get\_bounds}} استفاده می‌شود.
+	\item \lr{\texttt{qkd.constants}}: شامل ثابت‌های عددی مانند \lr{\texttt{ENTROPY\_PROB\_CLAMP}}، \lr{\texttt{NUMERIC\_ABS\_TOL}} و \lr{\texttt{MAX\_SEED\_INT\_PCG64}}. این ثابت‌ها در سراسر کد برای تنظیم رفتار عددی استفاده می‌شوند.
+	\item \lr{\texttt{qkd.exceptions}}: شامل استثناهای سفارشی مانند \lr{\texttt{ConfigurationError}}، \lr{\texttt{ParameterValidationError}}، \lr{\texttt{QKDSimulationError}} و \lr{\texttt{ErrorCode}}. این استثناها در سراسر کد برای گزارش خطاهای ساختاریافته به کار می‌روند.
+	\item \lr{\texttt{qkd.utils.math}}: ماژول توابع ریاضی کمکی شامل \lr{\texttt{clopper\_pearson\_bounds}}، \lr{\texttt{hoeffding\_bounds}} و \lr{\texttt{gaussian\_bounds}}. این توابع پیاده‌سازی واقعی کران‌های آماری را ارائه می‌دهند و ماژول \lr{\texttt{base.py}} تنها آن‌ها را فراخوانی می‌کند.
+\end{itemize}
+
+این الگوی واردسازی با \lr{try/except} به ماژول اجازه می‌دهد در صورت بروز مشکل، پیام خطای روشنی تولید کند و به جای خطای مبهم \lr{\texttt{ImportError}}، اطلاعات زمینه‌ای درباره ماژول مفقود ارائه دهد.
+
+\subsection{خروجی‌های ماژول}
+
+خروجی اصلی این ماژول کلاس \lr{\texttt{FiniteKeyProof}} و \lr{dataclass}های مرتبط است که در \lr{\texttt{\_\_all\_\_}} فهرست شده‌اند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		__all__ = [
+		'FiniteKeyProof', 'DecoyEstimates', 'KeyCalculationResult', 'TallyCounts',
+		'EpsilonAllocation', 'SolverDiagnostics', 'ProofMode', 'ErrorCode',
+		'ConfidenceBoundMethod', 'TALLY_KEY_Z_SIGNAL', 'TALLY_KEY_X_SIGNAL',
+		'derive_child_seed'
+		]
+	\end{lstlisting}
+\end{LTR}
+
+این فهرست به ماژول‌های دیگر اجازه می‌دهد با \lr{\texttt{from qkd.proofs.base import *}} فقط نمادهای عمومی مورد نظر را وارد کنند. زیرکلاس‌های اثبات امنیتی مانند \lr{\texttt{Ma2005Proof}}، \lr{\texttt{Lim2014Proof}} و \lr{\texttt{GLLPProof}} (که در فایل‌های جداگانه پیاده‌سازی می‌شوند) از این کلاس پایه ارث می‌برند و متدهای انتزاعی را پیاده‌سازی می‌کنند.
+
+خروجی عملی ماژول در زمان اجرا به دو شکل است:
+\begin{enumerate}
+	\item شیء \lr{\texttt{DecoyEstimates}} که خروجی متد \lr{\texttt{estimate\_yields\_and\_errors}} است و شامل $Y_1^L$، $e_1^U$، \lr{\texttt{is\_feasible}}، \lr{\texttt{failure\_prob\_used}} و \lr{\texttt{diagnostics}} می‌شود. این شیء به عنوان ورودی به متد \lr{\texttt{calculate\_key\_length}} داده می‌شود.
+	\item شیء \lr{\texttt{KeyCalculationResult}} که خروجی متد \lr{\texttt{calculate\_key\_length}} است و شامل طول کلید امن، نشت‌ها، کران خطای فاز، کدهای خطا و اطلاعات تشخیصی است. این شیء توسط لایه بالایی فریم‌ورک (مانند \lr{\texttt{qkd.simulator}}) دریافت شده و در گزارش نهایی شبیه‌سازی استفاده می‌شود.
+\end{enumerate}
+
+\subsection{جریان داده در سراسر فریم‌ورک}
+
+جریان داده کلی به این شکل است:
+\begin{enumerate}
+	\item لایه شبیه‌ساز پالس‌های نوری را تولید و از کانال کوانتومی عبور می‌دهد.
+	\item آشکارسازها در سمت باب، پالس‌ها را ثبت کرده و شمارش‌ها را در \lr{\texttt{TallyCounts}} ذخیره می‌کنند.
+	\item این شمارش‌ها به صورت یک دیکشنری \lr{\texttt{stats\_map}} با کلیدهایی مانند \lr{\texttt{TALLY\_KEY\_Z\_SIGNAL}} و \lr{\texttt{TALLY\_KEY\_X\_SIGNAL}} به اثبات امنیتی داده می‌شوند.
+	\item متد \lr{\texttt{estimate\_yields\_and\_errors}} با استفاده از کران‌های آماری \lr{\texttt{get\_bounds}} و حل \lr{LP}، \lr{\texttt{DecoyEstimates}} را تولید می‌کند.
+	\item متد \lr{\texttt{calculate\_key\_length}} با استفاده از \lr{\texttt{DecoyEstimates}}، \lr{\texttt{binary\_entropy}} و متدهای ایمن عددی، \lr{\texttt{KeyCalculationResult}} نهایی را محاسبه می‌کند.
+	\item لایه بالایی می‌تواند با \lr{\texttt{explain\_key\_decision}} علت نتیجه را به صورت متنی دریافت کند و با \lr{\texttt{audit\_dump}} یک گزارش کامل برای \lr{audit} تولید کند.
+\end{enumerate}
+
+این جداسازی مراحل به گونه‌ای طراحی شده که هر مرحله به صورت مستقل قابل آزمایش و اعتبارسنجی باشد. به عنوان مثال، می‌توان \lr{\texttt{DecoyEstimates}} را به صورت دستی ساخت و به \lr{\texttt{calculate\_key\_length}} داد تا رفتار آن در شرایط خاص بررسی شود. این ماژول‌بندی از اصل \lr{Single Responsibility} پیروی می‌کند و قابلیت نگهداری و توسعه کد را به طور قابل توجهی افزایش می‌دهد.

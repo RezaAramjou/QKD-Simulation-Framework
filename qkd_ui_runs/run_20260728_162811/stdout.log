@@ -1,0 +1,114 @@
+qkd package metadata not found; using version 'dev'.
+[INFO] Loaded custom sweeps from CLI.
+--- Running QKD Simulations (SWEEP MODE) ---
+[WARNING] 19 workers may need ~9.3GB RAM. Risk of OOM!
+[INFO] CPU Count: 20
+[INFO] Using 19 worker processes
+[INFO] Generated 3 hardware configuration combinations.
+[INFO] Total simulations to run: 96
+[INFO] Protocol selected: bb84-decoy
+[INFO] Writing results to 'qkd_results_optimized_sweep.csv'
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 2, errors_sifted_x 0 -> 0 (sifted_z=5, sifted_x=0)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 1, errors_sifted_x 0 -> 5 (sifted_z=2, sifted_x=10)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 4, errors_sifted_x 0 -> 7 (sifted_z=9, sifted_x=14)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 10, errors_sifted_x 0 -> 5 (sifted_z=19, sifted_x=10)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 14, errors_sifted_x 0 -> 14 (sifted_z=28, sifted_x=27)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 183 -> 206, errors_sifted_x 229 -> 224 (sifted_z=411, sifted_x=447)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 374 -> 344, errors_sifted_x 327 -> 339 (sifted_z=687, sifted_x=678)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 1095 -> 1114, errors_sifted_x 1205 -> 1166 (sifted_z=2227, sifted_x=2331)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 56 -> 58, errors_sifted_x 73 -> 64 (sifted_z=117, sifted_x=128)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 34 -> 34, errors_sifted_x 30 -> 32 (sifted_z=68, sifted_x=63)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 14 -> 16, errors_sifted_x 18 -> 18 (sifted_z=32, sifted_x=35)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 1, errors_sifted_x 0 -> 0 (sifted_z=2, sifted_x=1)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 8 -> 7, errors_sifted_x 9 -> 6 (sifted_z=14, sifted_x=12)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 721 -> 752, errors_sifted_x 737 -> 746 (sifted_z=1504, sifted_x=1491)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 6 -> 6, errors_sifted_x 3 -> 4 (sifted_z=12, sifted_x=9)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 130 -> 126, errors_sifted_x 132 -> 134 (sifted_z=252, sifted_x=269)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 23 -> 20, errors_sifted_x 26 -> 24 (sifted_z=39, sifted_x=47)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 16, errors_sifted_x 0 -> 17 (sifted_z=31, sifted_x=34)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 88 -> 87, errors_sifted_x 76 -> 82 (sifted_z=174, sifted_x=164)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 464 -> 490, errors_sifted_x 509 -> 506 (sifted_z=981, sifted_x=1013)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 1 -> 1, errors_sifted_x 3 -> 2 (sifted_z=2, sifted_x=5)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 6 -> 7, errors_sifted_x 1 -> 3 (sifted_z=14, sifted_x=6)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 1 -> 2, errors_sifted_x 1 -> 1 (sifted_z=3, sifted_x=2)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 6, errors_sifted_x 0 -> 6 (sifted_z=12, sifted_x=11)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 12, errors_sifted_x 0 -> 7 (sifted_z=25, sifted_x=14)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 2, errors_sifted_x 0 -> 5 (sifted_z=4, sifted_x=10)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 4, errors_sifted_x 0 -> 1 (sifted_z=7, sifted_x=2)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 1, errors_sifted_x 0 -> 0 (sifted_z=2, sifted_x=0)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 15, errors_sifted_x 0 -> 17 (sifted_z=30, sifted_x=34)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 20, errors_sifted_x 0 -> 10 (sifted_z=41, sifted_x=21)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 331 -> 338, errors_sifted_x 391 -> 372 (sifted_z=676, sifted_x=743)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 4, errors_sifted_x 0 -> 2 (sifted_z=7, sifted_x=5)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 563 -> 544, errors_sifted_x 562 -> 552 (sifted_z=1089, sifted_x=1105)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 37 -> 42, errors_sifted_x 36 -> 34 (sifted_z=85, sifted_x=69)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 0, errors_sifted_x 0 -> 1 (sifted_z=0, sifted_x=2)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 174 -> 160, errors_sifted_x 145 -> 145 (sifted_z=320, sifted_x=290)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 22 -> 21, errors_sifted_x 34 -> 24 (sifted_z=42, sifted_x=47)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 836 -> 842, errors_sifted_x 850 -> 854 (sifted_z=1684, sifted_x=1708)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 102 -> 90, errors_sifted_x 103 -> 92 (sifted_z=181, sifted_x=185)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 1229 -> 1214, errors_sifted_x 1168 -> 1196 (sifted_z=2427, sifted_x=2392)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 55 -> 53, errors_sifted_x 44 -> 54 (sifted_z=106, sifted_x=108)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 3 -> 2, errors_sifted_x 1 -> 2 (sifted_z=5, sifted_x=4)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 214 -> 222, errors_sifted_x 225 -> 227 (sifted_z=444, sifted_x=454)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 5, errors_sifted_x 0 -> 4 (sifted_z=10, sifted_x=9)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 20 -> 20, errors_sifted_x 12 -> 10 (sifted_z=40, sifted_x=21)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 0, errors_sifted_x 0 -> 2 (sifted_z=1, sifted_x=3)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 6 -> 6, errors_sifted_x 5 -> 4 (sifted_z=12, sifted_x=7)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 18, errors_sifted_x 0 -> 18 (sifted_z=36, sifted_x=37)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 1, errors_sifted_x 0 -> 0 (sifted_z=2, sifted_x=0)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 0, errors_sifted_x 0 -> 2 (sifted_z=1, sifted_x=3)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 2, errors_sifted_x 0 -> 1 (sifted_z=5, sifted_x=2)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 20, errors_sifted_x 0 -> 28 (sifted_z=41, sifted_x=56)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 12 -> 9, errors_sifted_x 8 -> 10 (sifted_z=18, sifted_x=19)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 0, errors_sifted_x 0 -> 1 (sifted_z=0, sifted_x=2)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 4, errors_sifted_x 0 -> 3 (sifted_z=9, sifted_x=6)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 7 -> 10, errors_sifted_x 7 -> 12 (sifted_z=21, sifted_x=23)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 0 -> 8, errors_sifted_x 0 -> 8 (sifted_z=15, sifted_x=17)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 885 -> 892, errors_sifted_x 820 -> 860 (sifted_z=1785, sifted_x=1719)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 232 -> 254, errors_sifted_x 259 -> 260 (sifted_z=507, sifted_x=521)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 537 -> 582, errors_sifted_x 597 -> 616 (sifted_z=1163, sifted_x=1232)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 33 -> 37, errors_sifted_x 33 -> 36 (sifted_z=74, sifted_x=73)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 176 -> 159, errors_sifted_x 135 -> 144 (sifted_z=318, sifted_x=287)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 62 -> 71, errors_sifted_x 70 -> 67 (sifted_z=142, sifted_x=134)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 10 -> 13, errors_sifted_x 25 -> 18 (sifted_z=26, sifted_x=37)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 364 -> 386, errors_sifted_x 374 -> 386 (sifted_z=772, sifted_x=772)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 5 -> 6, errors_sifted_x 5 -> 4 (sifted_z=11, sifted_x=7)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 1 -> 2, errors_sifted_x 3 -> 4 (sifted_z=5, sifted_x=9)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 99 -> 102, errors_sifted_x 99 -> 105 (sifted_z=203, sifted_x=210)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 4 -> 6, errors_sifted_x 7 -> 6 (sifted_z=11, sifted_x=12)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 29 -> 27, errors_sifted_x 21 -> 24 (sifted_z=54, sifted_x=48)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 18 -> 14, errors_sifted_x 13 -> 14 (sifted_z=28, sifted_x=27)
+INFO [__main__] Vacuum QBER correction applied (pulse idx=2): errors_sifted_z 1369 -> 1375, errors_sifted_x 1302 -> 1312 (sifted_z=2750, sifted_x=2624)
+INFO [qkd.io] File saved atomically: /home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/qkd_ui_runs/run_20260728_162811/qkd_results_optimized_sweep.csv (52.83 KB)
+[INFO] Completed 1/96 simulations
+[INFO] Completed 4/96 simulations
+[INFO] Completed 8/96 simulations
+[INFO] Completed 12/96 simulations
+[INFO] Completed 16/96 simulations
+[INFO] Completed 20/96 simulations
+[INFO] Completed 24/96 simulations
+[INFO] Completed 28/96 simulations
+[INFO] Completed 32/96 simulations
+[INFO] Completed 36/96 simulations
+[INFO] Completed 40/96 simulations
+[INFO] Completed 44/96 simulations
+[INFO] Completed 48/96 simulations
+[INFO] Completed 52/96 simulations
+[INFO] Completed 56/96 simulations
+[INFO] Completed 60/96 simulations
+[INFO] Completed 64/96 simulations
+[INFO] Completed 68/96 simulations
+[INFO] Completed 72/96 simulations
+[INFO] Completed 76/96 simulations
+[INFO] Completed 80/96 simulations
+[INFO] Completed 84/96 simulations
+[INFO] Completed 88/96 simulations
+[INFO] Completed 92/96 simulations
+[INFO] Completed 96/96 simulations
+
+[SUCCESS] Results saved to 'qkd_results_optimized_sweep.csv'.
+Starting simulation in: /home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/qkd_ui_runs/run_20260728_162811
+Distance range: 0.0 km to 150.0 km (16 points)
+Command: /home/reza-aramjou/miniconda3/envs/QC/bin/python3.13 /home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/main_optimized.py --protocol-class BB84DecoyProtocol --fiber-loss 0.2 --det-eff-d0 0.15 --det-eff-d1 0.15 --dark-rate 1e-06 --qber-intrinsic 0.01 --misalignment 0.005 --detector-type SPD --min-pulses-log 6 --max-pulses-log 6 --rng-seed 12345 --distance-start-km 0.0 --distance-stop-km 150.0 --distance-points 16 --workers 19 --sweep-json {"detector.det_eff_d0": [0.8, 0.9, 1]}
+

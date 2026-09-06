@@ -1,0 +1,817 @@
+\documentclass[11pt,a4paper,oneside]{report}
+
+% ── Packages ──
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{geometry}
+\geometry{margin=2.3cm}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,
+  pdftitle={QKD Simulation Framework — Master Knowledge Base}}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{array}
+
+% ── Code style ──
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{codeframe}{RGB}{200,200,200}
+\definecolor{keyword}{RGB}{0,0,180}
+\definecolor{string}{RGB}{163,21,21}
+\definecolor{comment}{RGB}{0,128,0}
+\lstset{
+  backgroundcolor=\color{codebg},frame=single,rulecolor=\color{codeframe},
+  language=Python,basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{keyword}\bfseries,stringstyle=\color{string},
+  commentstyle=\color{comment}\itshape,showstringspaces=false,
+  breaklines=true,breakatwhitespace=true,numbers=left,
+  numberstyle=\tiny\color{gray},numbersep=6pt,tabsize=4,
+  literate={→}{{$\rightarrow$}}1{≤}{{$\leq$}}1{≥}{{$\geq$}}1
+}
+
+% ── Header / Footer ──
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textit{QKD Framework — Master Knowledge Base}}
+\fancyhead[R]{\textit{\leftmark}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setlength{\headheight}{14pt}
+
+% ── Spacing ──
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+
+% ── Metadata ──
+\title{\textbf{QKD Simulation Framework\\[4pt] Master Knowledge Base\\[4pt] \large Exhaustive Reference for Technical Q\&A}}
+\author{Reza Aramjou}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% =====================================================================
+\chapter{Theoretical Foundation}
+% =====================================================================
+
+\section{Quantum Key Distribution — First Principles}
+
+Quantum Key Distribution (QKD) enables two parties, Alice and Bob, to establish a shared secret key whose security rests on the laws of quantum mechanics rather than on unproven computational assumptions. The fundamental principle is the \textbf{no-cloning theorem}: an eavesdropper (Eve) cannot create perfect copies of an unknown quantum state. Any measurement she performs necessarily disturbs the state, leaving detectable traces in the statistics observed by the legitimate parties.
+
+The BB84 protocol (Bennett \& Brassard, 1984) is the canonical discrete-variable QKD protocol. Alice prepares qubits in one of two mutually unbiased bases — typically the computational basis $Z = \{|0\rangle,|1\rangle\}$ and the Hadamard basis $X = \{|+\rangle,|-\rangle\}$ — and transmits them through a quantum channel. Bob measures each arriving qubit in a randomly chosen basis. After public basis reconciliation (sifting), Alice and Bob retain only those events where their bases matched. They then perform \textbf{parameter estimation}: a random subset of the sifted key is sacrificed to estimate the Quantum Bit Error Rate (QBER). If the QBER exceeds a protocol-dependent threshold (approximately 11\% for BB84 with one-way post-processing), the protocol aborts. Otherwise, error correction and privacy amplification distill a shorter, perfectly secure key.
+
+The asymptotic secure key rate for BB84 under one-way classical post-processing is:
+\begin{equation}
+R = q \cdot \bigl\{ Q_1[1 - H_2(e_1)] - Q_\mu f(E_\mu) H_2(E_\mu) \bigr\}
+\label{eq:asymp_rate}
+\end{equation}
+where $q$ is the basis-sifting factor (typically $1/2$ for BB84), $Q_1$ is the single-photon gain, $e_1$ is the single-photon phase-error rate, $Q_\mu$ is the total gain, $E_\mu$ is the overall QBER, $f(E_\mu) \geq 1$ is the error-correction inefficiency, and $H_2(x) = -x\log_2(x) - (1-x)\log_2(1-x)$ is the binary entropy function.
+
+\section{Decoy-State Method — Full Treatment}
+
+The decoy-state method (Hwang 2003; Lo, Ma \& Chen 2005; Wang 2005) addresses the photon-number-splitting (PNS) attack against weak-coherent-pulse (WCP) sources. Alice randomly varies the mean photon number $\mu$ of her pulses among several intensity levels: typically a signal intensity $\mu$, a decoy intensity $\nu < \mu$, and the vacuum ($\mu = 0$). Because Eve cannot distinguish which intensity was used for a given pulse, the yields $Y_n$ (probability of a detection conditioned on $n$ photons being sent) and error rates $e_n$ must be identical across intensity settings.
+
+The photon-number distribution for a WCP source follows Poisson statistics:
+\begin{equation}
+P_\mu(n) = \frac{\mu^n e^{-\mu}}{n!}
+\end{equation}
+
+The gain $Q_\mu$ (probability that Bob detects a pulse when Alice sends intensity $\mu$) and the overall QBER $E_\mu$ are:
+\begin{align}
+Q_\mu &= \sum_{n=0}^{\infty} Y_n \frac{\mu^n e^{-\mu}}{n!} \\
+E_\mu Q_\mu &= \sum_{n=0}^{\infty} e_n Y_n \frac{\mu^n e^{-\mu}}{n!}
+\end{align}
+
+For the standard three-intensity (vacuum + weak decoy + signal) case, closed-form analytic bounds exist:
+
+\begin{align}
+Y_0 &= Q_0 = \text{vacuum yield (directly measured)} \\
+Y_1^L &\geq \frac{\mu}{\mu\nu - \nu^2}\left(Q_\nu e^{\nu} - Q_\mu e^{\mu}\frac{\nu^2}{\mu^2} - \frac{\mu^2 - \nu^2}{\mu^2}Y_0\right) \label{eq:y1_lower} \\
+e_1^U &\leq \frac{E_\nu Q_\nu e^{\nu} - E_0 Q_0}{Y_1^L \nu} \label{eq:e1_upper}
+\end{align}
+
+where $Q_k$ and $E_k$ denote the gain and QBER for intensity $k$. The bound in (\ref{eq:y1_lower}) is derived from the inequality $Q_\nu e^\nu - Q_\mu e^\mu\frac{\nu^2}{\mu^2} \leq \sum_{n=1}^{\infty} Y_n \frac{\nu^n}{n!}(1 - \frac{\nu^{n-2}}{\mu^{n-2}}) + \frac{\mu^2-\nu^2}{\mu^2}Y_0$ and keeping only the $n=1$ term on the RHS yields a valid lower bound.
+
+\subsection{Photon-Number-Splitting Attack \& Tagged-Fraction Analysis}
+
+In the PNS attack, Eve blocks single-photon pulses and splits multi-photon pulses, keeping one copy and forwarding the rest to Bob. The fraction of ``tagged'' (insecure) bits is bounded by the \textbf{GLLP (Gottesman-Lo-L\"{u}tkenhaus-Preskill)} formula:
+\begin{equation}
+\Delta = \frac{Q_\mu - Q_1}{Q_\mu} = 1 - \frac{Q_1}{Q_\mu}
+\label{eq:tagged_fraction}
+\end{equation}
+
+The weak GLLP rate (key rate under the conservative tagged-bit assumption) is:
+\begin{equation}
+R_{\text{GLLP}} = q\{-Q_\mu f(E_\mu)H_2(E_\mu) + Q_1[1 - H_2(e_1)]\}
+\end{equation}
+
+This is the origin of Equation~(\ref{eq:asymp_rate}). The term $Q_1[1 - H_2(e_1)]$ is the usable single-photon entropy; $Q_\mu f(E_\mu) H_2(E_\mu)$ is the leakage from error correction.
+
+\section{Finite-Key Security \& Composable Framework}
+
+Practical QKD operates with finite block sizes $N$, requiring statistical fluctuations to be accounted for. The composable security framework decomposes the total security parameter $\varepsilon$ into independent components:
+
+\begin{equation}
+\varepsilon = \varepsilon_{\text{sec}} + \varepsilon_{\text{cor}}
+\end{equation}
+
+The secrecy error $\varepsilon_{\text{sec}}$ further decomposes into:
+\begin{equation}
+\varepsilon_{\text{sec}} = \varepsilon_{\text{PE}} + \varepsilon_{\text{smooth}} + \varepsilon_{\text{PA}} + n_{\text{PE}}\varepsilon
+\end{equation}
+where $\varepsilon_{\text{PE}}$ is the parameter-estimation failure probability, $\varepsilon_{\text{smooth}}$ is the smoothing parameter for the min-entropy bound, $\varepsilon_{\text{PA}}$ is the privacy-amplification failure probability, and $n_{\text{PE}}\varepsilon$ accounts for multiple independent statistical tests.
+
+The finite-key length formula under the composable framework is:
+\begin{equation}
+\ell = s_{X,0} + s_{X,1}[1 - H_2(\phi_X^U)] - \lambda_{\text{EC}} - 6\log_2(21/\varepsilon_{\text{sec}}) - \log_2(2/\varepsilon_{\text{cor}})
+\label{eq:finite_key}
+\end{equation}
+where $s_{X,0}$ and $s_{X,1}$ are the lower bounds on vacuum and single-photon counts in the $X$ basis, $\phi_X^U$ is the upper bound on the phase-error rate, $\lambda_{\text{EC}} = f E_\mu n_X$ is the error-correction leakage (with $f \approx 1.16$ being the inefficiency factor), and the logarithmic terms account for finite statistics.
+
+\subsection{Confidence Intervals: Hoeffding, Chernoff, and Clopper-Pearson}
+
+Three methods are implemented for computing statistical confidence bounds on observed counts:
+
+\textbf{Hoeffding Bound:} For $n$ independent Bernoulli trials with observed success fraction $\hat{p}$:
+\begin{equation}
+\Pr[|p - \hat{p}| \geq \delta] \leq 2e^{-2n\delta^2}
+\end{equation}
+The one-sided confidence interval of width $\delta$ at confidence level $1-\varepsilon$ is $\delta = \sqrt{\frac{\ln(1/\varepsilon)}{2n}}$. This bound is distribution-free but looser than Chernoff for small $p$.
+
+\textbf{Chernoff Bound:} For Poisson-distributed observations:
+\begin{equation}
+\Pr[X \leq (1-\delta)\mathbb{E}[X]] \leq e^{-\delta^2\mathbb{E}[X]/2}, \quad \Pr[X \geq (1+\delta)\mathbb{E}[X]] \leq e^{-\delta^2\mathbb{E}[X]/3}
+\end{equation}
+Provides tighter bounds than Hoeffding when the observed mean is small.
+
+\textbf{Clopper-Pearson (Exact Binomial):} Uses the Beta distribution quantiles:
+\begin{equation}
+p_{\text{lower}} = \text{Beta}^{-1}(\varepsilon/2; k, n-k+1), \quad p_{\text{upper}} = \text{Beta}^{-1}(1-\varepsilon/2; k+1, n-k)
+\end{equation}
+The most conservative (widest) interval; exact for all sample sizes.
+
+\subsection{The Lim 2014 Framework — Deep Dive}
+
+The Lim et al. (2014) framework (Phys. Rev. A 89, 022307) provides concise, closed-form security bounds for practical decoy-state QKD. Its key innovation is replacing the iterative LP approach with analytic formulas for the standard three-intensity case.
+
+\textbf{Core Equations (Lim 2014, Eqs. 1–5):}
+
+Let $\mu_1 > \mu_2 > \mu_3$ be the three intensities (signal, decoy, vacuum). Define the statistical fluctuation parameters:
+\begin{equation}
+\tau_n = \frac{\mu_n e^{-\mu_n}}{n!}
+\end{equation}
+
+The single-photon yield lower bound:
+\begin{equation}
+s_{X,1}^L = \frac{\tau_1(\mu_2 - \mu_3)}{\tau_2(\mu_1 - \mu_2)}\left( s_{X,\mu_2}^L e^{\mu_2} - s_{X,\mu_3}^U e^{\mu_3} - \frac{\tau_2(\mu_1 - \mu_3)}{\tau_1(\mu_2 - \mu_3)}Y_0^U \right)
+\label{eq:lim_sx1l}
+\end{equation}
+
+The single-photon error upper bound:
+\begin{equation}
+v_{Z,1}^U = \frac{v_{Z,\mu_2}^U e^{\mu_2} - v_{Z,\mu_3}^L e^{\mu_3}}{Y_1^L (\mu_2 - \mu_3)}
+\label{eq:lim_vz1u}
+\end{equation}
+
+The phase-error rate upper bound:
+\begin{equation}
+\phi_X^U = \frac{v_{Z,1}^U}{s_{Z,1}^L} + \gamma\left(\varepsilon_{\text{sec}}, \frac{v_{Z,1}^U}{s_{Z,1}^L}, s_{Z,1}^L, s_{X,1}^L\right)
+\label{eq:lim_phi}
+\end{equation}
+
+\textbf{Hybrid Hoeffding/Chernoff Strategy:} The implementation uses an adaptive approach: for intensity settings with large observed counts ($n_{X,\mu_i} > 50$), the Chernoff bound is applied (tighter). For small counts, Hoeffding is used (distribution-free). For zero counts, the vacuum bound $Y_0^U = -\ln(\varepsilon)/N$ is the analytic limit. This hybrid strategy allows the framework to gracefully handle the entire range from high-count to zero-count regimes.
+
+\textbf{Kappa-Solver:} Instead of fixing $\varepsilon_{\text{sec}}$ as a user input, the ``kappa-solver'' iterates over possible values of a security constant $\kappa$ to maximize the resulting key length while respecting the constraint that total $\varepsilon = 10^{-10}$. This is a one-dimensional search over $\kappa \in [10^{-15}, 10^{-5}]$, evaluating the full key-rate formula at each point. The solver uses bisection with 32 iterations for robust convergence.
+
+\textbf{Multi-Intensity Extension ($>3$ intensities):} For four or more intensities, no closed-form analytic bound exists in the Lim 2014 framework. The implementation switches to an LP-based path with non-negativity constraints and a tail-relaxation heuristic. This path is clearly marked in diagnostics as an extension beyond the published paper.
+
+\section{The Tight Security Proof}
+
+The Tight proof uses multiplicative Chernoff bounds rather than additive Hoeffding bounds for statistical estimation of decoy-state parameters. This yields 10–15\% higher key rates than Lim 2014, with the advantage growing as the number of pulses $N$ increases.
+
+The multiplicative Chernoff bound for lower-tail estimation of a Poisson mean $\mu$ from observed count $k$:
+\begin{equation}
+\Pr[X \leq (1-\delta)\mu] \leq \exp\left(-\frac{\delta^2\mu}{2}\right)
+\end{equation}
+yielding the one-sided lower confidence bound:
+\begin{equation}
+\mu^L = \frac{k}{1+\delta}, \quad \delta = \sqrt{\frac{2\ln(1/\varepsilon)}{k}}
+\end{equation}
+
+The key advantage is that the bound width $\delta$ scales as $1/\sqrt{k}$ rather than $1/\sqrt{N}$ (where $N$ is the total number of pulses), making it especially powerful for high-intensity signal pulses with large $k$.
+
+\subsection{Ma (2005) and Wang (2005) Proofs}
+
+\textbf{Ma 2005:} Uses Gaussian approximations for confidence intervals. The vacuum yield bound:
+\begin{equation}
+Y_0^U = Q_0 + z_{\alpha}\sqrt{\frac{Q_0(1-Q_0)}{N}}
+\end{equation}
+where $z_{\alpha}$ is the standard normal quantile. The single-photon bounds use LP with Gaussian-constrained gains.
+
+\textbf{Wang 2005:} A three-intensity decoy-state proof with analytic bounds similar in structure to Lim 2014 but with different coefficient derivations and statistical treatment. Uses a two-decoy variant where both $\nu_1$ and $\nu_2$ are decoy intensities ($\nu_2 < \nu_1 < \mu$). The vacuum yield $Y_0$ is bounded directly by the weakest decoy.
+
+\section{Multi-Photon Physics}
+
+For a WCP source with mean photon number $\mu$, the probability of emitting exactly $n$ photons follows the Poisson distribution $P(n|\mu) = \mu^n e^{-\mu}/n!$. The multi-photon gain (probability of a detection given $n$ photons were sent) in a channel with transmittance $\eta$ is:
+\begin{equation}
+Y_n = 1 - (1 - Y_0)(1 - \eta)^n
+\end{equation}
+where $Y_0$ is the dark-count (vacuum) yield. For small $\eta$, $Y_n \approx Y_0 + n\eta$.
+
+The overall gain for intensity $\mu$ is:
+\begin{equation}
+Q_\mu = Y_0 + 1 - e^{-\eta\mu}(1-Y_0)
+\end{equation}
+and the overall QBER is:
+\begin{equation}
+E_\mu Q_\mu = e_0 Y_0 + e_{\text{opt}}(1 - e^{-\eta\mu})(1 - Y_0)
+\end{equation}
+where $e_0 = 1/2$ (random dark-count errors) and $e_{\text{opt}}$ is the optical error probability including misalignment: $e_{\text{opt}} = e_{\text{intrinsic}} + (1-2e_{\text{intrinsic}})\sin^2(\theta)$.
+
+
+% =====================================================================
+\chapter{Methodology \& Implementation Architecture}
+% =====================================================================
+
+\section{Code Module Hierarchy}
+
+The framework is organized into a layered architecture with clear separation of concerns:
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Layer} & \textbf{Module} & \textbf{Key Classes/Functions} \\
+\midrule
+Orchestration & \texttt{main\_optimized.py} & sweep driver, campaign config \\
+Runner & \texttt{simulation\_runner.py} & \texttt{SimulationRunnerMixin}, batch dispatch \\
+Dispatch & \texttt{main\_optimized\_dispatch.py} & \texttt{dispatch\_work\_items} \\
+Protocol & \texttt{qkd/protocols.py} & BB84, decoy-state logic \\
+Proofs & \texttt{qkd/proofs/} & \texttt{FiniteKeyProof}, Lim2014, Ma2005, Wang2005, Tight \\
+Optimization & \texttt{qkd/proofs/optimization.py} & SLSQP parameter optimizer \\
+LP Engine & \texttt{qkd/proofs/utils\_lp.py} & \texttt{DecoyStateLPAnalyzer} \\
+Detectors & \texttt{qkd/detectors.py} & SPD, SNSPD, PNRD models \\
+Sources & \texttt{qkd/sources.py} & WCP, ideal single-photon, heralded \\
+Channel & \texttt{qkd/channel.py} & fiber loss, DWDM, polarization \\
+Data Types & \texttt{qkd/datatypes.py} & all enums, config dataclasses \\
+Parameters & \texttt{qkd/params.py} & \texttt{QKDParams} master config \\
+Network & \texttt{qkd/network.py} & \texttt{QKDNode}, \texttt{QKDPath}, SPF+ routing \\
+Validation & various scripts & Z-test, crypto, LP, concurrency tests \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Parameter Management \& Configuration}
+
+The master configuration is held in \texttt{QKDParams}, a frozen-like dataclass that serves as the single source of truth. The \texttt{DEFAULT\_CONFIG} dictionary in \texttt{main\_optimized.py} provides all baseline parameters. Key design principles:
+
+\begin{itemize}
+\item \textbf{Immutability:} Once constructed, parameter objects are effectively immutable. Modifications use \texttt{dataclasses.replace()} which returns a new instance, preventing aliasing bugs.
+\item \textbf{Fail-fast validation:} All enums and numeric ranges are validated at construction time via \texttt{ParameterValidationError}. Invalid configurations are caught at the API boundary, not deep in simulation logic.
+\item \textbf{Serialization:} All dataclasses implement \texttt{to\_dict()} / \texttt{from\_dict()} via the \texttt{SerializableDataclassMixin}, enabling full round-trip serialization to JSON-compatible dictionaries.
+\end{itemize}
+
+\subsection{Detector Types \& Imperfections}
+
+Three detector types are modeled, each as a distinct \texttt{DetectorType} enum variant:
+
+\begin{center}
+\begin{tabular}{@{}lp{4cm}p{4.5cm}@{}}
+\toprule
+\textbf{Type} & \textbf{Key Parameters} & \textbf{Characteristics} \\
+\midrule
+SPD & $\eta \approx 0.15$, $p_{\text{dark}} \approx 10^{-5}$ & InGaAs/APD. Room temperature. Low cost. \\
+SNSPD & $\eta \approx 0.50$, $p_{\text{dark}} \approx 10^{-8}$ & Superconducting nanowire. Requires cryogenic cooling. Best range. \\
+PNRD & $\eta \approx 0.40$, photon-number resolving & Distinguishes 0,1,2+ photons. Enables advanced protocols. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Detector imperfections} modeled in full detail:
+
+\begin{itemize}
+\item \textbf{Dead-time cascades:} After each detection, the detector is blind for a recovery period $\tau_{\text{dead}} \approx 50$–$100$ ns. During this window, subsequent photons are missed. The model tracks dead-time state at the nanosecond level and accounts for cascading effects when multiple photons arrive during the recovery window.
+\item \textbf{Afterpulsing:} A detection event has probability $p_{\text{ap}} \approx 0.01$–$0.05$ of triggering a spurious secondary detection within the afterpulse window $\tau_{\text{ap}} \approx 200$ ns. The model uses an exponential decay profile.
+\item \textbf{Double-click policy:} When both detectors (0 and 1) click simultaneously, the policy determines how the event is counted. Options: \texttt{DISCARD} (ignore), \texttt{RANDOM} (assign to random bit), \texttt{ALICE\_BIASED} (deterministic assignment). The \texttt{DISCARD} policy is most conservative and is the default.
+\item \textbf{Electrical noise:} Modeled via \texttt{ElectricalNoiseConfig} with additive Gaussian noise on the detector threshold. This affects the effective detection efficiency for near-threshold signals.
+\end{itemize}
+
+\subsection{Optical Source Types}
+
+Four source models are implemented:
+
+\begin{itemize}
+\item \textbf{WCP (Weak Coherent Pulse):} Poisson-distributed photon number with mean $\mu$. Phase-randomized. The workhorse for practical QKD.
+\item \textbf{Ideal Single-Photon:} Exactly one photon per pulse. Used for theoretical benchmarks and upper-bound analysis.
+\item \textbf{Heralded Single-Photon:} Parametric down-conversion (PDC) source where one photon of a pair triggers a ``heralding'' detector, indicating the presence of its twin. Sub-Poissonian statistics.
+\item \textbf{Phase-Coherent:} Maintains phase coherence across pulses. Used for differential-phase-shift and coherent-one-way protocols.
+\end{itemize}
+
+\subsection{Channel \& Noise Models}
+
+\textbf{Fiber Attenuation:} The standard telecom fiber loss model:
+\begin{equation}
+\eta(L) = 10^{-\alpha L/10}
+\end{equation}
+with attenuation coefficient $\alpha = 0.2$ dB/km at 1550 nm. This gives $\eta(50\text{ km}) \approx 0.1$, $\eta(100\text{ km}) \approx 0.01$.
+
+\textbf{MZM (Mach-Zehnder Modulator):} Modeled via \texttt{MZMConfig} with insertion loss, extinction ratio, and finite switching speed. The MZM is the basis-selection device on Bob's side.
+
+\textbf{DWDM (Dense Wavelength Division Multiplexing):} The framework models co-propagation of quantum signals with classical DWDM channels. Inter-channel crosstalk is modeled as an effective noise source:
+\begin{equation}
+E_\mu^{\text{DWDM}} = E_\mu^{\text{single}} + E_{\text{crosstalk}}
+\end{equation}
+where $E_{\text{crosstalk}}$ depends on channel spacing, power levels, and filter isolation. Three power regimes are simulated: $-20$ dBm (high crosstalk), $-34$ dBm (moderate), and $-40$ dBm (low crosstalk, near-isolated).
+
+\subsection{Polarization Effects}
+
+Polarization mode dispersion (PMD) and polarization-dependent loss (PDL) are modeled through Jones matrix calculus. The misalignment angle $\theta$ (in radians) couples into the QBER via:
+\begin{equation}
+E_\mu = e_0 + (1 - 2e_0)\sin^2(\theta)
+\end{equation}
+where $e_0$ is the intrinsic optical error rate (typically $0.005$–$0.02$).
+
+\section{Security Proof Layer — Detailed Architecture}
+
+\subsection{Base Class: \texttt{FiniteKeyProof}}
+
+The abstract base class \texttt{FiniteKeyProof} provides the common interface:
+
+\begin{itemize}
+\item \texttt{calculate\_key\_length(stats\_map)} — compute secure key length from tally statistics
+\item \texttt{estimate\_yields\_and\_errors(stats\_map)} — estimate $Y_1^L$, $e_1^U$ from decoy-state analysis
+\item \texttt{explain\_key\_decision(result)} — human-readable explanation of key/non-key outcome
+\item \texttt{audit\_dump(result)} — comprehensive JSON-serializable audit record
+\end{itemize}
+
+The base class enforces: epsilon allocation validation ($\sum \varepsilon_i \leq \varepsilon_{\text{total}}$), numerical safeguards (safe division, log clamping, non-negativity clamping), timing instrumentation, and three operational modes (\texttt{PRODUCTION}, \texttt{DEBUG}, \texttt{AUDIT}).
+
+\textbf{Key Data Structures:}
+\begin{itemize}
+\item \texttt{TallyCounts}: frozen dataclass holding \texttt{detections} and \texttt{errors} for one intensity/basis combination. Enforces $\text{errors} \leq \text{detections}$.
+\item \texttt{DecoyEstimates}: holds $Y_1^L$, $e_1^U$, feasibility flag, and solver diagnostics.
+\item \texttt{KeyCalculationResult}: final output with \texttt{secure\_key\_length}, \texttt{error\_correction\_leakage}, \texttt{privacy\_amplification\_term}, and \texttt{error\_codes}.
+\item \texttt{SolverDiagnostics}: LP solver status, iterations, constraint violations, and residual norms.
+\end{itemize}
+
+\subsection{Proof-Specific Implementations}
+
+\textbf{Lim 2014 (\texttt{lim2014.py}):}
+\begin{itemize}
+\item Version: \texttt{Lim2014Proof} with $\sim$800 lines
+\item Hybrid Hoeffding/Chernoff strategy adaptively selects bound type per intensity
+\item Kappa-solver: 32-iteration bisection over $\kappa \in [10^{-15}, 10^{-5}]$
+\item Multi-intensity ($>3$) path: LP with non-negativity + tail relaxation
+\item $\varepsilon$ decomposition: $\varepsilon_{\text{sec}}/21$ per single-test, $\ln(21/\varepsilon_{\text{sec}})$ in key formula
+\item Physical guardrail: $\ell \leq n_X + n_Z$ (key cannot exceed sifted bits)
+\end{itemize}
+
+\textbf{Tight (\texttt{tight.py}):}
+\begin{itemize}
+\item Multiplicative Chernoff bounds for all statistical estimates
+\item 10–15\% higher key rate than Lim 2014 at equivalent $N$
+\item Advantage scales with $N$: $\delta \propto 1/\sqrt{k}$ vs $1/\sqrt{N}$
+\end{itemize}
+
+\textbf{Ma 2005 (\texttt{ma2005.py}):}
+\begin{itemize}
+\item Gaussian confidence intervals: $Y_0^U = Q_0 + z_\alpha\sqrt{Q_0(1-Q_0)/N}$
+\item LP-based decoy-state solver using \texttt{SciPy} \texttt{linprog}
+\item More conservative than Lim 2014 for finite-key scenarios
+\end{itemize}
+
+\textbf{Wang 2005 (\texttt{wang2005.py}):}
+\begin{itemize}
+\item Two-decoy variant with analytic bounds
+\item Vacuum yield bounded by weakest decoy intensity
+\item Intermediate performance between Ma 2005 and Lim 2014
+\end{itemize}
+
+\section{Linear Programming \& SLSQP Optimization}
+
+\subsection{Decoy-State LP Solver}
+
+The \texttt{DecoyStateLPAnalyzer} in \texttt{utils\_lp.py} solves the constrained linear program:
+\begin{align}
+\text{Minimize/Maximize} &\quad Y_1 \text{ (or } e_1\text{)} \\
+\text{Subject to} &\quad Q_k^{\text{obs}} - \delta_k \leq \sum_{n=0}^{N_{\text{max}}} Y_n P_k(n) \leq Q_k^{\text{obs}} + \delta_k \quad \forall k \\
+& \quad 0 \leq Y_n \leq 1, \quad 0 \leq e_n \leq 0.5 \quad \forall n
+\end{align}
+where $P_k(n) = \mu_k^n e^{-\mu_k}/n!$ is the Poisson probability for intensity $k$, $\delta_k$ is the statistical fluctuation bound, and $N_{\text{max}}$ is the photon-number cutoff (typically 10–15).
+
+\subsection{SLSQP Parameter Optimization}
+
+The parameter optimization in \texttt{optimization.py} uses SciPy's Sequential Least Squares Quadratic Programming (SLSQP) to maximize the secure key rate over a 5-dimensional parameter space:
+\begin{equation}
+\boldsymbol{\theta}^* = \arg\max_{\boldsymbol{\theta}} \; R_{\text{secure}}(\boldsymbol{\theta}; L, N, \text{detector\_type})
+\end{equation}
+where $\boldsymbol{\theta} = [\mu_{\text{signal}}, \mu_{\text{decoy}}, \mu_{\text{vacuum}}, p_{\text{signal}}, p_{\text{decoy}}]$ subject to constraints $\mu_{\text{decoy}} < \mu_{\text{signal}}$, $p_{\text{signal}} + p_{\text{decoy}} + p_{\text{vacuum}} = 1$, and all $\mu_i \geq 0$.
+
+At intermediate distances (40–60 km), SLSQP-optimized intensities yield 15–25\% higher key rates compared to heuristically chosen parameters. The optimization landscape is non-convex with multiple local maxima, requiring multiple random restarts (25 starts default) for reliable convergence.
+
+\section{Runner \& Orchestration Layer}
+
+\subsection{The \texttt{SimulationRunnerMixin} Pattern}
+
+The runner is implemented as a Mixin class that is composed into the main simulator class. This design choice separates the orchestration logic (parallel dispatch, batch management, seed allocation) from the simulation logic (pulse generation, detection, sifting).
+
+\textbf{Seed Management Algorithm:}
+\begin{enumerate}
+\item A master seed $S_0$ is provided by the user (or randomly generated).
+\item For each batch $i \in [0, B-1]$, a child seed is derived deterministically:
+  \begin{equation}
+  S_i = \text{int}(\text{SHA-256}(S_0 \| i)) \bmod (2^{64} - 1)
+  \end{equation}
+\item Each worker process initializes its own \texttt{PCG64} RNG with its assigned seed $S_i$.
+\item The deterministic derivation guarantees that re-running with the same $S_0$ produces identical results regardless of the number of workers or batch size — this is \textbf{deterministic reproducibility}.
+\end{enumerate}
+
+\textbf{Batch Processing:} The total $N$ pulses are divided into $B = N/b$ batches of size $b$. Each batch is assigned to a worker process. The optimal batch size $b \approx 10^5$–$10^6$ balances IPC overhead against load-balancing granularity.
+
+\textbf{ProcessPoolExecutor:} Uses Python's \texttt{concurrent.futures.ProcessPoolExecutor} with worker count $w = \min(\text{os.cpu\_count}(), 16)$. Each worker runs \texttt{\_worker\_init} which sets \texttt{OMP\_NUM\_THREADS=1} to prevent nested parallelism from oversubscribing cores.
+
+\subsection{The Testability Hook: \texttt{dispatch\_work\_items}}
+
+\texttt{main\_optimized\_dispatch.py} contains the standalone function \texttt{dispatch\_work\_items} that implements the concurrency contract independently of the QKD simulation logic. Key design decisions:
+
+\begin{itemize}
+\item \textbf{Zero QKD dependencies:} The function imports only from the Python standard library, enabling sub-second testing of the dispatch logic with stub workers.
+\item \textbf{Completion contract:} When the function returns, \texttt{on\_row} has been called for every work item. For multi-worker mode, the \texttt{with mp.Pool(...)} context manager guarantees all futures are resolved before exit.
+\item \textbf{Ordering guarantee:} Results are written via \texttt{on\_row} in submission order (not completion order) using ordered tracking of submitted items.
+\end{itemize}
+
+\subsection{Operational Modes}
+
+The runner supports four operational modes:
+
+\begin{itemize}
+\item \textbf{Single-worker (\texttt{--workers 1}):} All batches run sequentially in the main process. Useful for debugging and small validation runs.
+\item \textbf{Multi-worker (\texttt{--workers N}):} $N$ parallel worker processes. The production mode.
+\item \textbf{Dry-run (\texttt{--dry-run}):} Validates configuration, computes expected batch counts, but performs no simulation. Useful for configuration testing.
+\item \textbf{Resume:} If a previous run was interrupted, the runner detects existing CSV output and resumes from the last completed batch. Requires deterministic seed derivation for correctness.
+\end{itemize}
+
+\section{Network Layer — Trusted-Relay QKD Network}
+
+\subsection{Node and Link Architecture}
+
+The network model uses \texttt{QKDNode} objects connected by \texttt{QKDLink} edges. Each link maintains:
+
+\begin{itemize}
+\item A quantum channel (fiber) with distance $L_{ij}$ and attenuation $\eta_{ij}$
+\item A pair of key pools (one per direction) with current capacities $K_{ij}^{\text{forward}}$ and $K_{ij}^{\text{backward}}$
+\item A key generation rate $R_{ij}$ computed by the full physical+proof pipeline
+\end{itemize}
+
+\textbf{Trusted-Relay Model:} Intermediate nodes are assumed honest and physically secure. An end-to-end key between Alice (Node A) and Bob (Node B) is established by:
+\begin{enumerate}
+\item Generating link keys on each hop of the path $A \to R_1 \to R_2 \to \ldots \to R_k \to B$
+\item XOR-forwarding: $R_i$ XORs its two link keys and broadcasts the result
+\item Alice and Bob recover the end-to-end key by XOR-combining link keys
+\end{enumerate}
+
+The security of this scheme relies on all intermediate nodes being trusted. Compromise of any relay node compromises all keys routed through it.
+
+\subsection{SPF+ Routing Algorithm}
+
+The routing engine extends Dijkstra's Shortest Path First algorithm with \textbf{key-pool watermarks}:
+
+\begin{enumerate}
+\item Edges where the available key pool $K_{ij} < K_{\text{threshold}}$ are pruned before path computation
+\item SPF runs on the pruned graph, yielding the shortest-distance path with sufficient key material
+\item If no path exists, the request is queued until key pools recharge
+\end{enumerate}
+
+\textbf{Complexity:} $O((V+E)\log V)$ — identical to standard Dijkstra. The pruning step is $O(E)$.
+
+\textbf{Limitations:} SPF+ is not globally optimal. It may route Request A through a path that starves future Request B. True optimality requires multi-commodity flow optimization, which is NP-hard. For metropolitan-scale networks ($V \leq 20$), SPF+ with periodic rebalancing is well within operational requirements.
+
+\subsection{KMS (Key Management System)}
+
+Each node runs a local KMS with:
+\begin{itemize}
+\item Key material organized by (destination, priority) tuples
+\item Hierarchical key derivation: end-to-end keys $\to$ session keys $\to$ traffic keys
+\item Rate-limited replenishment triggered when key pools drop below watermark
+\item Audit logging of all key material lifecycle events
+\end{itemize}
+
+
+% =====================================================================
+\chapter{Comprehensive Data Analysis \& Results}
+% =====================================================================
+
+\section{Ten-Campaign Architecture}
+
+All results are generated by \texttt{main\_optimized.py} and output as CSV files. Each campaign is a controlled sweep over one or more independent variables. Total: $\sim$1800 simulation points.
+
+\begin{center}
+\begin{longtable}{@{}cllp{4cm}@{}}
+\caption{Complete Campaign Summary}\\
+\toprule
+\textbf{\#} & \textbf{Name} & \textbf{Sweep Variable(s)} & \textbf{Points} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{\#} & \textbf{Name} & \textbf{Sweep Variable(s)} & \textbf{Points} \\
+\midrule
+\endhead
+1 & Baseline BB84+Lim2014 & Distance: 0–200 km, $\Delta L = 2$ km & 96 \\
+2 & Finite-Key Scaling & Pulses $10^4$–$10^8$ $\times$ 12 distances & 288 \\
+3 & DWDM Multi-Channel & Power $-20$/$-34$/$-40$ dBm $\times$ 96 distances & 288 \\
+4 & Auto-Optimized (SLSQP) & Optimized intensities $\times$ 96 distances & 96 \\
+5 & Protocol Comparison & 4 protocols $\times$ 96 distances & 384 \\
+6 & Proof Comparison & 4 proofs $\times$ 96 distances & 384 \\
+7 & Detector Comparison & SPD/SNSPD/PNRD $\times$ 96 distances & 288 \\
+8 & Confidence Bound Comparison & Gaussian/Clopper-Pearson/Hoeffding $\times$ 96 & 288 \\
+9 & Rogers et al. Validation & Benchmark reproduction $\times$ 96 distances & 96 \\
+10 & Sensitivity Grid & QBER $\times$ misalignment 2D sweep & $\sim$100 \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\section{Key Findings by Campaign}
+
+\subsection{C1: Baseline — BB84 + Lim 2014}
+\begin{itemize}
+\item Secure key achievable up to $\sim$120 km with SPD, $\sim$180 km with SNSPD
+\item Key rate at 50 km: $\sim 10^{-4}$ per pulse (SPD), $\sim 5 \times 10^{-4}$ (SNSPD)
+\item QBER rises from $\sim$1\% at 10 km to $\sim$8\% at 100 km (dominated by dark counts at long distances)
+\end{itemize}
+
+\subsection{C2: Finite-Key Scaling}
+\begin{itemize}
+\item At $N = 10^4$, key rate reduced by $\sim$40\% vs asymptotic due to statistical fluctuation penalties
+\item At $N = 10^8$, key rate approaches within 5\% of asymptotic limit
+\item Crossover point (finite-key penalty $< 10\%$): $N \approx 10^6$ for 50 km, $N \approx 5 \times 10^6$ for 100 km
+\end{itemize}
+
+\subsection{C3: DWDM Analysis}
+\begin{itemize}
+\item At $-40$ dBm per classical channel, QBER increase $< 0.1\%$ — negligible
+\item At $-20$ dBm, QBER increase $\sim$2\% at 50 km — reduces secure range by $\sim$15 km
+\item Minimum channel spacing for isolation: 100 GHz (0.8 nm) at 1550 nm
+\end{itemize}
+
+\subsection{C4: SLSQP Optimization}
+\begin{itemize}
+\item Optimal $\mu_{\text{signal}} \approx 0.4$–$0.6$ (varies with distance)
+\item Optimal $\mu_{\text{decoy}} \approx 0.05$–$0.15$
+\item 15–25\% key-rate improvement over heuristic parameters at 40–60 km
+\item Improvement diminishes at very short ($< 10$ km) and very long ($> 100$ km) distances
+\end{itemize}
+
+\subsection{C5: Protocol Comparison}
+\begin{itemize}
+\item Decoy-state BB84 outperforms non-decoy BB84 by factor 2–5$\times$
+\item B92 underperforms BB84 (only one basis; lower error tolerance)
+\item MDI-QKD (stub) shows promise but requires full implementation for comparison
+\end{itemize}
+
+\subsection{C6: Proof Comparison}
+\begin{itemize}
+\item Tight proof: 10–15\% higher rate than Lim 2014
+\item Ma 2005: most conservative (lowest rate, but widest safety margin)
+\item Wang 2005: intermediate between Ma 2005 and Lim 2014
+\item Ranking by key rate: Tight $>$ Lim 2014 $>$ Wang 2005 $>$ Ma 2005
+\end{itemize}
+
+\subsection{C7: Detector Comparison}
+\begin{itemize}
+\item SNSPD: $\sim$2$\times$ secure range vs SPD (180 km vs 90 km)
+\item SNSPD advantage from dark-count rate $10^{-8}$ vs $10^{-5}$
+\item PNRD: marginal range improvement; benefits materialize only for advanced protocols
+\end{itemize}
+
+\subsection{C8: Confidence Bound Comparison}
+\begin{itemize}
+\item Clopper-Pearson: most conservative, widest intervals
+\item Gaussian: highest key rate for $N \geq 10^6$
+\item Hoeffding: intermediate; distribution-free guarantee
+\item Recommendation: CP for $N < 10^5$, Gaussian for $N \geq 10^6$
+\end{itemize}
+
+\subsection{C9: Rogers et al. Validation}
+\begin{itemize}
+\item Key rates reproduce published benchmarks within 3\% across all distances
+\item Confirms correctness of physical models and proof implementations
+\item Validates the entire pipeline end-to-end against an independent reference
+\end{itemize}
+
+\subsection{C10: Sensitivity Analysis}
+\begin{itemize}
+\item Misalignment $\theta = 0.01$ rad $\to \sim$50\% key-rate reduction (due to $H_2(E)$ steepness near $E=0$)
+\item Intrinsic QBER increase from 0.005 to 0.02 $\to$ 30–40\% reduction
+\item Combined worst case ($\theta = 0.02$, $\text{QBER}=0.02$): system inoperable beyond 30 km
+\end{itemize}
+
+\section{Validation Infrastructure}
+
+\subsection{Physics Validation (Z-Test Framework)}
+
+The \texttt{validate\_physics.py} script compares simulated channel outputs against analytic predictions using two-sided Z-tests:
+
+\begin{equation}
+Z = \frac{\hat{p} - p_0}{\sqrt{p_0(1-p_0)/N}}
+\end{equation}
+
+With significance level $\alpha = 10^{-4}$:
+\begin{itemize}
+\item 96 simulation points per campaign $\times$ multiple campaigns
+\item Expected false rejections: $96 \times 10^{-4} \approx 0.01$ per campaign
+\item Tests cover: gain $Q_\mu$ vs analytic, QBER $E_\mu$ vs analytic, detector efficiency, sifting ratio
+\end{itemize}
+
+\subsection{Cryptographic Validation}
+
+Cross-checks between proof implementations verify internal consistency:
+\begin{itemize}
+\item At the asymptotic limit ($N \to \infty$), all proofs converge to the same key rate
+\item Finite-key rates are ordered correctly: $\text{Tight} \geq \text{Lim}2014 \geq \text{Wang}2005 \geq \text{Ma}2005$
+\item Key-length physical guardrail active: $\ell \leq n_X + n_Z$ for all proofs
+\item Epsilon budget accounting: $\sum \varepsilon_i \leq 10^{-10}$ verified
+\end{itemize}
+
+\subsection{LP Solver Validation}
+
+\texttt{lp\_validation.py} tests the decoy-state LP solver:
+\begin{itemize}
+\item Artificial tally statistics generated with known $Y_1$, $e_1$ ground truth
+\item LP bounds verified to contain the ground truth with probability $\geq 1-\varepsilon$
+\item Edge cases: zero decoy counts, single-detection statistics, saturated gains
+\item All solver status codes verified: optimal, infeasible, unbounded
+\end{itemize}
+
+\subsection{Concurrency Correctness}
+
+\texttt{pulse\_tracking\_trace.py} traces 100 individual pulses through the four-stage pipeline:
+\begin{enumerate}
+\item Generation: photon number, basis, bit value recorded
+\item Transmission: channel loss/detection outcome
+\item Detection: detector response, dead-time state, afterpulse flag
+\item Sifting: basis match, error flag, final tally assignment
+\end{enumerate}
+End-to-end identity preservation is verified for all 100 traced pulses, confirming no race-condition-induced bias.
+
+
+% =====================================================================
+\chapter{Edge Cases \& Limitations}
+% =====================================================================
+
+\section{Finite-Statistics Regime ($N < 10^5$)}
+
+At small $N$, the statistical fluctuation terms dominate the key formula. Specifically, the $\log_2(21/\varepsilon_{\text{sec}})$ term becomes comparable to $s_{X,1}$, potentially driving the key length to zero even when the physical QBER is low. The Clopper-Pearson method is recommended in this regime despite producing lower rates, because its exact binomial coverage is reliable at small $N$ where Gaussian approximations break down.
+
+\section{Dark-Count-Dominated Regime ($\eta \mu \ll Y_0$)}
+
+At long distances where the channel transmittance $\eta$ is extremely low, the signal-photon detection rate $\eta\mu$ drops below the dark-count rate $Y_0$. In this regime:
+\begin{equation}
+\text{QBER} \to \frac{e_0 Y_0}{Y_0 + \eta\mu} \approx e_0 = \frac{1}{2}
+\end{equation}
+No secure key can be generated. The framework correctly reports $\ell = 0$ and identifies \texttt{INSUFFICIENT\_STATISTICS} as the root cause. SNSPDs extend this threshold by approximately a factor of $\sqrt{Y_0^{\text{SPD}}/Y_0^{\text{SNSPD}}} \approx 30\times$ in distance.
+
+\section{Dead-Time Cascades at High Rate}
+
+At GHz clock rates with high-loss channels, the detector dead time ($\sim$50–100 ns) is comparable to the inter-pulse spacing ($\sim$1 ns). The dead-time cascade model tracks the detector state at each pulse and correctly accounts for the probability that a detection at pulse $i$ blinds the detector for pulses $i+1$ through $i+\lceil\tau_{\text{dead}}/\tau_{\text{pulse}}\rceil$. At 1 GHz, this is up to 100 consecutive pulses per detection. The effective detection rate saturates at $1/\tau_{\text{dead}}$ regardless of incident photon flux.
+
+\section{MZM Model Limitations}
+
+The current MZM model assumes ideal extinction. Real MZMs have finite extinction ratios (20–30 dB), causing basis leakage: a small fraction of photons intended for the $Z$ basis are modulated into the $X$ basis, and vice versa. This leakage is not currently modeled but would manifest as an additional effective QBER contribution of $\sim 10^{-3}$ for a 30 dB extinction ratio.
+
+\section{SLSQP Convergence \& Non-Convexity}
+
+The SLSQP optimizer may converge to local maxima in the non-convex 5-parameter landscape. Multiple random restarts (25 default) mitigate but do not eliminate this risk. At certain distance ranges (particularly 30–40 km), the optimization landscape exhibits narrow ridges where small parameter changes produce large key-rate variations, challenging gradient-based methods.
+
+\section{Trusted-Relay Trust Assumptions}
+
+The trusted-relay network model assumes all intermediate nodes are physically secure and uncompromised. In practice, this requires tamper-proof enclosures, continuous monitoring, and possibly measurement-device-independent (MDI) links between nodes. The framework's architecture separates the link model from the routing layer, enabling future substitution of quantum repeaters for trusted relays without modifying the routing logic.
+
+\section{Physical Guardrail Limitation}
+
+The physical guardrail $\ell \leq n_X + n_Z$ ensures the key length cannot exceed the number of sifted bits, but it does not account for the possibility that $n_X$ bits may have been consumed by the parameter estimation step. In the current implementation, parameter estimation uses the $Z$-basis counts while key generation uses $X$-basis counts; the guardrail is applied post-hoc and may overestimate the available key material if basis allocation is asymmetric.
+
+\section{Afterpulsing Model Limits}
+
+The afterpulsing model uses a single exponential decay with constant probability $p_{\text{ap}}$. Real detectors exhibit multi-exponential afterpulsing with temperature-dependent time constants. The single-exponential model captures first-order effects but may underestimate afterpulse contributions at high count rates ($> 10^7$ cps) where multiple afterpulse cascades overlap.
+
+\section{Assumption of Phase-Randomized WCP}
+
+All decoy-state proofs assume the WCP source is phase-randomized. If the source retains phase coherence across pulses (e.g., gain-switched lasers without external phase modulation), the decoy-state method's security guarantees may be compromised. The framework does not currently model or detect partial phase correlations between pulses.
+
+
+% =====================================================================
+\chapter{The Defense Q\&A Bank}
+% =====================================================================
+
+\section{Theoretical Foundations \& Security Proofs}
+
+\subsection*{Q1: Why is the no-cloning theorem the foundation of QKD security?}
+\textbf{Answer:} The no-cloning theorem states that an unknown quantum state cannot be perfectly copied. Since QKD encodes key bits in non-orthogonal quantum states (e.g., $|0\rangle$ and $|+\rangle$), any eavesdropper attempting to intercept and measure these states necessarily introduces disturbances. These disturbances manifest as an increased QBER, which Alice and Bob detect during parameter estimation. Classical cryptography, by contrast, relies on the assumed hardness of mathematical problems (factoring, discrete log) — assumptions that quantum computers invalidate.
+
+\subsection*{Q2: Explain the photon-number-splitting attack and why decoy states defeat it.}
+\textbf{Answer:} In a PNS attack, Eve exploits the Poisson statistics of a WCP source: some pulses contain multiple photons. Eve can non-destructively measure the photon number (quantum non-demolition measurement), block all single-photon pulses, and split multi-photon pulses, keeping one copy. She then stores her copy and waits for basis revelation during sifting. The decoy-state method defeats this because Eve cannot distinguish signal from decoy pulses. If she blocks single-photon pulses differently based on intensity, the observed yields $Q_\mu$ and $Q_\nu$ will deviate from the expected Poisson relationship, which Alice and Bob detect. The decoy-state LP bounds $Y_1$ from below, guaranteeing a minimum single-photon contribution to the secure key.
+
+\subsection*{Q3: What is the advantage of the hybrid Hoeffding/Chernoff strategy in Lim 2014?}
+\textbf{Answer:} The original Lim 2014 paper uses pure Hoeffding bounds for simplicity — a single $\delta$ is applied to all intensities. However, at long distances, decoy and vacuum counts can be very small (sometimes zero). Hoeffding bounds become pathologically loose for small observed counts because the bound width $\delta \propto 1/\sqrt{n}$ overestimates uncertainty when $n$ is near zero. The hybrid strategy applies: (a) Chernoff bounds for moderate-to-large counts ($n > 50$), which are tighter than Hoeffding; (b) Hoeffding for small counts, which remains distribution-free and therefore valid; (c) the analytic vacuum bound $-\ln(\varepsilon)/N$ for zero counts. This adaptive selection provides the tightest available bound at each intensity without compromising security.
+
+\subsection*{Q4: Why does the Tight proof outperform Lim 2014?}
+\textbf{Answer:} The Tight proof uses multiplicative Chernoff bounds throughout, where the relative uncertainty $\delta \propto 1/\sqrt{k}$ depends on the observed count $k$, not the total $N$. For high-intensity signal pulses where $k$ is large, this yields much tighter bounds than additive Hoeffding bounds where $\delta \propto 1/\sqrt{N}$. The 10–15\% improvement is most pronounced at intermediate distances (40–80 km) where signal counts are still substantial, and grows with $N$. The trade-off is that multiplicative bounds require the observations to be independent Poisson variables — a valid assumption for phase-randomized WCP sources but one that must be verified for other source types.
+
+\subsection*{Q5: What does ``composable security'' mean and why does it matter?}
+\textbf{Answer:} Composable security means that the QKD-generated key can be securely used as a component in a larger cryptographic system (e.g., as a one-time-pad key or as input to a symmetric cipher). The security definition is: the QKD output is indistinguishable from an ideal key (uniformly random and independent of Eve's knowledge) except with probability $\varepsilon$. The composable framework decomposes $\varepsilon = \varepsilon_{\text{sec}} + \varepsilon_{\text{cor}}$ into secrecy and correctness components, and further decomposes $\varepsilon_{\text{sec}}$ into parameter-estimation, smoothing, and privacy-amplification terms. In the framework, $\varepsilon = 10^{-10}$ is the default total security parameter, and each proof implements a specific decomposition (e.g., Lim 2014 uses $\varepsilon_{\text{sec}}/21$ per statistical test, Tight uses a different allocation).
+
+\section{Implementation \& Architecture}
+
+\subsection*{Q6: Why the Mixin pattern for the simulation runner?}
+\textbf{Answer:} The \texttt{SimulationRunnerMixin} separates orchestration concerns from simulation concerns. The simulation class (e.g., \texttt{BB84Simulator}) focuses on physics: generating pulses, modeling the channel, detecting, sifting. The Mixin adds orchestration: batch partitioning, seed derivation, parallel dispatch, result aggregation. This separation means: (a) the simulation can be tested independently with single-process runs; (b) the orchestration can be changed (e.g., switching from \texttt{ProcessPoolExecutor} to \texttt{LokyProcessPoolExecutor} or MPI) without touching the simulation code; (c) the testability hook \texttt{dispatch\_work\_items} can validate the concurrency contract independently with stub workers.
+
+\subsection*{Q7: How does deterministic seed derivation work, and why is it important?}
+\textbf{Answer:} The master seed $S_0$ and batch index $i$ are combined via $\text{SHA-256}(S_0\|i)$ and reduced modulo $2^{64}-1$ to produce child seed $S_i$. This guarantees: (a) every batch gets a unique, non-overlapping seed; (b) re-running with the same $S_0$ reproduces identical results regardless of batch size, worker count, or operating system; (c) no central seed coordinator is needed — each worker derives its own seed independently. This is critical for scientific reproducibility and for audit scenarios where a third party must be able to reproduce exact simulation outputs.
+
+\subsection*{Q8: What is the ``completion contract'' and why does it matter?}
+\textbf{Answer:} The completion contract of \texttt{dispatch\_work\_items} guarantees that when the function returns, \texttt{on\_row} has been called for every work item. In multi-worker mode, this is enforced by the \texttt{with mp.Pool(...)} context manager, which calls \texttt{pool.close()} and \texttt{pool.join()} on exit, blocking until all submitted futures resolve. Without this contract, a caller might close the CSV file before all rows are written, silently losing data.
+
+\subsection*{Q9: Why is \texttt{OMP\_NUM\_THREADS} set to 1 in worker processes?}
+\textbf{Answer:} NumPy and SciPy operations can spawn additional threads via OpenMP. If each of $w$ worker processes also spawns $t$ threads, total threads become $w \times t$, potentially exceeding the physical core count and causing severe context-switching overhead. Setting \texttt{OMP\_NUM\_THREADS=1} in each worker prevents this oversubscription. For workloads that benefit from intra-process parallelism (e.g., large LP solves), the value can be tuned with the constraint $w \times t \leq \text{core\_count}$.
+
+\section{Detectors \& Physics}
+
+\subsection*{Q10: Why does SNSPD double the secure range vs SPD?}
+\textbf{Answer:} The dark-count rate is the dominant limitation at long distances. SPDs have $p_{\text{dark}} \approx 10^{-5}$ per gate; SNSPDs have $p_{\text{dark}} \approx 10^{-8}$. The effective signal-to-noise ratio at distance $L$ is $S/N \propto \eta(L) \mu / Y_0 = (10^{-\alpha L/10}\mu)/p_{\text{dark}}$. To maintain the same $S/N$ as SPD at distance $L$, SNSPD can operate at distance $L'$ where $\eta(L') = \eta(L) \times 10^{-3}$, giving $\Delta L = (10/\alpha)\log_{10}(10^3) = 150$ km of additional range. In practice, other noise sources (afterpulsing, electrical noise) reduce the realized gain to approximately 90 km.
+
+\subsection*{Q11: How does the dead-time cascade model work exactly?}
+\textbf{Answer:} The detector maintains a ``blind-until'' timestamp. When a photon arrives at time $t$: (a) if $t < t_{\text{blind}}$, the photon is missed (detector blind); (b) otherwise, a detection is registered with probability $\eta$, and if successful, $t_{\text{blind}}$ is updated to $t + \tau_{\text{dead}}$. Afterpulsing adds a secondary effect: after each real detection, an afterpulse countdown timer with exponential distribution (mean $\tau_{\text{ap}}$) is started; if it fires before the next detection, a spurious count is registered. Both effects are tracked at the individual-pulse level, not through aggregate rate equations.
+
+\subsection*{Q12: What is the double-click policy and which should I use?}
+\textbf{Answer:} In BB84, Bob uses two detectors (for bit 0 and bit 1). Sometimes both detectors fire from a single pulse (multi-photon pulse, or dark count coinciding with real detection). The \texttt{DISCARD} policy ignores these events entirely — most conservative, recommended for security proofs. \texttt{RANDOM} assigns a random bit — slightly higher sifting rate but adds $\sim 0.5/p_{\text{multi}}$ to QBER. \texttt{ALICE\_BIASED} assigns based on Alice's basis — requires a separate classical channel, not standard.
+
+\subsection*{Q13: How does misalignment affect QBER so dramatically?}
+\textbf{Answer:} The QBER contribution from misalignment angle $\theta$ is $\Delta E = (1-2e_0)\sin^2(\theta)$. At small $\theta$, $\sin^2(\theta) \approx \theta^2$, so a misalignment of 0.01 rad ($\approx 0.57^\circ$) produces $\Delta E \approx 10^{-4}$. While this absolute QBER increase seems small, the binary entropy $H_2(E)$ is steepest near $E = 0$: $dH_2/dE = \log_2((1-E)/E)$. At $E = 0.01$, a 0.0001 increase in $E$ reduces $1 - H_2(E)$ by approximately 0.0014, which for a key rate of $10^{-4}$ is a 1.4\% reduction — small but measurable. The 50\% reduction cited in the sensitivity analysis combines misalignment with higher baseline QBER where $H_2$ is steeper.
+
+\section{Network \& Routing}
+
+\subsection*{Q14: Why trusted relays instead of quantum repeaters?}
+\textbf{Answer:} Quantum repeaters with entanglement swapping and purification are not yet commercially available at the required fidelity and rate. Trusted relays provide a \textbf{deployable-now} path to metropolitan QKD networks. The framework's architecture cleanly separates the link model from the routing layer: \texttt{QKDNode} is designed for subtyping; a future \texttt{QuantumRepeaterNode} would override only the \texttt{simulate\_link()} method. The routing layer (SPF+) is link-model-agnostic and would not require modification.
+
+\subsection*{Q15: What are the limitations of SPF+ routing?}
+\textbf{Answer:} SPF+ extends Dijkstra with key-pool pruning but inherits Dijkstra's limitations: (a) it is not globally optimal — it greedily routes each request without considering future demand; (b) it does not support multi-path key distribution, which could improve throughput and resilience; (c) pruning based on static thresholds may unnecessarily exclude viable paths when key pools are near-threshold. Alternatives include: (i) weighted SPF with key-pool-based edge weights (soft pruning), (ii) $k$-shortest-paths with round-robin, (iii) max-min fair multi-commodity flow (NP-hard but approximable). For metropolitan networks with $V \leq 20$, SPF+ is operationally sufficient.
+
+\subsection*{Q16: How does DWDM affect the security proof?}
+\textbf{Answer:} The DWDM model adds inter-channel crosstalk as an effective noise source in the QBER: $E_\mu^{\text{DWDM}} = E_\mu^{\text{single}} + E_{\text{crosstalk}}$. The security proof treats this additional noise as part of the adversary's attack surface — it reduces the key rate (higher QBER reduces privacy amplification efficiency) but does not require a new proof. The worst-case assumption that Eve controls the crosstalk is conservative. In practice, the classical channels are under the network operator's control, so this is a defensive assumption.
+
+\section{Validation \& Testing}
+
+\subsection*{Q17: How do you guarantee that the simulation is not biased by RNG correlations?}
+\textbf{Answer:} Each worker receives an independent RNG seeded with a cryptographically derived seed: $\text{seed}_i = \text{SHA-256}(\text{master\_seed} \| i)$. The SHA-256 hash guarantees that seeds are uniformly distributed and unpredictably related even for consecutive indices. Non-overlapping seed spaces are guaranteed by construction. The concurrency validation module verifies end-to-end identity preservation for 100 traced pulses through the four-stage pipeline, confirming no race-condition-induced bias.
+
+\subsection*{Q18: Why $\alpha = 10^{-4}$ for the physics Z-tests?}
+\textbf{Answer:} With 96 simulation points per campaign and $\alpha = 10^{-4}$, the expected number of false rejections under the null hypothesis is $96 \times 10^{-4} \approx 0.01$ per campaign — approximately one spurious rejection per 100 campaigns. This is appropriate for scientific validation where false positives (rejecting a correct implementation) waste significant debugging time. The Z-test also reports the actual $p$-value, enabling manual judgment in borderline cases. A more stringent $\alpha = 10^{-6}$ would nearly eliminate false positives but risk false negatives (accepting an incorrect implementation).
+
+\subsection*{Q19: How does the Rogers et al. validation work?}
+\textbf{Answer:} Campaign 9 configures the framework to match the parameters, protocol, and proof used in the Rogers et al. (2007) experimental demonstration paper. The simulation outputs (key rate vs distance, QBER vs distance) are compared against the paper's published figures. Agreement within 3\% across all distances confirms that: (a) the physical models (fiber loss, detector efficiency, dark counts) produce correct channel statistics, (b) the Lim 2014 proof implementation correctly computes finite-key rates, and (c) the pipeline has no systematic biases in counting or statistical estimation.
+
+\subsection*{Q20: How do you test the LP solver's correctness?}
+\textbf{Answer:} The LP validation uses artificially generated tally statistics with known $Y_1$ and $e_1$ ground truth. Tally counts are synthesized by sampling from a Poisson model with the true yields and errors, then the LP solver is run on the sampled counts. The test verifies that the LP bounds contain the true $Y_1$ and $e_1$ values with probability $\geq 1-\varepsilon$. Edge cases include: zero decoy counts (LP should be infeasible), single-intensity statistics (underdetermined system), and saturated gains (all $Y_n=1$, LP should yield wide but valid bounds).
+
+\section{Results Interpretation \& Future Work}
+
+\subsection*{Q21: The 10–15\% improvement from Tight seems small. Is it worth the complexity?}
+\textbf{Answer:} At 80 km where key rates are $\sim 10^{-5}$ per pulse, a 15\% gain yields 1.5 additional secure bits per $10^5$ pulses. Over $10^9$ pulses (seconds at GHz clock rates), this is $\sim$15,000 additional secure bits — the difference between maintaining or exhausting the key pool. Moreover, the Tight proof's multiplicative Chernoff bounds become increasingly advantageous as $N$ grows, making it the preferred choice for high-throughput systems.
+
+\subsection*{Q22: SLSQP vs Bayesian optimization — why SLSQP?}
+\textbf{Answer:} SLSQP is a gradient-based local optimizer that converges quickly (typically $< 50$ function evaluations) and requires no hyperparameter tuning. Bayesian optimization (e.g., Gaussian Process UCB) would better handle the non-convex landscape, potentially finding better global optima, but requires: (a) a kernel choice (typically Mat\'{e}rn 5/2), (b) an acquisition function (UCB or EI), (c) an exploration-exploitation trade-off, and (d) typically 200–500 function evaluations. SLSQP with 25 random restarts provides a pragmatic balance: most runs find the global optimum, and the computational cost is manageable. A future ML optimization module could add Bayesian methods for users willing to invest the extra computation.
+
+\subsection*{Q23: What is the most impactful next step?}
+\textbf{Answer:} Three paths, ranked by impact:
+
+(1) \textbf{MDI-QKD integration:} Extending the proof layer to measurement-device-independent protocols eliminates all detector-side-channel attacks. Requires modeling a Bell-state measurement at a central untrusted node and adapting the decoy-state bounds. The \texttt{mdi.py} stub in \texttt{qkd/proofs/} provides a starting point.
+
+(2) \textbf{Machine-learning parameter optimization:} Replacing SLSQP with Bayesian optimization for the 5-parameter problem could yield 5–10\% additional key-rate improvement, particularly at distance ranges where SLSQP converges to local optima.
+
+(3) \textbf{CV-QKD module:} Adding continuous-variable QKD (Gaussian-modulated coherent states) would broaden the framework's applicability to the other major paradigm, requiring heterodyne detection models and covariance-matrix-based security proofs.
+
+\subsection*{Q24: Why does the framework use CSV output instead of a database?}
+\textbf{Answer:} CSV provides maximum portability and transparency: the output can be inspected with any text editor, loaded into any analysis tool (Python/pandas, R, MATLAB, Excel), and version-controlled with Git. The complete simulation record is self-contained in a single file. For production deployments, a database (e.g., SQLite for single-node, PostgreSQL for network-scale) could be added as an optional output backend without changing the simulation logic.
+
+\subsection*{Q25: What are the key assumptions that, if violated, break the security proof?}
+\textbf{Answer:} Five critical assumptions:
+
+\begin{enumerate}
+\item \textbf{Phase-randomized WCP:} The decoy-state method requires that the phase of each pulse is uniformly random and independent. Gain-switched lasers without external phase modulation may retain partial phase correlations between pulses, potentially enabling an unambiguous-state-discrimination attack.
+
+\item \textbf{Basis-independent detection efficiency:} Bob's detectors must have identical efficiency for $X$ and $Z$ basis measurements. Detector efficiency mismatch (``detector efficiency mismatch attack'' or ``time-shift attack'') can create basis-dependent detection probabilities that Eve can exploit.
+
+\item \textbf{Trusted classical channel:} The public discussion during sifting, error correction, and privacy amplification requires an authenticated classical channel. Without authentication, Eve can perform a man-in-the-middle attack, impersonating Bob to Alice and vice versa.
+
+\item \textbf{No side channels:} All physical degrees of freedom not explicitly modeled (spectral, temporal, spatial modes) must carry no information about the key bits. Trojan-horse attacks exploit back-reflections into Alice's source; detector-blinding attacks exploit detector nonlinearities.
+
+\item \textbf{Trusted relays are trusted:} In the network model, intermediate nodes are assumed honest and physically secure. Compromise of any relay compromises all keys routed through it. This is an operational assumption, not a cryptographic one.
+\end{enumerate}
+
+\end{document}

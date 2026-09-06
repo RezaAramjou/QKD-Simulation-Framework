@@ -1,0 +1,41 @@
+qkd package metadata not found; using version 'dev'.
+[INFO] Loaded custom sweeps from CLI.
+--- Running QKD Simulations (SWEEP MODE) ---
+[INFO] CPU Count: 20
+[INFO] Using 8 worker processes
+[INFO] Generated 3 hardware configuration combinations.
+[INFO] Total simulations to run: 96
+[INFO] Protocol selected: mdi-qkd
+[INFO] Writing results to 'qkd_results_optimized_sweep.csv'
+INFO [qkd.io] File saved atomically: /home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/qkd_ui_runs/run_20260730_034615/qkd_results_optimized_sweep.csv (46.83 KB)
+[INFO] Completed 1/96 simulations
+[INFO] Completed 4/96 simulations
+[INFO] Completed 8/96 simulations
+[INFO] Completed 12/96 simulations
+[INFO] Completed 16/96 simulations
+[INFO] Completed 20/96 simulations
+[INFO] Completed 24/96 simulations
+[INFO] Completed 28/96 simulations
+[INFO] Completed 32/96 simulations
+[INFO] Completed 36/96 simulations
+[INFO] Completed 40/96 simulations
+[INFO] Completed 44/96 simulations
+[INFO] Completed 48/96 simulations
+[INFO] Completed 52/96 simulations
+[INFO] Completed 56/96 simulations
+[INFO] Completed 60/96 simulations
+[INFO] Completed 64/96 simulations
+[INFO] Completed 68/96 simulations
+[INFO] Completed 72/96 simulations
+[INFO] Completed 76/96 simulations
+[INFO] Completed 80/96 simulations
+[INFO] Completed 84/96 simulations
+[INFO] Completed 88/96 simulations
+[INFO] Completed 92/96 simulations
+[INFO] Completed 96/96 simulations
+
+[SUCCESS] Results saved to 'qkd_results_optimized_sweep.csv'.
+Starting simulation in: /home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/qkd_ui_runs/run_20260730_034615
+Distance range: 0.0 km to 150.0 km (16 points)
+Command: /home/reza-aramjou/miniconda3/envs/QC/bin/python3.13 /home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/main_optimized.py --protocol-class MDIQKDProtocol --fiber-loss 0.2 --det-eff-d0 0.15 --det-eff-d1 0.15 --dark-rate 1e-06 --qber-intrinsic 0.01 --misalignment 0.005 --detector-type SPD --min-pulses-log 7 --max-pulses-log 7 --rng-seed 12345 --distance-start-km 0.0 --distance-stop-km 150.0 --distance-points 16 --workers 8 --sweep-json {"detector.det_eff_d0": [0.1, 0.15, 0.2]}
+

@@ -1,0 +1,14 @@
+qkd package metadata not found; using version 'dev'.
+Failed to compile Numba logic, falling back to pure Python: Kernel validation failure: pulse_period_ns (<object type:float64>) must be strictly positive (review-v8 R9-39).  This indicates either a bug in the caller's const_params construction or a regression in the Python-side validation.  The Python-side ``_validate_simulation_inputs`` should have caught this earlier; if you are calling the kernel directly, validate pulse_period_ns before invoking.
+Traceback (most recent call last):
+  File "/home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/main_optimized.py", line 49, in <module>
+    from qkd.sources import (
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )  # Analytical P(n) helpers — used by proof modules and future key-rate
+    ^
+ImportError: cannot import name 'photon_number_distribution' from 'qkd.sources' (/home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/qkd/sources.py)
+Starting simulation in: /home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/qkd_ui_runs/run_20260728_135025
+Distance range: 0.0 km to 150.0 km (16 points)
+Command: /home/reza-aramjou/miniconda3/envs/QC/bin/python3.13 /home/reza-aramjou/University/QProject/Mega Version 6/Final/4.1 QKD Simulation Framework/main_optimized.py --protocol-class BB84DecoyProtocol --fiber-loss 0.2 --det-eff-d0 0.15 --det-eff-d1 0.15 --dark-rate 1e-06 --qber-intrinsic 0.01 --misalignment 0.005 --detector-type SPD --min-pulses-log 6 --max-pulses-log 6 --rng-seed 12345 --distance-start-km 0.0 --distance-stop-km 150.0 --distance-points 16 --workers 19 --sweep-json {"detector.det_eff_d0": [0.8, 0.9, 1]}
+

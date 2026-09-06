@@ -1,0 +1,1051 @@
+\sloppy
+\emergencystretch=5em
+\hbadness=10000
+\vbadness=10000
+\tolerance=2000
+\providecolor{codebg}{RGB}{248,248,248}
+\providecolor{codeframe}{RGB}{200,200,200}
+\providecolor{keyword}{RGB}{0,0,180}
+\providecolor{string}{RGB}{163,21,21}
+\providecolor{comment}{RGB}{0,128,0}
+\lstset{
+	basicstyle=\ttfamily\scriptsize,
+	breaklines=true,
+	breakatwhitespace=false,
+	columns=fullflexible,
+	keepspaces=true,
+	frame=single,
+	framesep=2pt,
+	showstringspaces=false,
+	backgroundcolor=\color{codebg},
+	rulecolor=\color{codeframe},
+	keywordstyle=\color{keyword}\bfseries,
+	stringstyle=\color{string},
+	commentstyle=\color{comment}\itshape,
+	numberstyle=\tiny\color{gray},
+	numbers=left,
+	numbersep=6pt,
+	xleftmargin=14pt,
+	framexleftmargin=14pt,
+	literate=
+	{ą}{{\v{a}}}1 {ę}{{\k{e}}}1 {ż}{{\.z}}1 {ś}{{\'s}}1
+	{ł}{{\l}}1 {ć}{{\'c}}1 {ń}{{\'n}}1 {ó}{{\'o}}1 {ź}{{\'z}}1
+	{→}{{$\rightarrow$}}1 {←}{{$\leftarrow$}}1 {≠}{{$\neq$}}1
+}
+
+\section{نمای‌ کلی و هدف ماژول}
+
+فایل \lr{\texttt{qkd/proofs/lim2014.py}} پیاده‌سازی وفادارانه چارچوب اثبات امنیتی کلید متناهی مبتنی بر \lr{Decoy-State} است که توسط \lr{Lim}، \lr{Curty}، \lr{Walenta}، \lr{Xu} و \lr{Zbinden} در سال 2014 در مقاله مرجع \lr{``Concise security bounds for practical decoy-state quantum key distribution''} (در مجله \lr{Physical Review A}، جلد 89، شماره 2، صفحه 022307) ارائه شده است. این چارچوب به دلیل سادگی، فشردگی و کاربردپذیری عملی، به یکی از پذیرفته‌شده‌ترین مراجع برای محاسبه طول کلید امن در سیستم‌های تجاری و آزمایشگاهی QKD تبدیل شده است. مزیت اصلی این چارچوب نسبت به روش‌های قبلی مانند \lr{Ma 2005} این است که فرمول‌های بسته و تحلیلی برای تخمین کران‌های پایین بازده خلأ $s_{X,0}$، کران پایین بازده تک‌فوتونی $s_{X,1}$، کران بالای خطای تک‌فوتونی $v_{Z,1}$ و کران بالای خطای فاز $\varphi_X$ ارائه می‌دهد که نیاز به حل برنامه‌ریزی خطی (\lr{LP}) را برای حالت استاندارد سه شدت (سیگنال، \lr{decoy} ضعیف و خلأ) از بین می‌برد. این فایل، خروجی نهایی محاسبه امنیتی کلید را در قالب شیء \lr{\texttt{KeyCalculationResult}} تولید می‌کند که شامل طول کلید امن، نشت تصحیح خطا، کران بالای خطای فاز، کدهای خطا و اطلاعات تشخیصی (\lr{diagnostics}) است.
+
+هدف این ماژول دوگانه است: نخست، ارائه یک مرجع عددی قابل اعتماد و قابل بازتولید برای محاسبه طول کلید امن در چارچوب \lr{Lim 2014} که در آن تمام فرمول‌های معادلات (1) تا (5) مقاله دقیقاً به صورت کد پیاده‌سازی شده‌اند؛ دوم، فراهم آوردن یک لایه توسعه برای مواردی که کاربر بیش از سه شدت نور نیاز دارد. در حالت چهار یا چند شدت، چارچوب \lr{Lim 2014} فرمول بسته ارائه نمی‌کند و صرفاً در پیوست مقاله اشاره می‌کند که تحلیل به طور سرراست به هر تعداد سطح شدت قابل تعمیم است. این ماژول برای پوشش این حالت، یک مسیر جایگزین مبتنی بر \lr{LP} با محدودیت‌های غیرمنفی‌بودن و کران بالای صریح و با یک \lr{tail relaxation} ارائه می‌دهد که در گزارش \lr{diagnostics} به روشنی به عنوان توسعه فراتر از نتایج بسته مقاله علامت‌گذاری شده است. این شفافیت روش‌شناسی برای کاربردهای حساس مانند \lr{certification} و بازبینی امنیتی توسط شخص ثالث ضروری است.
+
+یکی از نوآوری‌های کلیدی این نسخه از پیاده‌سازی، استفاده از یک استراتژی \lr{\textbf{هیبرید Hoeffding/Chernoff}} برای بازه‌های اطمینان است که در ضمیمه A مقاله صراحتاً مجاز شناخته شده است. مقاله اصلی برای سادگی فرمول بسته، از نامساوی \lr{Hoeffding} با یک نوسان $\delta$ یکسان برای همه شدت‌ها استفاده می‌کند، اما این انتخاب در شرایطی که شمارش \lr{decoy} یا خلأ بسیار کم است (مانند فواصل طولانی کانال که در آن‌ها $n_{X,\mu_3}$ ممکن است تنها چند رویداد باشد)، به‌طور پاتولوژیک شل می‌شود و کران‌های پایین منفی یا کران‌های بالا بیش از کل فیزیکی تولید می‌کند. پیاده‌سازی هیبرید در سه رژیم عمل می‌کند: برای شمارش‌های بزرگ ($n_k \ge 10\,\delta_{\text{paper}}$) از \lr{Hoeffding} وفادار به کاغذ استفاده می‌کند؛ برای شمارش‌های کوچک اما ناصفر ($0 < n_k < 10\,\delta_{\text{paper}}$) از \lr{Chernoff} به‌ازای هر شدت با $\delta_k = \sqrt{2\,n_k\,\ln(1/\varepsilon)}$ استفاده می‌کند که تنگ‌تر از \lr{Hoeffding} است؛ و برای $n_k = 0$ از کران بالای \lr{Chernoff} ضربی $\ln(1/\varepsilon_{\text{per-event}})$ (قانون سه) استفاده می‌کند که متناهی و بسیار کوچکتر از $\delta_{\text{paper}}$ است. این استراتژی به‌طور قابل اثبات کوچکتر یا مساوی \lr{Hoeffding} برای همه $n_k$ است، بنابراین امنیت هرگز تضعیف نمی‌شود.
+
+این فایل از کلاس پایه \lr{\texttt{FiniteKeyProof}} (که در \lr{\texttt{qkd/proofs/base.py}} تعریف شده) ارث می‌برد و متدهای انتزاعی \lr{\texttt{allocate\_epsilons}}، \lr{\texttt{get\_epsilon\_policy}}، \lr{\texttt{estimate\_yields\_and\_errors}}، \lr{\texttt{calculate\_key\_length}} و \lr{\texttt{notation\_map}} را پیاده‌سازی می‌کند. همچنین یک \lr{dataclass} جدید به نام \lr{\texttt{DecoyEstimatesLim2014}} معرفی می‌کند که فیلدهای اضافی مانند $s_{X,0}^L$، $s_{X,1}^L$، $s_{Z,1}^L$، $v_{Z,1}^U$ و $\varphi_X^U$ را نگه می‌دارد و از \lr{\texttt{DecoyEstimates}} پایه ارث می‌برد. این طراحی به کاربر اجازه می‌دهد هم به رابط عمومی \lr{\texttt{FiniteKeyProof}} و هم به اطلاعات اختصاصی چارچوب \lr{Lim 2014} دسترسی داشته باشد. علاوه بر این، سازنده کلاس \lr{\texttt{\_\_init\_\_}} به‌صورت خودکار روش بازه اطمینان پارامتر \lr{\texttt{ci\_method}} را به \lr{\texttt{CHERNOFF}} بازنویسی می‌کند زیرا امنیت کلید متناهی در این چارچوب به‌طور صریح به کران‌های تمرکز \lr{Chernoff} وابسته است.
+
+وظیفه نهایی این ماژول، تبدیل شمارش‌های آماری شبکه آشکارسازی به یک عدد صحیح مثبت (یا صفر) به عنوان طول کلید امن است. این تبدیل با رعایت سخت‌گیرانه تمام محافظه‌کاری‌های ریاضی و آماری انجام می‌شود تا هیچ طول کلیدی که از نظر تئوری قابل اثبات نیست، تولید نشود. یک لایه دفاعی فیزیکی جدید در متد \lr{\texttt{calculate\_key\_length}} اضافه شده است که طول کلید نهایی را به مجموع بیت‌های \lr{sifted} ($n_X + n_Z$) محدود می‌کند؛ این قید در صورت بروز هرگونه باگ داخلی (مانند حلقه \lr{kappa-solver}، \lr{fallback} در \lr{LP}، یا سرریز در تخمین \lr{decoy}) فعال می‌شود و یک هشدار گزارش می‌کند. در صورت بروز هرگونه ناسازگاری پیکربندی، آمار ناکافی یا خطای عددی، خروجی به جای استثنا، یک \lr{\texttt{KeyCalculationResult}} با طول کلید صفر و کد خطای مناسب تولید می‌کند تا خط لوله شبیه‌سازی متوقف نشود و علت شکست در گزارش تشخیصی ثبت گردد.
+
+\section{مبانی تئوری و فیزیکی}
+
+\subsection{پروتکل \lr{Decoy-State} با سه شدت}
+
+در پروتکل استاندارد \lr{BB84} با یک منبع تک‌شدت، امنیت در برابر حمله \lr{Photon-Number Splitting (PNS)} قابل تضمین نیست؛ زیرا یک مهاجم با تقسیم فوتون‌های چندفوتونی می‌تواند بدون ایجاد خطا اطلاعات کلید را استخراج کند. راه‌حل \lr{Decoy-State} این است که آلیس به طور تصادفی شدت نور ارسالی را میان چندین سطح تغییر می‌دهد و باب پس از اندازه‌گیری، با مقایسه نرخ آشکارسازی در شدت‌های مختلف، بازده تک‌فوتونی را تخمین می‌زند. در چارچوب \lr{Lim 2014}، سه شدت $\mu_1 > \mu_2 > \mu_3 \ge 0$ در نظر گرفته می‌شود که $\mu_1$ شدت سیگنال، $\mu_2$ شدت \lr{decoy} ضعیف و $\mu_3$ شدت خلأ است. شرط کلیدی $\mu_1 > \mu_2 + \mu_3$ در تابع \lr{\texttt{\_validate\_three\_intensity\_order}} بررسی می‌شود و تضمین می‌کند که مخرج فرمول‌های تحلیلی مثبت باشد. این شرط در کنار $\mu_2 > \mu_3 \ge 0$ یک مجموعه کامل از قیود ترتیبی را تشکیل می‌دهد که در آن مخرج $D = \mu_1(\mu_2 - \mu_3) - \mu_2^2 + \mu_3^2$ در معادله (3) همیشه مثبت می‌ماند.
+
+توزیع آماری فوتون‌های ارسالی از یک منبع لیز با توزیع \lr{Poisson} پیروی می‌کند. اگر میانگین فوتون $\mu$ باشد، احتمال ارسال $n$ فوتون برابر است با:
+\begin{equation}
+	P(n \mid \mu) = e^{-\mu}\,\frac{\mu^n}{n!}.
+\end{equation}
+احتمال کلی تولید $n$ فوتون بدون توجه به شدت انتخاب‌شده، $\tau_n$ نامیده می‌شود و به صورت زیر تعریف می‌شود:
+\begin{equation}
+	\tau_n = \sum_k p_k\,P(n \mid \mu_k) = \sum_k p_k\,e^{-\mu_k}\,\frac{\mu_k^n}{n!},
+\end{equation}
+که در آن $p_k$ احتمال انتخاب شدت $\mu_k$ توسط آلیس است. این کمیت در تابع \lr{\texttt{\_get\_tau\_n}} پیاده‌سازی شده و نقش مرکزی در همه فرمول‌های تحلیلی چارچوب دارد. توجه شود که $\tau_0$ و $\tau_1$ به‌طور خاص در معادلات (2) و (3) ظاهر می‌شوند و مثبت بودن آن‌ها یک پیش‌نیاز برای ادامه محاسبه است؛ در صورت صفر شدن این مقادیر (که می‌تواند در پیکربندی‌های غیرفیزیکی رخ دهد)، ماژول به یک نتیجه صفر با کد خطای \lr{\texttt{INSUFFICIENT\_STATISTICS}} بازمی‌گردد.
+
+\subsection{تخصیص \texorpdfstring{$\varepsilon$}{epsilon} و ۲۱ رویداد شکست}
+
+یکی از نوآوری‌های کلیدی \lr{Lim 2014}، ارائه یک طرح صریح برای تقسیم بودجه امنیتی $\varepsilon_{\text{sec}}$ میان ۲۱ رویداد شکست مستقل است. در ضمیمه B مقاله، نشان داده می‌شود که اگر هر رویداد شکست به یک مقدار مشترک $\varepsilon$ تنظیم شود، کل $\varepsilon_{\text{sec}}$ از رابطه زیر به دست می‌آید:
+\begin{equation}
+	\varepsilon_{\text{sec}} = 21\,\varepsilon \quad \Rightarrow \quad \varepsilon = \frac{\varepsilon_{\text{sec}}}{21}.
+\end{equation}
+این ۲۱ رویداد شامل کران‌های \lr{Hoeffding} برای شمارش آشکارسازی و خطا در چندین پایه و شدت، کران تخمین خطای فاز، کران تصحیح خطا و کران تقویت حریم خصوصی است. در کد، ثابت \lr{\texttt{LIM2014\_FAILURE\_EVENTS\_3\_INTENSITY = 21.0}} این مقدار را نگه می‌دارد و در تابع \lr{\texttt{allocate\_epsilons}} برای محاسبه $\varepsilon$ تک‌آزمون استفاده می‌شود. این تخصیص محافظه‌کارانه است زیرا فرض می‌کند همه ۲۱ رویداد همزمان در بدترین حالت ممکن شکست می‌خورند. در مسیر \lr{N-decoy} (بیش از سه شدت)، همین تخصیص ۲۱ رویدادی به‌صورت محافظه‌کارانه بازاستفاده می‌شود زیرا مقاله فرمول بسته‌ای برای این حالت ارائه نمی‌کند.
+
+علاوه بر این، یک پارامتر مرتبط به نام \lr{\texttt{failure\_prob\_used}} در \lr{\texttt{DecoyEstimatesLim2014}} وجود دارد که در عمل برابر $\varepsilon_{\text{sec}}$ استفاده‌شده در محاسبه است. این فیلد به کاربر اجازه می‌دهد بداند آیا در مسیر \lr{kappa-solver} تکراری، یک $\varepsilon_{\text{sec}}$ متفاوت از مقدار پیش‌فرض \lr{\texttt{p.eps\_sec}} استفاده شده است یا خیر. این شفافیت برای بازبینی امنیتی و \lr{audit} حساس است زیرا تغییر $\varepsilon_{\text{sec}}$ مستقیماً بر طول کلید نهایی تأثیر می‌گذارد.
+
+\subsection{کران‌های \lr{Hoeffding} و انگیزه استراتژی هیبرید}
+
+برای تخمین بازده و خطا از روی شمارش‌های مشاهده‌شده، چارچوب \lr{Lim 2014} از نامساوی \lr{Hoeffding} استفاده می‌کند. اگر $n_{X,k}$ تعداد آشکارسازی‌های مشاهده‌شده در پایه $X$ با شدت $\mu_k$ باشد و $n_X = \sum_k n_{X,k}$ کل آشکارسازی‌های پایه $X$ باشد، کران‌های بالا و پایین با یک نوسان $\delta$ به صورت زیر تعریف می‌شوند:
+\begin{equation}
+	n_{X,k}^{\pm} = \frac{e^{\mu_k}}{p_k}\left(n_{X,k} \pm \delta\right), \qquad \delta = \sqrt{\frac{n_X}{2}\,\ln\!\left(\frac{21}{\varepsilon_{\text{sec}}}\right)}.
+\end{equation}
+ضریب پیشانی $e^{\mu_k}/p_k$ برای تبدیل شمارش مشاهده‌شده در شدت $k$ به تخمین کلان بازده آن شدت است. در پیاده‌سازی مقاله، $\delta$ برای همه شدت‌ها یکسان و تنها به $n_X$ (کل پایه) وابسته است. این انتخاب ساده و بسته است، اما یک ضعف عملی جدی دارد: وقتی شمارش یک شدت خاص $n_{X,k}$ بسیار کمتر از $n_X$ باشد (مانند شمارش خلأ در فواصل طولانی که در آن $n_{X,\mu_3}$ ممکن است تنها چند رویداد باشد در حالی که $n_X$ صدها هزار است)، نوسان $\delta$ مبتنی بر $n_X$ می‌تواند به‌طور قابل توجهی بزرگتر از خود $n_{X,k}$ شود. به‌عنوان مثال، در یک شبیه‌سازی بلندمسافت با $n_X = 10^6$ و $\varepsilon_{\text{sec}} = 10^{-9}$، مقدار $\delta \approx \sqrt{5\times10^5 \times \ln(21\times10^9)} \approx 141$ می‌شود، در حالی که شمارش مشاهده‌شده خلأ ممکن است تنها $n_{X,\mu_3} = 5$ باشد. در این حالت، کران بالای \lr{Hoeffding} $n_{X,\mu_3}^{+} \approx (e^{\mu_3}/p_3)\times 146$ می‌شود که حدود 114 برابر مشاهده است و کاملاً غیرفیزیکی است.
+
+این مشکل در ضمیمه A مقاله به‌صورت صریح تأیید می‌شود: \lr{``the Hoeffding choice is for closed-form simplicity; tighter concentration inequalities may be used''}. پیاده‌سازی فعلی با معرفی یک استراتژی هیبرید، این مجوز را به‌کار می‌گیرد تا در رژیم‌هایی که \lr{Hoeffding} پاتولوژیک است، از کران‌های تمرکز تنگ‌تر استفاده کند بدون آنکه فرض امنیتی تغییر کند. این استراتژی در ادامه توضیح داده می‌شود.
+
+\subsection{استراتژی هیبرید \lr{Hoeffding/Chernoff}}
+
+استراتژی هیبرید بر اساس یک آستانه که نسبت خطای آماری نسبی را کنترل می‌کند، تعریف می‌شود. اگر $\delta_{\text{paper}} = \sqrt{(n_X/2)\,\ln(21/\varepsilon_{\text{sec}})}$ نوسان \lr{Hoeffding} مقاله باشد، آستانه هیبرید به‌صورت $n_k \ge 10\,\delta_{\text{paper}}$ تعریف می‌شود. این آستانه منطقی است زیرا در این نقطه، نسبت $\delta_{\text{paper}}/n_k \le 0.1$ است، یعنی خطای آماری نسبی کمتر از 10\% است که در آن \lr{Hoeffding} به‌طور معقولی تنگ عمل می‌کند. در سه رژیم زیر، بازه اطمینان به‌صورت متفاوت محاسبه می‌شود:
+
+\textbf{رژیم 1 (شمارش بزرگ):} وقتی $n_k \ge 10\,\delta_{\text{paper}}$ و $n_k > 0$، از \lr{Hoeffding} وفادار به کاغذ استفاده می‌شود:
+\begin{equation}
+	n_{X,k}^{\pm} = \frac{e^{\mu_k}}{p_k}\left(n_{X,k} \pm \delta_{\text{paper}}\right).
+\end{equation}
+این رژیم در شرایطی که شمارش کافی وجود دارد، رفتار پیاده‌سازی را دقیقاً با مقاله همخوان می‌کند.
+
+\textbf{رژیم 2 (شمارش کوچک اما ناصفر):} وقتی $0 < n_k < 10\,\delta_{\text{paper}}$، از \lr{Chernoff} به‌ازای هر شدت استفاده می‌شود:
+\begin{equation}
+	n_{X,k}^{\pm} = \frac{e^{\mu_k}}{p_k}\left(n_{X,k} \pm \delta_k\right), \qquad \delta_k = \sqrt{2\,n_k\,\ln\!\left(\frac{1}{\varepsilon_{\text{per-event}}}\right)},
+\end{equation}
+که در آن $\varepsilon_{\text{per-event}} = \varepsilon_{\text{sec}}/21$ طبق ضمیمه B است. توجه شود که $\ln(21/\varepsilon_{\text{sec}}) = \ln(1/\varepsilon_{\text{per-event}})$، بنابراین همان جمله لگاریتمی در هر دو رژیم استفاده می‌شود و تنها تفاوت در مقیاس نوسان است: \lr{Hoeffding} با $n_X/2$ مقیاس می‌گیرد در حالی که \lr{Chernoff} با $n_k$ مقیاس می‌گیرد. برای $n_k \ll n_X$، این تفاوت چشمگیر است و کران تنگ‌تر تولید می‌کند.
+
+\textbf{رژیم 3 (شمارش صفر):} وقتی $n_k = 0$، از کران بالای \lr{Chernoff} ضربی استفاده می‌شود که از قانون سه برای مشاهدات صفر در توزیع \lr{Poisson}/\lr{Binomial} استخراج می‌شود:
+\begin{equation}
+	P(X = 0 \mid \mu) = e^{-\mu} \le \varepsilon \quad \Rightarrow \quad \mu \le \ln\!\left(\frac{1}{\varepsilon}\right),
+\end{equation}
+بنابراین کران بالای کران فیزیکی متناهی $\ln(1/\varepsilon_{\text{per-event}})$ است. این کران در مقایسه با \lr{Hoeffding} که برای $n_k = 0$ به $\delta_{\text{paper}}$ می‌رسد (که می‌تواند بزرگ باشد)، بسیار کوچکتر و فیزیکی‌تر است. برای $\varepsilon_{\text{sec}} = 10^{-9}$، این کران برابر $\ln(21\times10^9) \approx 23.6$ است که یک کران فوق‌العاده تنگ‌تر از $\delta_{\text{paper}} \approx 141$ در همان شرایط است.
+
+اثبات اینکه این استراتژی هیبرید هرگز امنیت را تضعیف نمی‌کند، ساده است: هر کران تمرکزی که پوشش $1 - \varepsilon$ ارائه می‌کند، در چارچوب امنیتی معتبر است. از آنجا که \lr{Chernoff} برای شمارش‌های کوچک تنگ‌تر از \lr{Hoeffding} است (یعنی کران پایین بزرگتر و کران بالا کوچکتر تولید می‌کند، که هر دو محافظه‌کارانه‌تر هستند)، نتیجه هیبرید همیشه حداقل به اندازه \lr{Hoeffding} محافظه‌کارانه است. در نتیجه، طول کلید نهایی همیشه کمتر یا مساوی طول کلید \lr{Hoeffding} خالص است، که این دقیقاً همان جهت مطلوب برای امنیت است.
+
+\subsection{فرمول تحلیلی کران پایین بازده خلأ}
+
+معادله (2) مقاله، کران پایین تعداد رویدادهای خلأ در پایه $X$ را به صورت زیر ارائه می‌دهد:
+\begin{equation}
+	s_{X,0} \;\ge\; \tau_0\,\frac{\mu_2\,n_{X,\mu_3}^{-} - \mu_3\,n_{X,\mu_2}^{+}}{\mu_2 - \mu_3}.
+\end{equation}
+در این فرمول، $n_{X,\mu_3}^{-}$ کران پایین آشکارسازی در شدت خلأ است که با کمترین مقدار ممکن، صورت کسر را کوچک می‌کند و در نتیجه کران پایین محافظه‌کارانه می‌شود. به طور متقابل، $n_{X,\mu_2}^{+}$ کران بالای آشکارسازی در شدت \lr{decoy} ضعیف است که با بزرگ‌ترین مقدار ممکن، جمله کم‌شونده را بزرگ می‌کند و باز هم کران را سخت‌گیرانه می‌سازد. این انتخاب‌های جهت‌دار تضمین می‌کنند که تخمین نهایی، در بدترین حالت نوسان آماری، همچنان یک کران پایین معتبر باشد. در تابع \lr{\texttt{\_calc\_s0\_lower}} این فرمول پیاده‌سازی شده و در صورت منفی شدن صورت کسر، خروجی به صفر برده می‌شود. در نسخه فعلی، با معرفی استراتژی هیبرید، کران‌های $n_{X,\mu_3}^{-}$ و $n_{X,\mu_2}^{+}$ به‌صورت خودکار در رژیم مناسب (بزرگ، کوچک یا صفر) محاسبه می‌شوند، که به‌طور خاص برای $n_{X,\mu_3} = 0$ (که در فواصل طولانی رایج است) یک کران پایین معنادار به جای یک مقدار منفی تولید می‌کند.
+
+\subsection{فرمول تحلیلی کران پایین بازده تک‌فوتونی}
+
+معادله (3) مقاله، کران پایین تعداد رویدادهای تک‌فوتونی در پایه $X$ را به صورت زیر ارائه می‌دهد:
+\begin{equation}
+	s_{X,1} \;\ge\; \tau_1\,\mu_1\,\frac{T}{D},
+\end{equation}
+که در آن:
+\begin{align}
+	T &= n_{X,\mu_2}^{-} - n_{X,\mu_3}^{+} - \frac{\mu_2^2 - \mu_3^2}{\mu_1^2}\left(n_{X,\mu_1}^{+} - \frac{s_{X,0}}{\tau_0}\right), \\
+	D &= \mu_1(\mu_2 - \mu_3) - \mu_2^2 + \mu_3^2.
+\end{align}
+مخرج $D$ با شرط $\mu_1 > \mu_2 + \mu_3$ مثبت می‌ماند. این فرمول پیچیده‌تر از معادله (2) است زیرا از تخمین بازده خلأ $s_{X,0}$ نیز استفاده می‌کند تا اثر فوتون‌های چندتایی حذف شود. در تابع \lr{\texttt{\_calc\_s1\_lower}} این فرمول با دریافت $\tau_1$، $\mu_1$، $\mu_2$، $\mu_3$، کران‌های \lr{Hoeffding}/\lr{Chernoff} برای هر سه شدت و نسبت $s_{X,0}/\tau_0$ پیاده‌سازی شده است. همانند معادله (2)، انتخاب جهت‌دار کران‌ها (کران پایین برای $\mu_2$ و کران بالا برای $\mu_3$ و $\mu_1$) تضمین می‌کند که نتیجه یک کران پایین معتبر باشد. در صورت منفی شدن صورت $T$، خروجی به صفر برده می‌شود زیرا تعداد رویدادهای تک‌فوتونی نمی‌تواند منفی باشد.
+
+\subsection{فرمول تحلیلی کران بالای خطای تک‌فوتونی}
+
+معادله (4) مقاله، کران بالای تعداد خطاهای تک‌فوتونی در پایه $Z$ را به صورت زیر ارائه می‌دهد:
+\begin{equation}
+	v_{Z,1} \;\le\; \tau_1\,\frac{m_{Z,\mu_2}^{+} - m_{Z,\mu_3}^{-}}{\mu_2 - \mu_3},
+\end{equation}
+که در آن $m_{Z,k}^{\pm}$ کران‌های \lr{Hoeffding}/\lr{Chernoff} برای شمارش خطاها در پایه $Z$ با شدت $\mu_k$ هستند. در اینجا از کران بالای خطاهای \lr{decoy} ضعیف و کران پایین خطاهای خلأ استفاده می‌شود تا کران بالای محافظه‌کارانه به دست آید. تابع \lr{\texttt{\_calc\_v1\_upper}} این محاسبه را پیاده‌سازی می‌کند و خروجی را به یک کران فیزیکی (مثلاً $n_Z$) محدود می‌سازد. توجه شود که این کران بالا برای خطاها است، بنابراین در جهت مخلاف کران‌های پایین عمل می‌کند: بزرگ‌ترین مقدار ممکن برای $m_{Z,\mu_2}^{+}$ و کوچک‌ترین مقدار ممکن برای $m_{Z,\mu_3}^{-}$ انتخاب می‌شوند تا صورت کسر بزرگ و در نتیجه کران بالا محافظه‌کارانه شود.
+
+\subsection{کران بالای خطای فاز با نوسان نمونه‌گیری تصادفی}
+
+معادله (5) مقاله، کران بالای خطای فاز $\varphi_X$ را با در نظر گرفتن نوسان نمونه‌گیری تصادفی (\lr{random-sampling fluctuation}) ارائه می‌دهد:
+\begin{equation}
+	\varphi_X = \frac{c_{X,1}}{s_{X,1}} \;\le\; \frac{v_{Z,1}}{s_{Z,1}} + \gamma(a, b, c, d),
+\end{equation}
+که در آن:
+\begin{align}
+	a &= \frac{\varepsilon_{\text{sec}}}{21}, \\
+	b &= \frac{v_{Z,1}}{s_{Z,1}}, \\
+	c &= s_{Z,1}, \\
+	d &= s_{X,1}, \\
+	\gamma(a, b, c, d) &= \sqrt{\frac{(c+d)(1-b)\,b}{c\,d\,\ln 2}\,\log_2\!\left(\frac{c+d}{c\,d\,(1-b)\,b\,a^2}\right)}.
+\end{align}
+این کران یکی از پیچیده‌ترین بخش‌های چارچوب \lr{Lim 2014} است و در تابع \lr{\texttt{\_calc\_phi\_X\_upper}} پیاده‌سازی شده است. در حالت‌های تباهی ($b \in \{0, 1\}$ یا $c \le 0$ یا $d \le 0$)، تابع به صورت ایمن به مقدار بدترین حالت $0.5$ بازمی‌گردد که با کاغذ همخوان است. ریشه دوم در فرمول اصلی به صراحت در مقاله آمده است (اگرچه چیدمان تایپی ممکن است آن را پنهان کند) و در کد با \lr{\texttt{math.sqrt}} پیاده‌سازی شده است. مدیریت دقیق این حالت‌های تباهی در ادامه در بخش پیاده‌سازی توضیح داده می‌شود.
+
+\subsection{طول کلید امن و نشت تصحیح خطا}
+
+معادله (1) مقاله، طول کلید امن نهایی را به صورت زیر ارائه می‌دهد:
+\begin{equation}
+	\ell = s_{X,0} + s_{X,1}\bigl(1 - h(\varphi_X)\bigr) - \lambda_{\text{EC}} - 6\log_2\!\left(\frac{21}{\varepsilon_{\text{sec}}}\right) - \log_2\!\left(\frac{2}{\varepsilon_{\text{cor}}}\right),
+\end{equation}
+که در آن $h(p) = -p\log_2 p - (1-p)\log_2(1-p)$ آنتروپی باینری است. نشت تصحیح خطا $\lambda_{\text{EC}}$ در حالت استاندارد به صورت زیر محاسبه می‌شود:
+\begin{equation}
+	\lambda_{\text{EC}} = f_{\text{EC}}\,n_X\,h(e_{\text{obs}}),
+\end{equation}
+که در آن $f_{\text{EC}} \ge 1$ کارایی تصحیح خطا و $e_{\text{obs}} = m_X / n_X$ خطای بیت مشاهده‌شده در پایه $X$ است. در مدل \lr{tomamichel} (اختیاری، بر اساس مرجع [37] مقاله یعنی \lr{Tomamichel et al., arXiv:1401.5194})، جمله $\log_2(2/\varepsilon_{\text{cor}})$ به $\lambda_{\text{EC}}$ اضافه می‌شود تا یک مدل نشت دقیق‌تر ارائه گردد و در نتیجه جمله جداگانه صحت صفر می‌شود تا از شمارش مضاعف جلوگیری شود. جمله $6\log_2(21/\varepsilon_{\text{sec}})$ شش رویداد شکست مرتبط با تقویت حریم خصوصی (\lr{privacy amplification}) را پوشش می‌دهد و در گزارش \lr{diagnostics} به‌صورت \lr{\texttt{pa\_term}} ذخیره می‌شود.
+
+\subsection{قید فیزیکی دفاعی روی طول کلید}
+
+یکی از additions مهم در این نسخه از پیاده‌سازی، یک لایه دفاعی فیزیکی در متد \lr{\texttt{calculate\_key\_length}} است که پس از محاسبه نهایی طول کلید اعمال می‌شود. این قید بر اساس یک اصل بدیهی فیزیکی است: \textbf{بیت‌های کلید امن زیرمجموعه‌ای از بیت‌های خام \lr{sifted} هستند}، پس طول کلید نمی‌تواند از مجموع $n_X + n_Z$ (یعنی کل بیت‌های \lr{sifted}) بیشتر شود. این قید در شرایط عادی هرگز فعال نمی‌شود زیرا فرمول‌های \lr{Lim 2014} به‌طور ذاتی محافظه‌کارانه هستند، اما به‌عنوان یک تور ایمنی در برابر باگ‌های داخلی طراحی شده است.
+
+سه سناریویی که در آن‌ها این قید ممکن است فعال شود عبارتند از: (1) حلقه \lr{kappa-solver} تکراری که به‌دلیل عدم همگرایی، یک $\varepsilon_{\text{sec}}$ نامعتبر تولید کرده و در نتیجه $\ell$ بزرگ می‌شود؛ (2) \lr{fallback} در مسیر \lr{LP} که ممکن است مقادیر غیرصفر برای کران پایین بازده تولید کند حتی وقتی آمار کافی نیست؛ (3) سرریز در تخمین \lr{decoy} به‌دلیل خطاهای عددی در محاسبات \lr{Chernoff}. در هر یک از این موارد، قید دفاعی طول کلید را به $n_X + n_Z$ محدود می‌کند، یک هشدار در \lr{log} ثبت می‌کند و نتیجه بازنویسی‌شده را بازمی‌گرداند. این طراحی در فلسفه \lr{fail-safe} عمل می‌کند: حتی در صورت بروز باگ داخلی، خروجی هرگز از نظر فیزیکی نامعتبر نخواهد بود.
+
+\section{تحلیل معماری و ساختار داده‌ها}
+
+\subsection{ثابت‌های ماژول و کنترل عددی}
+
+فایل با تعریف چند ثابت کلیدی آغاز می‌شود که رفتار عددی و امنیتی پیاده‌سازی را کنترل می‌کنند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		MAX_ERROR_RATE = 0.5
+		HOEFFDING_FACTOR = 10.0
+		PROB_SUM_TOL = 1e-9
+		MIN_EPS = 1e-300
+		LIM2014_FAILURE_EVENTS_3_INTENSITY = 21.0
+		DEFAULT_KAPPA_MAX_ITERATIONS = 50
+		DEFAULT_KAPPA_ABS_TOL_BITS = 100.0
+		DEFAULT_KAPPA_REL_TOL = 1e-6
+		MAX_SECURITY_EPS = 1.0 - 1e-15
+	\end{lstlisting}
+\end{LTR}
+
+ثابت \lr{\texttt{MAX\_ERROR\_RATE = 0.5}} حد بالای فیزیکی خطای بیت است که در حالت بدترین حالت (یعنی زمانی که هیچ اطلاعاتی از کانال استخراج نمی‌شود) به کار می‌رود. این مقدار برای \lr{clamp} کردن خطای فاز و خطای مشاهده‌شده به بازه $[0, 0.5]$ استفاده می‌شود. \lr{\texttt{HOEFFDING\_FACTOR = 10.0}} ثابت جدیدی است که آستانه انتخاب رژیم در استراتژی هیبرید را تعیین می‌کند: وقتی $n_k \ge \text{HOEFFDING\_FACTOR} \times \delta_{\text{paper}}$، از \lr{Hoeffding} استفاده می‌شود. مقدار 10 به این معناست که وقتی خطای آماری نسبی $\delta_{\text{paper}}/n_k \le 10\%$ است، \lr{Hoeffding} به‌طور معقولی تنگ عمل می‌کند و نیازی به \lr{Chernoff} نیست. \lr{\texttt{PROB\_SUM\_TOL = 1e-9}} تلورانس قابل قبول برای مجموع احتمال‌های شدت نور است. \lr{\texttt{MIN\_EPS = 1e-300}} کف بسیار کوچکی برای $\varepsilon$ است که از خطاهای عددی در محاسبات \lr{log} جلوگیری می‌کند.
+
+\lr{\texttt{LIM2014\_FAILURE\_EVENTS\_3\_INTENSITY = 21.0}} تعداد رویدادهای شکست در طرح تخصیص $\varepsilon$ است که در ضمیمه B مقاله توضیح داده شده است. سه ثابت \lr{\texttt{DEFAULT\_KAPPA\_MAX\_ITERATIONS}}، \lr{\texttt{DEFAULT\_KAPPA\_ABS\_TOL\_BITS}} و \lr{\texttt{DEFAULT\_KAPPA\_REL\_TOL}} برای حل تکراری معادله $\varepsilon_{\text{sec}} = \kappa \cdot \ell$ استفاده می‌شوند که در بخش \S IV مقاله معرفی شده است. در این روش، $\varepsilon_{\text{sec}}$ به طول کلید متناسب می‌شود و باید با تکرار حل شود زیرا $\ell$ خود به $\varepsilon_{\text{sec}}$ وابسته است. حداکثر 50 تکرار با تلورانس مطلق 100 بیت و تلورانس نسبی $10^{-6}$ به عنوان معیار همگرایی در نظر گرفته شده است. \lr{\texttt{MAX\_SECURITY\_EPS = 1.0 - 1e-15}} کران بالای $\varepsilon_{\text{sec}}$ است که از تنظیم آن به 1 (یعنی عدم امنیت کامل) جلوگیری می‌کند.
+
+\subsection{\lr{DecoyEstimatesLim2014}}
+
+این \lr{dataclass} یک ساختار داده تخصصی برای نگهداری تخمین‌های میانی چارچوب \lr{Lim 2014} است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass(frozen=True)
+		class DecoyEstimatesLim2014(DecoyEstimates):
+		"""
+		Intermediate decoy estimates for the Lim-2014 calculation.
+		"""
+		
+		s_X_0_lower: float = 0.0
+		s_X_1_lower: float = 0.0
+		s_Z_1_lower: float = 0.0
+		v_Z_1_upper: float = 0.0
+		phi_X_upper: float = MAX_ERROR_RATE
+		is_feasible: bool = False
+		failure_prob_used: float = 1.0
+		diagnostics: Dict[str, Any] = field(default_factory=dict)
+		
+		def to_dict(self) -> Dict[str, Any]:
+		return _json_safe_dict(self)
+	\end{lstlisting}
+\end{LTR}
+
+این کلاس از \lr{\texttt{DecoyEstimates}} (تعریف‌شده در \lr{\texttt{base.py}}) ارث می‌برد و فیلدهای اضافی اختصاصی چارچوب \lr{Lim 2014} را اضافه می‌کند. پنج فیلد اصلی $s_{X,0}^L$، $s_{X,1}^L$، $s_{Z,1}^L$، $v_{Z,1}^U$ و $\varphi_X^U$ هستند که مستقیماً از معادلات (2) تا (5) مقاله استخراج می‌شوند. \lr{\texttt{is\_feasible}} نشان می‌دهد که آیا تخمین معتبر بوده و طول کلید مثبت تولید شده است یا خیر. \lr{\texttt{failure\_prob\_used}} احتمال شکستی است که در محاسبه کران‌ها استفاده شده (معمولاً $\varepsilon_{\text{sec}}$ یا $\varepsilon_{\text{sec}}/21$). \lr{\texttt{diagnostics}} یک دیکشنری برای اطلاعات تشخیصی کامل است. استفاده از \lr{\texttt{frozen=True}} اطمینان می‌دهد که پس از ساخت، مقادیر قابل تغییر نیستند که این ویژگی برای صحت‌سنجی نتایج امنیتی حیاتی است. متد \lr{\texttt{to\_dict}} برای سریال‌سازی به \lr{JSON} با تبدیل نوع‌های \lr{numpy} و \lr{Enum} به نوع‌های بومی پایتون استفاده می‌شود.
+
+\subsection{\lr{Lim2014Proof} و سازنده آن}
+
+کلاس اصلی ماژول، \lr{\texttt{Lim2014Proof}} است که به صورت \lr{dataclass} و \lr{frozen} تعریف شده و از \lr{\texttt{FiniteKeyProof}} ارث می‌برد. سازنده این کلاس در نسخه فعلی دارای یک منطق جدید برای اعمال روش بازه اطمینان است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@dataclass(frozen=True)
+		class Lim2014Proof(FiniteKeyProof):
+		"""
+		Lim et al. 2014 finite-key proof implementation.
+		
+		The three-intensity analytical path implements Eqs. (1)-(5) of the paper
+		exactly. For more than three intensities, a conservative LP-based
+		N-decoy estimate is used (see module docstring).
+		"""
+		
+		p: "QKDParams"  # type: ignore[assignment]
+		
+		def __init__(self, p: "QKDParams"):
+		import logging
+		from qkd.proofs.base import ENTROPY_PROB_CLAMP, ProofMode
+		try:
+		import mpmath
+		has_mpmath = True
+		except ImportError:
+		has_mpmath = False
+		
+		object.__setattr__(self, 'p', p)
+		object.__setattr__(self, 'mode', ProofMode.PRODUCTION)
+		object.__setattr__(self, 'logger', logging.getLogger(self.__class__.__name__))
+		object.__setattr__(self, 'run_id', getattr(p, 'run_id', 'no-run-id'))
+		object.__setattr__(self, 'min_prob_clamp', getattr(p, 'entropy_clamp', ENTROPY_PROB_CLAMP))
+		object.__setattr__(self, 'use_mpmath', getattr(p, 'use_mpmath', False) and has_mpmath)
+		if getattr(p, 'ci_method', None) is not None:
+		from ..datatypes import ConfidenceBoundMethod
+		if p.ci_method != ConfidenceBoundMethod.CHERNOFF:
+		import logging
+		logging.getLogger(self.__class__.__name__).warning(
+		f"Lim2014 proof requires CHERNOFF bounds for finite-key security. "
+		f"Overriding '{p.ci_method.name}' with CHERNOFF."
+		)
+		object.__setattr__(p, 'ci_method', ConfidenceBoundMethod.CHERNOFF)
+	\end{lstlisting}
+\end{LTR}
+
+از آنجا که کلاس \lr{\texttt{@dataclass(frozen=True)}} است، تخصیص مستقیم ویژگی‌ها در \lr{\texttt{\_\_init\_\_}} مجاز نیست. به جای آن از \lr{\texttt{object.\_\_setattr\_\_}} برای دور زدن این محدودیت استفاده می‌شود. این الگو به ما اجازه می‌دهد کلاس را به صورت \lr{immutable} نگه داریم در حالی که هنوز بتوانیم در زمان ساخت، وابستگی‌ها را تزریق کنیم. سپس \lr{\texttt{mpmath}} به صورت اختیاری وارد می‌شود و اگر موجود نباشد، پرچم \lr{\texttt{use\_mpmath}} به \lr{\texttt{False}} تنظیم می‌شود. این طراحی امکان استفاده در محیط‌هایی بدون \lr{mpmath} را فراهم می‌کند.
+
+بخش جدید و حیاتی سازنده، بررسی \lr{\texttt{p.ci\_method}} است. امنیت کلید متناهی در چارچوب \lr{Lim 2014} به‌طور صریح به کران‌های تمرکز \lr{Chernoff} وابسته است (هم در رژیم \lr{Hoeffding} و هم در رژیم \lr{Chernoff} هیبرید، زیرا \lr{Hoeffding} یک حالت خاص از \lr{Chernoff} است). اگر کاربر روش دیگری مانند \lr{\texttt{CONFIDENCE\_INTERVAL}} یا \lr{\texttt{BOOTSTRAP}} را تنظیم کرده باشد، سازنده یک هشدار ثبت می‌کند و روش را به \lr{\texttt{CHERNOFF}} بازنویسی می‌کند. این \lr{override} تهاهماهنگ با فلسفه \lr{fail-safe} است: به جای ارائه یک نتیجه ناامن، پیاده‌سازی به‌طور خودکار به تنظیمات امن تغییر می‌یابد و کاربر را مطلع می‌سازد. توجه شود که این بازنویسی روی خود شیء \lr{\texttt{p}} انجام می‌شود (\lr{\texttt{object.\_\_setattr\_\_(p, ...)}})، که یک \lr{side-effect} است؛ این انتخاب آگاهانه است زیرا در غیر این صورت، تنظیمات پیکربندی کاربر در طول خط لوله شبیه‌سازی ناسازگار می‌ماند.
+
+\subsection{متدهای استاتیک ایمن عددی}
+
+کلاس چهار متد استاتیک برای محاسبات ایمن عددی دارد. متد \lr{\texttt{\_validate\_epsilon\_value}} اعتبارسنجی $\varepsilon$ را انجام می‌دهد:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@staticmethod
+		def _validate_epsilon_value(value: float, name: str) -> None:
+		if not math.isfinite(float(value)) or not (0.0 < float(value) < 1.0):
+		raise ParameterValidationError(f"{name} must be finite and in the open interval (0, 1).")
+	\end{lstlisting}
+\end{LTR}
+
+این متد بررسی می‌کند که مقدار متناهی باشد و در بازه باز $(0, 1)$ قرار داشته باشد. بازه باز به این معناست که $\varepsilon = 0$ (که منجر به تقسیم بر صفر در فرمول‌های \lr{log} می‌شود) و $\varepsilon = 1$ (که به معنای عدم امنیت است) رد می‌شوند. این اعتبارسنجی برای همه $\varepsilon$های ورودی به کار می‌رود: $\varepsilon_{\text{sec}}$، $\varepsilon_{\text{cor}}$ و $\varepsilon$ تک‌آزمون. در مسیر \lr{kappa-solver} تکراری نیز برای هر $\varepsilon_{\text{target}}$ جدید اعمال می‌شود تا از مقادیر نامعتبر جلوگیری شود.
+
+متد \lr{\texttt{\_safe\_log}} و \lr{\texttt{\_safe\_log2}} لگاریتم‌های ایمن هستند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@staticmethod
+		def _safe_log(x: float) -> float:
+		if not math.isfinite(float(x)) or x <= 0.0:
+		raise ParameterValidationError(f"log argument must be finite and positive; got {x!r}.")
+		return math.log(x)
+		
+		@staticmethod
+		def _safe_log2(x: float) -> float:
+		if not math.isfinite(float(x)) or x <= 0.0:
+		raise ParameterValidationError(f"log2 argument must be finite and positive; got {x!r}.")
+		return math.log2(x)
+	\end{lstlisting}
+\end{LTR}
+
+برخلاف متد \lr{\texttt{\_safe\_log}} در کلاس پایه که مقدار بسیار کوچک را به $10^{-300}$ \lr{clamp} می‌کند، این پیاده‌سازی در صورت دریافت ورودی نامعتبر، استثنا پرتاب می‌کند. این رفتار سخت‌گیرانه‌تر به این دلیل است که در چارچوب \lr{Lim 2014}، هر ورودی غیرمثبت به لگاریتم نشانگر یک خطای منطقی جدی است که باید ریشه‌یابی شود، نه یک خطای عددی قابل چشم‌پوشی. متد \lr{\texttt{\_clamp\_probability}} احتمالات را به بازه $[0, u]$ محدود می‌کند که در آن $u$ به صورت پیش‌فرض 1 است اما می‌تواند به $0.5$ (برای خطاها) تنظیم شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@staticmethod
+		def _clamp_probability(x: float, *, upper: float = 1.0) -> float:
+		if not math.isfinite(float(x)):
+		return upper
+		return min(max(float(x), 0.0), upper)
+	\end{lstlisting}
+\end{LTR}
+
+اگر ورودی نامتناهی باشد، به کران بالای بازه بازمی‌گردد که در حالت خطا به معنای بدترین حالت (یعنی عدم امنیت) است.
+
+\subsection{اعتبارسنجی \lr{TallyCounts}}
+
+متد \lr{\texttt{\_validate\_tally\_counts}} یک لایه دفاعی برای صحت‌سنجی شمارش‌های آماری ورودی است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _validate_tally_counts(self, stats: TallyCounts, pulse_name: str) -> None:
+		required = ("sent", "sifted_x", "sifted_z", "errors_sifted_x", "errors_sifted_z")
+		missing = [name for name in required if not hasattr(stats, name)]
+		if missing:
+		raise ParameterValidationError(
+		f"TallyCounts for pulse {pulse_name!r} is missing required fields: {missing}."
+		)
+		
+		sent = float(stats.sent)
+		sifted_x = float(stats.sifted_x)
+		sifted_z = float(stats.sifted_z)
+		err_x = float(stats.errors_sifted_x)
+		err_z = float(stats.errors_sifted_z)
+		
+		values = {
+			"sent": sent,
+			"sifted_x": sifted_x,
+			"sifted_z": sifted_z,
+			"errors_sifted_x": err_x,
+			"errors_sifted_z": err_z,
+		}
+		
+		for name, value in values.items():
+		if not math.isfinite(value) or value < 0.0:
+		raise ParameterValidationError(
+		f"{name} for pulse {pulse_name!r} must be finite and non-negative."
+		)
+		
+		if err_x > sifted_x:
+		raise ParameterValidationError(
+		f"errors_sifted_x exceeds sifted_x for pulse {pulse_name!r}: {err_x} > {sifted_x}."
+		)
+		if err_z > sifted_z:
+		raise ParameterValidationError(
+		f"errors_sifted_z exceeds sifted_z for pulse {pulse_name!r}: {err_z} > {sifted_z}."
+		)
+		if sifted_x + sifted_z > sent + 1e-9:
+		raise ParameterValidationError(
+		f"sifted_x + sifted_z exceeds sent for pulse {pulse_name!r}."
+		)
+	\end{lstlisting}
+\end{LTR}
+
+این متد چهار سطح اعتبارسنجی انجام می‌دهد: (1) حضور تمام فیلدهای مورد نیاز \lr{\texttt{sent}}، \lr{\texttt{sifted\_x}}، \lr{\texttt{sifted\_z}}، \lr{\texttt{errors\_sifted\_x}} و \lr{\texttt{errors\_sifted\_z}} در شیء \lr{\texttt{TallyCounts}}؛ (2) متناهی و نامنفی بودن تمام مقادیر؛ (3) عدم تجاوز خطاها از شمارش متناظر ($m_X \le n_X$ و $m_Z \le n_Z$) که یک قید فیزیکی بدیهی است؛ (4) عدم تجاوز مجموع \lr{sifted} از \lr{sent} با تلورانس $10^{-9}$. این اعتبارسنجی‌ها قبل از هر محاسبه انجام می‌شوند تا از خطاهای دیرهنگام که ریشه‌یابی آن‌ها دشوار است، جلوگیری شود. در صورت شکست هر یک از این اعتبارسنجی‌ها، یک \lr{\texttt{ParameterValidationError}} با پیام مشخص پرتاب می‌شود که نام پالس و فیلد مشکل‌دار را شامل می‌شود.
+
+\section{پیاده‌سازی ریاضی و الگوریتمی}
+
+\subsection{اعتبارسنجی پیکربندی}
+
+متد \lr{\texttt{\_validate\_configuration}} تمام پیش‌نیازهای چارچوب \lr{Lim 2014} را بررسی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _validate_configuration(self) -> None:
+		self._validate_epsilon_value(self.p.eps_sec, "eps_sec")
+		self._validate_epsilon_value(self.p.eps_cor, "eps_cor")
+		
+		if not math.isfinite(float(self.p.f_error_correction)) or self.p.f_error_correction < 1.0:
+		raise ParameterValidationError("f_error_correction must be finite and >= 1.")
+		
+		ec_model = getattr(self.p, "error_correction_model", "standard")
+		if ec_model not in {"standard", "lim", "tomamichel"}:
+		raise ParameterValidationError(
+		"error_correction_model must be one of: 'standard', 'lim', 'tomamichel'."
+		)
+		
+		photon_cap = int(getattr(self.p, "photon_number_cap", 0))
+		if photon_cap < 1:
+		raise ParameterValidationError("photon_number_cap must be at least 1.")
+		
+		pulse_configs = list(getattr(self.p.source, "pulse_configs", []))
+		if len(pulse_configs) < 3:
+		raise ConfigurationError("Lim2014Proof requires at least three pulse configurations.")
+		
+		names = [pc.name for pc in pulse_configs]
+		if len(set(names)) != len(names):
+		raise ConfigurationError("Pulse configuration names must be unique.")
+		
+		prob_sum = 0.0
+		for pc in pulse_configs:
+		mu = float(pc.mean_photon_number)
+		prob = float(pc.probability)
+		
+		if not math.isfinite(mu) or mu < 0.0:
+		raise ParameterValidationError(f"Invalid mean photon number for pulse {pc.name!r}: {mu!r}.")
+		if not math.isfinite(prob) or prob <= 0.0:
+		raise ParameterValidationError(f"Pulse probability for {pc.name!r} must be finite and positive.")
+		prob_sum += prob
+		
+		if abs(prob_sum - 1.0) > PROB_SUM_TOL:
+		raise ParameterValidationError(f"Pulse probabilities must sum to 1; got {prob_sum!r}.")
+		
+		kappa = getattr(self.p, "security_constant_kappa", None)
+		if kappa is not None:
+		if not math.isfinite(float(kappa)) or float(kappa) <= 0.0:
+		raise ParameterValidationError("security_constant_kappa must be finite and positive when set.")
+	\end{lstlisting}
+\end{LTR}
+
+این متد به ترتیب اعتبارسنجی می‌کند: (1) مقادیر $\varepsilon_{\text{sec}}$ و $\varepsilon_{\text{cor}}$ در بازه $(0, 1)$ باشند؛ (2) ضریب کارایی تصحیح خطا $f_{\text{EC}} \ge 1$ باشد (مقدار کمتر از 1 از نظر تئوری رمزنگاری غیرممکن است زیرا تصحیح خطا نمی‌تواند بهتر از حد \lr{Shannon} باشد)؛ (3) مدل تصحیح خطا یکی از سه حالت مجاز \lr{\texttt{standard}}، \lr{\texttt{lim}} یا \lr{\texttt{tomamichel}} باشد؛ (4) کسر تعداد فوتون \lr{\texttt{photon\_number\_cap}} حداقل 1 باشد (برای مسیر \lr{LP} ضروری است)؛ (5) حداقل سه پیکربندی شدت نور وجود داشته باشد؛ (6) نام پیکربندی‌ها یکتا باشند؛ (7) مجموع احتمال‌ها برابر 1 باشد با تلورانس \lr{\texttt{PROB\_SUM\_TOL}}؛ (8) در صورت تنظیم $\kappa$، مقدار آن مثبت و متناهی باشد. این اعتبارسنجی‌ها قبل از هر محاسبه انجام می‌شوند.
+
+\subsection{محاسبه توزیع \lr{Poisson} و \texorpdfstring{$\tau_n$}{tau\_n}}
+
+تابع \lr{\texttt{\_poisson\_pmf\_list}} توزیع \lr{Poisson} را تا حد $n_{\text{cap}}$ به صورت بازگشتی و پایدار عددی محاسبه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		@staticmethod
+		def _poisson_pmf_list(mu: float, n_cap: int) -> List[float]:
+		if mu < 0.0 or not math.isfinite(mu):
+		raise ParameterValidationError(f"Poisson mean must be finite and non-negative; got {mu!r}.")
+		pmfs = [0.0] * (n_cap + 1)
+		pmfs[0] = math.exp(-mu)
+		for n in range(1, n_cap + 1):
+		pmfs[n] = pmfs[n - 1] * mu / float(n)
+		return pmfs
+	\end{lstlisting}
+\end{LTR}
+
+این پیاده‌سازی از رابطه بازگشتی $P(n \mid \mu) = P(n-1 \mid \mu) \cdot \mu / n$ استفاده می‌کند که از محاسبه مستقیم فاکتوریل $n!$ که برای $n$ بزرگ سرریز می‌شود، اجتناب می‌کند. این روش پایداری عددی بسیار بالایی دارد و حتی برای $n = 100$ نیز نتایج دقیق تولید می‌کند. مقدار $P(0 \mid \mu) = e^{-\mu}$ به عنوان نقطه شروع بازگشت استفاده می‌شود.
+
+تابع \lr{\texttt{\_get\_tau\_n}} مقدار $\tau_n$ را برای $n$ مشخص محاسبه می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _get_tau_n(self, n: int, pulse_map: Mapping[str, float], p_k: Mapping[str, float]) -> float:
+		"""
+		tau_n := sum_k p_k * e^{-mu_k} * mu_k^n / n!
+		(paper, definition below Eq. (2)).
+		"""
+		if n < 0:
+		raise ParameterValidationError("n must be non-negative.")
+		
+		tau_n = 0.0
+		for name, mu in pulse_map.items():
+		prob_k = p_k[name]
+		pmf = math.exp(-mu) if n == 0 else math.exp(-mu) * (mu**n) / math.factorial(n)
+		tau_n += prob_k * pmf
+		return max(0.0, tau_n)
+	\end{lstlisting}
+\end{LTR}
+
+این تابع دقیقاً تعریف $\tau_n = \sum_k p_k\,P(n \mid \mu_k)$ را پیاده‌سازی می‌کند. در حالت $n = 0$ برای جلوگیری از محاسبه $0^0$، از شاخه خاص \lr{\texttt{math.exp(-mu)}} استفاده می‌شود. تابع \lr{\texttt{\_get\_tau\_list}} همان محاسبه را به صورت برداری برای همه $n$ از 0 تا $n_{\text{cap}}$ انجام می‌دهد که در مسیر \lr{LP} استفاده می‌شود. تابع \lr{\texttt{\_get\_tail\_probability}} احتمال دم را محاسبه می‌کند، یعنی $1 - \sum_{n=0}^{n_{\text{cap}}} P(n \mid \mu)$ که در \lr{tail relaxation} مسیر \lr{LP} به کار می‌رود. این تابع برای مدیریت فوتون‌های چندتایی فراتر از کسر $n_{\text{cap}}$ ضروری است.
+
+\subsection{کران‌های هیبرید \lr{Hoeffding/Chernoff} با دو پارامتر}
+
+متد \lr{\texttt{\_get\_bounds}} قلب استراتژی هیبرید است و کران‌های بازه اطمینان را در سه رژیم پیاده‌سازی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _get_bounds(self, n_k: float, n_total: float, eps_ln_term: float,
+		clip_total: Optional[float] = None) -> Tuple[float, float]:
+		"""
+		Hybrid Hoeffding / per-intensity Chernoff confidence interval.
+		
+		Paper Lim2014 Appendix A uses Hoeffding's inequality with a single
+		delta = sqrt(n_total/2 * ln(21/eps_sec)) that is the SAME for all
+		intensities k. This is a sufficient condition for security but is
+		pathologically loose when n_k << n_total (e.g. vacuum counts at long
+		distance: observed 5, Hoeffding upper 572, 114x the observation).
+		
+		Hybrid strategy (security-preserving, tighter for small counts):
+		- When n_k is "large" (n_k >= 10 * delta_paper, i.e. relative
+		statistical error < 10%), use the paper's Hoeffding bound.
+		- When n_k is "small" but nonzero (0 < n_k < 10 * delta_paper),
+		use per-intensity multiplicative Chernoff:
+		delta_k = sqrt(2 * n_k * ln(1/eps_per_event))
+		- When n_k = 0, the upper bound is ln(1/eps_per_event) (rule of
+		three for Poisson/binomial zero observations).
+		
+		# HYBRID-HOEFFDING-CHERNOFF v1
+		"""
+		if clip_total is None:
+		clip_total = n_total
+		
+		if n_total < 0.0:
+		raise ParameterValidationError("n_total must be non-negative.")
+		if clip_total < 0.0:
+		raise ParameterValidationError("clip_total must be non-negative.")
+		if eps_ln_term < 0.0 or not math.isfinite(eps_ln_term):
+		raise ParameterValidationError("eps_ln_term must be finite and non-negative.")
+		if n_k < 0.0:
+		raise ParameterValidationError("n_k must be non-negative.")
+		
+		# --- Hoeffding delta (paper Eq. A1): same for all k, scales with n_total.
+		delta_paper = math.sqrt((n_total / 2.0) * eps_ln_term)
+		
+		# --- Hybrid selection ---
+		hoeffding_threshold = HOEFFDING_FACTOR * delta_paper
+		
+		if n_k >= hoeffding_threshold and n_k > 0.0:
+		# Paper-faithful Hoeffding regime (large counts).
+		lower = max(0.0, n_k - delta_paper)
+		upper = min(n_k + delta_paper, clip_total)
+		elif n_k > 0.0:
+		# Per-intensity multiplicative Chernoff regime (small but nonzero).
+		delta_k = math.sqrt(2.0 * n_k * eps_ln_term)
+		lower = max(0.0, n_k - delta_k)
+		upper = min(n_k + delta_k, clip_total)
+		else:
+		# n_k = 0: multiplicative Chernoff upper bound (rule of three).
+		lower = 0.0
+		upper = min(eps_ln_term, clip_total)
+		
+		return lower, upper
+	\end{lstlisting}
+\end{LTR}
+
+پارامتر \lr{\texttt{n\_total}} مقیاس محاسبه $\delta_{\text{paper}}$ را تعیین می‌کند و \lr{\texttt{clip\_total}} کران بالای فیزیکی برای \lr{clip} کردن است. در پیاده‌سازی استاندارد مقاله، هر دو برابر $n_X$ (یا $n_Z$) هستند؛ اما در این پیاده‌سازی، \lr{\texttt{n\_total}} می‌تواند برابر $n_{X,k}$ (شمارش خود شدت) باشد تا $\delta$ کوچکتر و تنگ‌تر شود. این امر از یک مشکل عملی جلوگیری می‌کند: وقتی شمارش \lr{decoy} یا خلأ بسیار کم است، ضریب پیشانی $e^{\mu_k}/p_k$ می‌تواند $\delta$ مبتنی بر $n_X$ را به قدری بزرگ کند که کران‌های پایین منفی و کران‌های بالا بیش از کل فیزیکی شوند.
+
+نکته کلیدی در این پیاده‌سازی، استفاده از \lr{\texttt{eps\_ln\_term}} به‌عنوان آرگومان ورودی است. این متغیر برابر $\ln(21/\varepsilon_{\text{sec}}) = \ln(1/\varepsilon_{\text{per-event}})$ است (زیرا $\varepsilon_{\text{per-event}} = \varepsilon_{\text{sec}}/21$). این یکپارچه‌سازی هوشمندانه امکان استفاده از همان جمله لگاریتمی در هر دو رژیم \lr{Hoeffding} و \lr{Chernoff} را فراهم می‌کند بدون آنکه نیاز به محاسبه جداگانه باشد. در رژیم صفر، کران بالای $\ln(1/\varepsilon_{\text{per-event}})$ مستقیماً برابر \lr{\texttt{eps\_ln\_term}} است که یک کران فیزیکی متناهی و معقول ارائه می‌دهد. در نتیجه، این متد هیچ‌گاه یک کران بالای نامتناهی یا غیرفیزیکی تولید نمی‌کند.
+
+\subsection{مسیر \lr{N-decoy} مبتنی بر \lr{LP}}
+
+وقتی تعداد شدت‌ها بیش از 3 باشد، پیاده‌سازی به مسیر \lr{LP} تغییر مسیر می‌دهد. متد \lr{\texttt{\_solve\_n\_decoy\_lp}} یک برنامه‌ریزی خطی محافظه‌کارانه با محدودیت‌های غیرمنفی‌بودن، کران بالای صریح و \lr{tail relaxation} را حل می‌کند. این متد سه نوع هدف را پشتیبانی می‌کند: \lr{\texttt{s0\_lower}} (کران پایین بازده خلأ)، \lr{\texttt{s1\_lower}} (کران پایین بازده تک‌فوتونی) و \lr{\texttt{v1\_upper}} (کران بالای خطای تک‌فوتونی). در حالت \lr{\texttt{v1\_upper}}، تابع هدف به $-v_1$ تبدیل می‌شود زیرا \lr{LP} استاندارد مسأله کمینه‌سازی را حل می‌کند و برای یافتن کران بالا باید منفی متغیر را کمینه کرد.
+
+این مسیر با فراخوانی \lr{\texttt{solve\_lp}} از ماژول \lr{\texttt{qkd.proofs.utils\_lp}} که به \lr{scipy.optimize.linprog} یا \lr{cvxopt} متصل است، حل می‌شود. در صورت شکست \lr{LP} (مثلاً به‌دلیل عدم \lr{feasibility})، یک \lr{fallback} محافظه‌کارانه اعمال می‌شود: کران‌های پایین به صفر و کران‌های بالا به حد فیزیکی بازمی‌گردند. این رفتار \lr{fail-safe} تضمین می‌کند که حتی در صورت شکست \lr{solver}، خروجی هرگز خوش‌بینانه نخواهد بود. توجه شود که این مسیر در گزارش \lr{diagnostics} به‌روشنی به‌عنوان توسعه فراتر از نتایج بسته مقاله علامت‌گذاری شده است.
+
+\subsection{پیاده‌سازی معادله (2): کران پایین بازده خلأ}
+
+تابع \lr{\texttt{\_calc\_s0\_lower}} معادله (2) مقاله را پیاده‌سازی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _calc_s0_lower(
+		self,
+		tau_0: float,
+		mu2: float,
+		mu3: float,
+		n_mu2_plus: float,
+		n_mu3_minus: float,
+		) -> float:
+		"""
+		Eq. (2):
+		s_{X,0} >= tau_0 * (mu2 * n^-_{X,mu3} - mu3 * n^+_{X,mu2}) / (mu2 - mu3)
+		"""
+		denominator = mu2 - mu3
+		if denominator <= 0.0:
+		raise ConfigurationError("Invalid s0 denominator; require mu2 > mu3.")
+		
+		numerator = tau_0 * (mu2 * n_mu3_minus - mu3 * n_mu2_plus)
+		return max(0.0, numerator / denominator)
+	\end{lstlisting}
+\end{LTR}
+
+پارامترهای ورودی به ترتیب $\tau_0$، $\mu_2$، $\mu_3$، $n_{X,\mu_2}^{+}$ (کران بالای آشکارسازی \lr{decoy}) و $n_{X,\mu_3}^{-}$ (کران پایین آشکارسازی خلأ) هستند. توجه شود که در صورت کسر، $\mu_2$ با کران پایین خلأ و $\mu_3$ با کران بالای \lr{decoy} ضرب می‌شوند تا صورت کسر به کوچکترین مقدار ممکن برسد و در نتیجه کران پایین محافظه‌کارانه به دست آید. در صورت منفی شدن صورت (که ممکن است در شرایط نوسان شدید آماری رخ دهد)، خروجی با \lr{\texttt{max(0.0, ...)}} به صفر برده می‌شود زیرا تعداد رویدادهای خلأ نمی‌تواند منفی باشد. نکته مهم این است که در نسخه فعلی با استراتژی هیبرید، $n_{X,\mu_3}^{-}$ دیگر هرگز به مقدار منفی \lr{Hoeffding} منجر نمی‌شود، زیرا در رژیم $n_k = 0$، کران پایین صفر و کران بالا $\ln(1/\varepsilon)$ است.
+
+\subsection{پیاده‌سازی معادله (3): کران پایین بازده تک‌فوتونی}
+
+تابع \lr{\texttt{\_calc\_s1\_lower}} معادله (3) مقاله را پیاده‌سازی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _calc_s1_lower(
+		self,
+		tau_1: float,
+		mu1: float,
+		mu2: float,
+		mu3: float,
+		n_mu1_plus: float,
+		n_mu2_minus: float,
+		n_mu3_plus: float,
+		s_0_lower_over_tau_0: float,
+		) -> float:
+		"""
+		Eq. (3):
+		s_{X,1} >= tau_1 * mu1 * T / D
+		where
+		T = n^-_{X,mu2} - n^+_{X,mu3} - ((mu2^2 - mu3^2)/mu1^2) * (n^+_{X,mu1} - s_{X,0}/tau_0)
+		D = mu1*(mu2 - mu3) - mu2^2 + mu3^2
+		"""
+		mu1_sq = mu1 * mu1
+		mu2_sq = mu2 * mu2
+		mu3_sq = mu3 * mu3
+		
+		denominator = mu1 * (mu2 - mu3) - mu2_sq + mu3_sq
+		if denominator <= 0.0:
+		raise ConfigurationError("Invalid s1 denominator; source intensities do not satisfy formula conditions.")
+		
+		term = n_mu2_minus - n_mu3_plus - ((mu2_sq - mu3_sq) / mu1_sq) * (
+		n_mu1_plus - s_0_lower_over_tau_0
+		)
+		numerator = tau_1 * mu1 * term
+		return max(0.0, numerator / denominator)
+	\end{lstlisting}
+\end{LTR}
+
+این تابع پیچیده‌ترین فرمول تحلیلی چارچوب است. مخرج $D = \mu_1(\mu_2 - \mu_3) - \mu_2^2 + \mu_3^2$ با شرط $\mu_1 > \mu_2 + \mu_3$ مثبت می‌ماند که در تابع \lr{\texttt{\_validate\_three\_intensity\_order}} بررسی می‌شود. در صورت کسر، سه جمله وجود دارد: $n_{X,\mu_2}^{-}$ با کران پایین \lr{decoy}، $n_{X,\mu_3}^{+}$ با کران بالای خلأ، و یک جمله تصحیحی که شامل $n_{X,\mu_1}^{+}$ (کران بالای سیگنال) و نسبت $s_{X,0}/\tau_0$ (تخمین بازده خلأ) است. این جمله تصحیحی اثر فوتون‌های چندتایی را حذف می‌کند. در صورت منفی شدن صورت، خروجی به صفر برده می‌شود.
+
+\subsection{پیاده‌سازی معادله (4): کران بالای خطای تک‌فوتونی}
+
+تابع \lr{\texttt{\_calc\_v1\_upper}} معادله (4) مقاله را پیاده‌سازی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _calc_v1_upper(
+		self,
+		tau_1: float,
+		mu2: float,
+		mu3: float,
+		m_mu2_plus: float,
+		m_mu3_minus: float,
+		physical_upper: float,
+		) -> float:
+		"""
+		Eq. (4):
+		v_{Z,1} <= tau_1 * (m^+_{Z,mu2} - m^-_{Z,mu3}) / (mu2 - mu3)
+		"""
+		denominator = mu2 - mu3
+		if denominator <= 0.0:
+		raise ConfigurationError("Invalid v1 denominator; require mu2 > mu3.")
+		
+		numerator = tau_1 * (m_mu2_plus - m_mu3_minus)
+		return min(max(0.0, numerator / denominator), max(0.0, physical_upper))
+	\end{lstlisting}
+\end{LTR}
+
+این تابع کران بالای تعداد خطاهای تک‌فوتونی در پایه $Z$ را محاسبه می‌کند. در اینجا از کران بالای خطاهای \lr{decoy} ضعیف ($m_{Z,\mu_2}^{+}$) و کران پایین خطاهای خلأ ($m_{Z,\mu_3}^{-}$) استفاده می‌شود تا کران بالا به دست آید. خروجی به یک کران فیزیکی (مثلاً $n_Z$ یا $m_Z$) محدود می‌شود زیرا تعداد خطاها نمی‌تواند از تعداد آشکارسازی‌ها بیشتر باشد. این \lr{clip} فیزیکی اطمینان می‌دهد که در شرایط نوسان شدید، کران بالای غیرمنطقی به دست نیاید.
+
+\subsection{پیاده‌سازی معادله (5): کران بالای خطای فاز}
+
+تابع \lr{\texttt{\_calc\_phi\_X\_upper}} پیچیده‌ترین بخش چارچوب را پیاده‌سازی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _calc_phi_X_upper(
+		self,
+		v_Z_1_upper: float,
+		s_Z_1_lower: float,
+		s_X_1_lower: float,
+		eps_a: float,
+		) -> float:
+		"""
+		Eq. (5):
+		phi_X = c_{X,1} / s_{X,1} <= v_{Z,1}/s_{Z,1} + gamma(a, b, c, d)
+		"""
+		self._validate_epsilon_value(eps_a, "eps_phase_est")
+		
+		if s_Z_1_lower <= 0.0 or s_X_1_lower <= 0.0:
+		return MAX_ERROR_RATE
+		
+		e_Z_1 = self._safe_divide(v_Z_1_upper, s_Z_1_lower, default=MAX_ERROR_RATE)
+		e_Z_1 = self._clamp_probability(e_Z_1, upper=MAX_ERROR_RATE)
+		
+		if e_Z_1 >= MAX_ERROR_RATE:
+		return MAX_ERROR_RATE
+		
+		c = float(s_Z_1_lower)
+		d = float(s_X_1_lower)
+		
+		if c <= 0.0 or d <= 0.0:
+		return MAX_ERROR_RATE
+		
+		b = min(max(e_Z_1, MIN_EPS), MAX_ERROR_RATE - 1e-15)
+		a = max(float(eps_a), MIN_EPS)
+		
+		denominator = c * d * (1.0 - b) * b * (a * a)
+		if denominator <= 0.0 or not math.isfinite(denominator):
+		return MAX_ERROR_RATE
+		
+		log_arg = (c + d) / denominator
+		if log_arg <= 1.0 or not math.isfinite(log_arg):
+		gamma = 0.0
+		else:
+		term1 = ((c + d) * (1.0 - b) * b) / (c * d * math.log(2.0))
+		term2 = self._safe_log2(log_arg)
+		product = term1 * term2
+		gamma = math.sqrt(product) if product > 0.0 and math.isfinite(product) else MAX_ERROR_RATE
+		
+		return min(max(0.0, e_Z_1 + gamma), MAX_ERROR_RATE)
+	\end{lstlisting}
+\end{LTR}
+
+این تابع شامل چندین لایه دفاعی برای مدیریت حالت‌های تباهی است. در ابتدا، $\varepsilon_a$ (یعنی $\varepsilon_{\text{sec}}/21$) اعتبارسنجی می‌شود. سپس اگر $s_{Z,1}$ یا $s_{X,1}$ صفر یا منفی باشند، تابع به صورت ایمن به $0.5$ بازمی‌گردد. نسبت $e_{Z,1} = v_{Z,1}/s_{Z,1}$ با \lr{\texttt{\_safe\_divide}} محاسبه می‌شود تا از تقسیم بر صفر جلوگیری شود و سپس به $[0, 0.5]$ \lr{clamp} می‌شود. اگر $e_{Z,1}$ به $0.5$ برسد، تابع بلافاصله $0.5$ برمی‌گرداند زیرا در این حالت هیچ امنیتی قابل استخراج نیست.
+
+نکته ظریف این تابع، مدیریت حالت‌های تباهی $b \in \{0, 1\}$ است که در آن‌ها فرمول $\gamma$ تکین می‌شود. در این پیاده‌سازی، $b$ با \lr{\texttt{min(max(e\_Z\_1, MIN\_EPS), MAX\_ERROR\_RATE - 1e-15)}} به بازه $(10^{-300}, 0.5 - 10^{-15})$ محدود می‌شود تا از تکینگی جلوگیری شود. این \lr{clamp} بسیار کوچک است و در عمل نتیجه نهایی را تغییر نمی‌دهد، اما از خطاهای عددی مانند \lr{ZeroDivisionError} یا \lr{ValueError: math domain error} جلوگیری می‌کند. اگر مخرج $\gamma$ صفر یا نامتناهی شود، تابع به $0.5$ بازمی‌گردد که با رویکرد بدترین حالت مقاله همخوان است.
+
+\subsection{محاسبه نشت تصحیح خطا}
+
+تابع \lr{\texttt{\_calc\_error\_correction\_leakage}} دو مدل نشت را پشتیبانی می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _calc_error_correction_leakage(self, n_x: float, qber_x: float, eps_cor: float) -> Tuple[float, float]:
+		"""
+		Returns (leak_EC, separate_correctness_term).
+		
+		Models:
+		- 'standard' / 'lim': paper Eq. (1).
+		leak_EC      = f_EC * n_X * h(e_obs)
+		corr_term    = log2(2 / eps_cor)
+		- 'tomamichel': Ref. [37] of the paper. Includes the correctness
+		logarithmic overhead in the leakage term.
+		"""
+		self._validate_epsilon_value(eps_cor, "eps_cor")
+		
+		qber_x = self._clamp_probability(qber_x, upper=MAX_ERROR_RATE)
+		h_e = self.binary_entropy(qber_x)
+		asymptotic_leak = float(self.p.f_error_correction * n_x * h_e)
+		corr_term = self._safe_log2(2.0 / eps_cor)
+		
+		model = getattr(self.p, "error_correction_model", "standard")
+		if model == "tomamichel":
+		return asymptotic_leak + corr_term, 0.0
+		
+		return asymptotic_leak, corr_term
+	\end{lstlisting}
+\end{LTR}
+
+در مدل استاندارد (که با مدل \lr{lim} نیز برابر است)، نشت تصحیح خطا $\lambda_{\text{EC}} = f_{\text{EC}} \cdot n_X \cdot h(e_{\text{obs}})$ است و جمله صحت $\log_2(2/\varepsilon_{\text{cor}})$ به صورت جداگانه در معادله (1) کم می‌شود. در مدل \lr{tomamichel}، جمله صحت به $\lambda_{\text{EC}}$ اضافه می‌شود و جمله جداگانه صفر می‌گردد تا از شمارش مضاعف جلوگیری شود. این طراحی به کاربر اجازه می‌دهد مدل دقیق‌تر \lr{Tomamichel} را انتخاب کند، در حالی که پیش‌فرض بر مدل استاندارد مقاله است.
+
+\subsection{حل تکراری \texorpdfstring{$\varepsilon_{\text{sec}} = \kappa \cdot \ell$}{epsilon = kappa * l}}
+
+در بخش \S IV مقاله، روشی پیشنهاد می‌شود که در آن $\varepsilon_{\text{sec}}$ به طول کلید متناسب می‌شود: $\varepsilon_{\text{sec}} = \kappa \cdot \ell$. این یک معادله ضمنی است زیرا $\ell$ خود به $\varepsilon_{\text{sec}}$ وابسته است. تابع \lr{\texttt{\_iterative\_kappa\_solver}} این معادله را با تکرار حل می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _iterative_kappa_solver(
+		self,
+		stats_map: Mapping[Union[str, int], TallyCounts],
+		) -> KeyCalculationResult:
+		"""
+		Implements the paper's eps_sec = kappa * l convention (paper §IV).
+		"""
+		kappa = float(self.p.security_constant_kappa)
+		if not math.isfinite(kappa) or kappa <= 0.0:
+		raise ParameterValidationError("security_constant_kappa must be finite and positive.")
+		
+		n_total = sum(float(s.sent) for s in stats_map.values())
+		l_est = max(1.0, min(n_total * 0.01, n_total))
+		
+		last_result: KeyCalculationResult | None = None
+		converged = False
+		
+		for iteration in range(DEFAULT_KAPPA_MAX_ITERATIONS):
+		eps_target = kappa * max(l_est, 1.0)
+		# floor at 1e-10: smaller eps explodes Chernoff bounds (ln(eps/21) > 26)
+		eps_target = min(max(eps_target, 1e-10), MAX_SECURITY_EPS)
+		
+		result = self._calculate_key_length_core(stats_map, eps_target)
+		last_result = result
+		l_new = float(result.secure_key_length)
+		
+		abs_delta = abs(l_new - l_est)
+		rel_delta = abs_delta / max(1.0, abs(l_est))
+		
+		if abs_delta <= DEFAULT_KAPPA_ABS_TOL_BITS or rel_delta <= DEFAULT_KAPPA_REL_TOL:
+		converged = True
+		result.diagnostics.setdefault("dynamic_epsilon", {})
+		result.diagnostics["dynamic_epsilon"].update(
+		{
+			"converged": True,
+			"iterations": iteration + 1,
+			"kappa": kappa,
+			"eps_sec_final": eps_target,
+		}
+		)
+		return result
+		
+		if l_new <= 0.0:
+		l_est = max(1.0, 0.5 * l_est)
+		else:
+		l_est = 0.5 * (l_est + l_new)
+		
+		assert last_result is not None
+		last_result.diagnostics.setdefault("dynamic_epsilon", {})
+		last_result.diagnostics["dynamic_epsilon"].update(
+		{
+			"converged": converged,
+			"iterations": DEFAULT_KAPPA_MAX_ITERATIONS,
+			"kappa": kappa,
+			"warning": "dynamic epsilon iteration did not converge",
+		}
+		)
+		last_result.diagnostics.setdefault("warnings", []).append("Dynamic epsilon iteration did not converge.")
+		return last_result
+	\end{lstlisting}
+\end{LTR}
+
+الگوریتم با یک تخمین اولیه $l_{\text{est}} = \max(1, \min(0.01 \cdot n_{\text{total}}, n_{\text{total}}))$ آغاز می‌شود که 1\% از کل پالس‌ها را به عنوان طول کلید تقریبی در نظر می‌گیرد. در هر تکرار، $\varepsilon_{\text{target}} = \kappa \cdot \max(l_{\text{est}}, 1)$ محاسبه می‌شود. یک نکته حیاتی در این نسخه این است که \lr{floor} کف $\varepsilon_{\text{target}}$ از $10^{-15}$ به $10^{-10}$ افزایش یافته است. این تغییر ضروری است زیرا با معرفی استراتژی هیبرید \lr{Hoeffding/Chernoff}، کران‌های \lr{Chernoff} مستقیماً به $\ln(1/\varepsilon)$ وابسته هستند و برای $\varepsilon < 10^{-10}$، مقدار $\ln(21/\varepsilon) > 26$ می‌شود که باعث می‌شود کران‌های \lr{Chernoff} به‌طور پاتولوژیک شل شوند (کران بالا بیش از حد بزرگ، کران پایین منفی). با کف $10^{-10}$، حداکثر مقدار $\ln(21/\varepsilon) \approx 25.8$ است که در محدوده قابل قبول عددی باقی می‌ماند.
+
+معیار همگرایی ترکیبی از تلورانس مطلق (100 بیت) و تلورانس نسبی ($10^{-6}$) است. در صورت عدم همگرایی، تخمین به صورت میانگین حسابی بین تخمین قبلی و مقدار جدید به‌روزرسانی می‌شود. اگر $l_{\text{new}} \le 0$ (یعنی کلیدی تولید نشده)، تخمین به نصف کاهش می‌یابد تا $\varepsilon$ سخت‌گیرانه‌تر شود. در صورت عدم همگرایی پس از 50 تکرار، آخرین نتیجه با هشدار بازگردانده می‌شود. این طراحی \lr{fail-soft} تضمین می‌کند که حتی در صورت عدم همگرایی، یک خروجی معتبر (با احتمالاً طول کلید صفر) تولید می‌شود و خط لوله شبیه‌سازی متوقف نمی‌شود.
+
+\subsection{نرمال‌سازی \lr{stats\_map} و نتایج صفر}
+
+متد \lr{\texttt{\_normalize\_stats\_map}} یک لایه انعطاف‌پذیر برای تطبیق کلیدهای \lr{stats\_map} با نام پالس‌ها فراهم می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _normalize_stats_map(
+		self,
+		stats_map: Mapping[Union[str, int], TallyCounts],
+		pulse_names: List[str],
+		) -> Dict[str, TallyCounts]:
+		if all(name in stats_map for name in pulse_names):
+		return {name: stats_map[name] for name in pulse_names}
+		
+		if all(str(i) in stats_map for i in range(len(pulse_names))):
+		return {pulse_names[i]: stats_map[str(i)] for i in range(len(pulse_names))}
+		
+		if all(i in stats_map for i in range(len(pulse_names))):
+		return {pulse_names[i]: stats_map[i] for i in range(len(pulse_names))}
+		
+		raise ParameterValidationError(
+		f"stats_map keys do not match pulse names or positional indices. "
+		f"Expected names {pulse_names!r}; got {list(stats_map.keys())!r}."
+		)
+	\end{lstlisting}
+\end{LTR}
+
+این متد سه فرمت کلید را پشتیبانی می‌کند: (1) کلیدهای نام پالس (مانند \lr{\texttt{"signal"}}، \lr{\texttt{"decoy"}}، \lr{\texttt{"vacuum"}}) که صریح‌ترین حالت است؛ (2) کلیدهای اندیس رشته‌ای (مانند \lr{\texttt{"0"}}، \lr{\texttt{"1"}}، \lr{\texttt{"2"}}) که معمولاً در خروجی \lr{JSON}/\lr{CSV} استفاده می‌شود؛ (3) کلیدهای اندیس صحیح (مانند \lr{\texttt{0}}، \lr{\texttt{1}}، \lr{\texttt{2}}) که در تعاملات درون‌حافظه‌ای رایج است. این انعطاف‌پذیری به ماژول اجازه می‌دهد با انواع فرمت‌های ورودی از لایه‌های مختلف شبیه‌سازی کار کند بدون آنکه نیاز به تبدیل صریح باشد. در صورت عدم تطابق با هیچ‌یک از این سه فرمت، یک \lr{\texttt{ParameterValidationError}} با پیام مشخص پرتاب می‌شود.
+
+متد \lr{\texttt{\_zero\_result}} یک ابزار کمکی برای تولید نتایج صفر با اطلاعات تشخیصی غنی است:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def _zero_result(
+		self,
+		branch: str,
+		diagnostics: Dict[str, Any],
+		error_codes: List[ErrorCode] | None = None,
+		) -> KeyCalculationResult:
+		diagnostics = dict(diagnostics)
+		diagnostics["return_branch"] = branch
+		return KeyCalculationResult(
+		secure_key_length=0,
+		privacy_amplification_term=0.0,
+		error_correction_leakage=0.0,
+		phase_error_rate_upper_bound=MAX_ERROR_RATE,
+		error_codes=error_codes or [ErrorCode.INSUFFICIENT_STATISTICS],
+		diagnostics=_json_safe_dict(diagnostics.items()),
+		)
+	\end{lstlisting}
+\end{LTR}
+
+این متد در تمام مسیرهای شکست استفاده می‌شود: آمار ناکافی (\lr{\texttt{insufficient\_statistics\_nX\_or\_nZ}})، \lr{stats\_map} نامطبوع (\lr{\texttt{invalid\_or\_mismatched\_stats}})، $\tau$ نامعتبر (\lr{\texttt{invalid\_tau}})، و پیکربندی سه‌شدت نامعتبر (\lr{\texttt{invalid\_three\_intensity\_configuration}}). هر شاخه در \lr{diagnostics} به‌صورت \lr{\texttt{return\_branch}} ثبت می‌شود تا ریشه‌یابی شکست ساده شود. پیش‌فرض کد خطا \lr{\texttt{INSUFFICIENT\_STATISTICS}} است، اما می‌توان کدهای دیگری نیز ارسال کرد. استفاده از \lr{\texttt{\_json\_safe\_dict}} اطمینان می‌دهد که \lr{diagnostics} قابل سریال‌سازی به \lr{JSON} است.
+
+\subsection{محاسبه اصلی طول کلید}
+
+تابع \lr{\texttt{\_calculate\_key\_length\_core}} هسته اصلی محاسبه است. پس از اعتبارسنجی و آماده‌سازی، شمارش‌های مشاهده‌شده را به کران‌های \lr{Hoeffding/Chernoff} تبدیل می‌کند، تخمین‌های $s_{X,0}^L$، $s_{X,1}^L$، $s_{Z,1}^L$، $v_{Z,1}^U$ و $\varphi_X^U$ را محاسبه می‌کند و در نهایت معادله (1) را ارزیابی می‌کند. این متد با آماده‌سازی \lr{diagnostics} کامل آغاز می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		diagnostics: Dict[str, Any] = {
+			"epsilon_accounting": {
+				"scheme": "Lim2014 Appendix B (21-event split, eps_sec = 21*eps)",
+				"eps_sec_used": float(eps_sec_override),
+				"single_test_epsilon": float(epsilon),
+				"failure_events": LIM2014_FAILURE_EVENTS_3_INTENSITY,
+				"hoeffding_ln_term": float(eps_ln_term),
+				"bound_method": "hoeffding_chernoff_hybrid",
+				"note": (
+				"Uses a hybrid Hoeffding / per-intensity Chernoff bound. "
+				"For large counts (n_k >= 10 * delta_paper, relative "
+				"statistical error <= 10%), uses the paper-faithful "
+				"Hoeffding delta = sqrt(n_total/2 * ln(21/eps_sec)). "
+				"For small counts (0 < n_k < threshold), uses the tighter "
+				"per-intensity Chernoff delta_k = sqrt(2 * n_k * ln(1/eps)). "
+				"For n_k = 0, uses the multiplicative Chernoff upper bound "
+				"ln(1/eps_per_event) (rule of three). This is provably "
+				"<= Hoeffding for all n_k, so security is never weakened."
+				),
+			},
+			"mu_map": {k: float(v) for k, v in mu_map.items()},
+			"p_k_map": {k: float(v) for k, v in p_k_map.items()},
+			"warnings": [],
+		}
+	\end{lstlisting}
+\end{LTR}
+
+این ساختار \lr{diagnostics} غنی به کاربر اجازه می‌دهد تمام جزئیات محاسبه را بازبینی کند. فیلد \lr{\texttt{bound\_method}} با مقدار \lr{\texttt{"hoeffding\_chernoff\_hybrid"}} به‌طور صریح نشان می‌دهد که از استراتژی هیبرید استفاده شده است. فیلد \lr{\texttt{note}} یک توضیح کامل از سه رژیم ارائه می‌دهد که برای \lr{audit} امنیتی و بازبینی توسط شخص ثالث ضروری است. سپس شمارش‌های $n_X$، $n_Z$، $m_X$، $m_Z$ و تفکیک آن‌ها به‌ازای هر شدت در \lr{diagnostics} ذخیره می‌شوند.
+
+در مسیر تحلیلی سه‌شدت، کران‌های \lr{Hoeffding/Chernoff} برای هر شدت در هر دو پایه محاسبه و در \lr{diagnostics} ذخیره می‌شوند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		n_X_k_bounds = {name: self._get_bounds(n_X_k[name], n_X, eps_ln_term, clip_total=n_X) for name in mu_map}
+		n_Z_k_bounds = {name: self._get_bounds(n_Z_k[name], n_Z, eps_ln_term, clip_total=n_Z) for name in mu_map}
+		m_Z_k_bounds = {name: self._get_bounds(m_Z_k[name], m_Z, eps_ln_term, clip_total=m_Z) for name in mu_map}
+		
+		diagnostics["n_X_k_bounds"] = {
+			k: [float(v[0]), float(v[1])] for k, v in n_X_k_bounds.items()
+		}
+	\end{lstlisting}
+\end{LTR}
+
+سپس ضریب پیشانی $e^{\mu_k}/p_k$ برای تبدیل کران‌های خام به فرم استفاده‌شده در معادلات (2)-(4) اعمال می‌شود. به‌عنوان مثال، برای کران بالای بازده خلأ:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		s_X_0_L = self._calc_s0_lower(
+		tau_0,
+		mu2,
+		mu3,
+		n_X_k_bounds[k2][1] / p2 * math.exp(mu2),  # decoy UPPER bound (n^+_{X,mu2})
+		n_X_k_bounds[k3][0] / p3 * math.exp(mu3),  # vacuum LOWER bound (n^-_{X,mu3})
+		)
+	\end{lstlisting}
+\end{LTR}
+
+نکته مهم در این نسخه این است که کران بالای خلأ ($n_{X,\mu_3}^{+}$) اکنون به‌درستی توسط \lr{\texttt{\_get\_bounds}} به‌صورت $\ln(1/\varepsilon)$ محاسبه می‌شود وقتی مشاهده صفر است (کران تنگ \lr{Chernoff}، نه $\delta_{\text{paper}}$ مبتنی بر $n_X$). این یک \lr{patch} ضد محافظه‌کارانه نیست، بلکه یک اصلاح درست است: در نسخه‌های قبلی، وقتی $n_{X,\mu_3} = 0$، کران بالای \lr{Hoeffding} به $\delta_{\text{paper}}$ می‌رسید که می‌تواند بسیار بزرگتر از حد معقول باشد. با استراتژی هیبرید، این کران به $\ln(1/\varepsilon)$ محدود می‌شود که هم متناهی و هم تنگ‌تر است. در نتیجه، تخمین $s_{X,0}^L$ در فواصل طولانی (جایی که شمارش خلأ اغلب صفر است) به‌طور قابل توجهی بهبود می‌یابد و طول کلید نهایی بالاتر می‌شود بدون آنکه امنیت تضعیف شود.
+
+پس از محاسبه $\varphi_X^U$ و $\lambda_{\text{EC}}$، معادله (1) به صورت مستقیم ارزیابی می‌شود:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		phi_X_U = self._calc_phi_X_upper(v_Z_1_U, s_Z_1_L, s_X_1_L, epsilon)
+		
+		qber_x = self._safe_divide(m_X, n_X, default=MAX_ERROR_RATE)
+		qber_x = self._clamp_probability(qber_x, upper=MAX_ERROR_RATE)
+		
+		leak_EC, corr_term = self._calc_error_correction_leakage(n_X, qber_x, self.p.eps_cor)
+		
+		# Eq. (1):
+		#   l = s_{X,0} + s_{X,1} * (1 - h(phi_X))
+		#       - lambda_EC - 6*log2(21/eps_sec) - log2(2/eps_cor)
+		term_s0 = s_X_0_L
+		term_s1 = s_X_1_L * (1.0 - self.binary_entropy(phi_X_U))
+		
+		pa_term = 6.0 * self._safe_log2(LIM2014_FAILURE_EVENTS_3_INTENSITY / eps_sec_override)
+		
+		key_len = term_s0 + term_s1 - leak_EC - pa_term - corr_term
+		key_len_clamped = self._clamp_key_length(float(key_len))
+	\end{lstlisting}
+\end{LTR}
+
+جمله $6\log_2(21/\varepsilon_{\text{sec}})$ که در مقاله به عنوان جمله \lr{privacy amplification} شناخته می‌شود، شش رویداد شکست مرتبط با تقویت حریم خصوصی را پوشش می‌دهد. در نهایت طول کلید با \lr{\texttt{\_clamp\_key\_length}} به عدد صحیح نامنفی تبدیل می‌شود. اگر طول خام منفی باشد (یعنی نشت‌ها از آنتروپی بیشتر شوند)، هشداری در \lr{diagnostics} ثبت می‌شود. کدهای خطای مناسب نیز به نتیجه اضافه می‌شوند تا علت شکست قابل ردیابی باشد.
+
+\subsection{قید دفاعی فیزیکی در \lr{calculate\_key\_length}}
+
+متد \lr{\texttt{calculate\_key\_length}} یک لایه دفاعی فیزیکی برای قید طول کلید به کلید \lr{sifted} کل اعمال می‌کند:
+
+\begin{LTR}
+	\begin{lstlisting}[language=Python]
+		def calculate_key_length(
+		self,
+		stats_map: Mapping[Union[str, int], TallyCounts],
+		) -> KeyCalculationResult:
+		self._validate_configuration()
+		
+		if getattr(self.p, "security_constant_kappa", None) is not None:
+		result = self._iterative_kappa_solver(stats_map)
+		else:
+		result = self._calculate_key_length_core(stats_map, self.p.eps_sec)
+		
+		# === Defensive physical clamp ===
+		# The secure key length CANNOT exceed the total number of basis-matched
+		# raw detections (n_X + n_Z = total sifted bits).
+		try:
+		_n_total = 0
+		for _k, _v in stats_map.items():
+		if hasattr(_v, 'sifted'):
+		_n_total += int(_v.sifted)
+		if _n_total > 0 and result.secure_key_length > _n_total:
+		import logging as _logging
+		_logging.getLogger('Lim2014Proof').warning(
+		f'Defensive clamp triggered: secure_key_length {result.secure_key_length} '
+		f'> total sifted {_n_total}; clamping to {_n_total}. '
+		f'This indicates an internal bug in the kappa solver or decoy estimation.'
+		)
+		from qkd.datatypes import KeyCalculationResult as _KCR
+		result = _KCR(
+		secure_key_length=_n_total,
+		privacy_amplification_term=result.privacy_amplification_term,
+		error_correction_leakage=result.error_correction_leakage,
+		phase_error_rate_upper_bound=result.phase_error_rate_upper_bound,
+		error_codes=result.error_codes,
+		diagnostics=result.diagnostics,
+		)
+		except Exception as _e:
+		import logging as _logging
+		_logging.getLogger('Lim2014Proof').debug(
+		f'Defensive clamp check failed (non-fatal): {_e}'
+		)
+		
+		return result
+	\end{lstlisting}
+\end{LTR}
+
+این قید بر اساس یک اصل بدیهی فیزیکی است: \textbf{بیت‌های کلید امن زیرمجموعه‌ای از بیت‌های خام \lr{sifted} هستند}. در شرایط عادی، این قید هرگز فعال نمی‌شود زیرا فرمول‌های \lr{Lim 2014} به‌طور ذاتی محافظه‌کارانه هستند و طول کلید نهایی همیشه کمتر از $n_X$ (که خود زیرمجموعه‌ای از کل \lr{sifted} است) می‌شود. اما به‌عنوان یک تور ایمنی در برابر باگ‌های داخلی طراحی شده است. اگر در اثر یک باگ در حلقه \lr{kappa-solver}، \lr{fallback} در \lr{LP}، یا سرریز در تخمین \lr{decoy}، طول کلید نهایی از $n_X + n_Z$ بیشتر شود، این قید فعال می‌شود، طول کلید را به $n_X + n_Z$ محدود می‌کند، یک هشدار در \lr{log} ثبت می‌کند و نتیجه بازنویسی‌شده را بازمی‌گرداند.
+
+نکته طراحی مهم این است که این قید در یک بلوک \lr{\texttt{try/except}} قرار دارد. اگر خود بررسی قید به هر دلیلی (مانند فقدان فیلد \lr{\texttt{sifted}} در یک \lr{TallyCounts} قدیمی) شکست بخورد، استثنا به‌صورت غیرکشنده (\lr{non-fatal}) در سطح \lr{debug} ثبت می‌شود و نتیجه اصلی بدون تغییر بازگردانده می‌شود. این طراحی تضمین می‌کند که قید دفاعی هرگز به‌طور خود یک منبع شکست جدید معرفی نکند. این فلسفه \lr{fail-safe} با اصل امنیتی \lr{defense in depth} همخوان است: چندین لایه دفاعی مستقل، هر کدام با \lr{fallback} امن.
+
+\section{ارسال و دریافت با سایر ماژول‌ها}
+
+\subsection{ورودی‌های ماژول}
+
+ماژول \lr{\texttt{lim2014.py}} وابستگی‌های داخلی و خارجی متعددی دارد. وابستگی‌های داخلی شامل موارد زیر است:
+
+\begin{itemize}
+	\item \lr{\texttt{qkd.proofs.base}}: کلاس پایه \lr{\texttt{FiniteKeyProof}}، \lr{\texttt{DecoyEstimates}}، \lr{\texttt{KeyCalculationResult}}، \lr{\texttt{ErrorCode}} و تابع کمکی \lr{\texttt{\_json\_safe\_dict}} از این ماژول وارد می‌شوند. این کلاس پایه رابط عمومی و خدمات مشترک مانند آنتروپی باینری، \lr{clamp} عددی و گزارش‌گیری \lr{audit} را فراهم می‌سازد.
+	\item \lr{\texttt{qkd.proofs.utils\_lp}}: تابع \lr{\texttt{solve\_lp}} برای حل مسأله برنامه‌ریزی خطی در مسیر \lr{N-decoy} وارد می‌شود. این تابع از \lr{scipy.optimize.linprog} یا \lr{cvxopt} به عنوان \lr{solver} زیرین استفاده می‌کند.
+	\item \lr{\texttt{qkd.datatypes}}: \lr{\texttt{EpsilonAllocation}}، \lr{\texttt{TallyCounts}}، \lr{\texttt{ConfidenceBoundMethod}} و \lr{\texttt{KeyCalculationResult}} از این ماژول وارد می‌شوند. \lr{\texttt{TallyCounts}} شامل فیلدهای \lr{\texttt{sent}}، \lr{\texttt{sifted\_x}}، \lr{\texttt{sifted\_z}}، \lr{\texttt{errors\_sifted\_x}} و \lr{\texttt{errors\_sifted\_z}} است که شمارش‌های آماری شبکه آشکارسازی را نگه می‌دارد. \lr{\texttt{ConfidenceBoundMethod}} برای اعمال روش \lr{CHERNOFF} در سازنده استفاده می‌شود.
+	\item \lr{\texttt{qkd.exceptions}}: استثناهای سفارشی \lr{\texttt{ConfigurationError}}، \lr{\texttt{LPFailureError}} و \lr{\texttt{ParameterValidationError}} برای گزارش خطاهای ساختاریافته.
+	\item \lr{\texttt{qkd.params.QKDParams}}: کلاس پارامترهای QKD که شامل $\varepsilon_{\text{sec}}$، $\varepsilon_{\text{cor}}$، $f_{\text{EC}}$، \lr{\texttt{photon\_number\_cap}}، \lr{\texttt{security\_constant\_kappa}}، \lr{\texttt{error\_correction\_model}}، \lr{\texttt{lp\_solver\_method}}، \lr{\texttt{ci\_method}} و \lr{\texttt{source.pulse\_configs}} است. توجه شود که \lr{\texttt{ci\_method}} در سازنده به \lr{\texttt{CHERNOFF}} بازنویسی می‌شود زیرا امنیت کلید متناهی در این چارچوب به‌طور صریح به کران‌های \lr{Chernoff} وابسته است.
+\end{itemize}
+
+وابستگی‌های خارجی شامل \lr{\texttt{numpy}} برای محاسبات برداری در مسیر \lr{LP}، \lr{\texttt{math}} برای توابع ریاضی پایه، \lr{\texttt{logging}} برای ثبت رویدادها و \lr{\texttt{mpmath}} (اختیاری) برای محاسبات با دقت بالا هستند.
+
+\subsection{خروجی‌های ماژول}
+
+خروجی اصلی ماژول دو شیء است:
+
+\begin{enumerate}
+	\item \lr{\texttt{KeyCalculationResult}}: این شیء از کلاس پایه به ارث رسیده و شامل فیلدهای \lr{\texttt{secure\_key\_length}} ($\ell$)، \lr{\texttt{privacy\_amplification\_term}} (جریمه \lr{PA})، \lr{\texttt{error\_correction\_leakage}} ($\lambda_{\text{EC}}$)، \lr{\texttt{phase\_error\_rate\_upper\_bound}} ($\varphi_X^U$)، \lr{\texttt{error\_codes}} و \lr{\texttt{diagnostics}} است. \lr{diagnostics} شامل اطلاعات کامل مانند \lr{\texttt{epsilon\_accounting}} (با \lr{\texttt{bound\_method}}، \lr{\texttt{hoeffding\_ln\_term}} و \lr{\texttt{note}})، مقادیر میانی $s_{X,0}^L$، $s_{X,1}^L$، $s_{Z,1}^L$، $v_{Z,1}^U$، $\tau_0$، $\tau_1$، کران‌های \lr{Hoeffding/Chernoff} برای هر شدت، مدل تصحیح خطای انتخاب‌شده و در صورت استفاده، اطلاعات همگرایی \lr{kappa-solver} است.
+	\item \lr{\texttt{DecoyEstimatesLim2014}}: این شیء خروجی متد \lr{\texttt{estimate\_yields\_and\_errors}} است و فیلدهای اختصاصی چارچوب \lr{Lim 2014} را نگه می‌دارد. این شیء برای کاربرانی که می‌خواهند تخمین‌های میانی را بدون محاسبه کامل طول کلید بررسی کنند، مفید است.
+\end{enumerate}
+
+\subsection{جریان داده در سراسر فریم‌ورک}
+
+جریان داده کلی به این شکل است:
+\begin{enumerate}
+	\item لایه شبیه‌ساز پالس‌های نوری را با شدت‌های $\mu_1$، $\mu_2$، $\mu_3$ تولید و از کانال کوانتومی عبور می‌دهد.
+	\item آشکارسازها در سمت باب، آشکارسازی‌ها و خطاها را در دو پایه $X$ و $Z$ و برای هر شدت ثبت کرده و در \lr{\texttt{TallyCounts}} ذخیره می‌کنند.
+	\item این شمارش‌ها به صورت یک دیکشنری \lr{\texttt{stats\_map}} با کلیدهای نام شدت، اندیس رشته‌ای یا اندیس صحیح به اثبات امنیتی داده می‌شوند. متد \lr{\texttt{\_normalize\_stats\_map}} به‌طور خودکار فرمت کلید را تشخیص می‌دهد.
+	\item متد \lr{\texttt{calculate\_key\_length}} ابتدا پیکربندی را اعتبارسنجی می‌کند. اگر \lr{\texttt{security\_constant\_kappa}} تنظیم شده باشد، مسیر \lr{kappa-solver} تکراری انتخاب می‌شود؛ در غیر این صورت مسیر مستقیم با $\varepsilon_{\text{sec}}$ ثابت.
+	\item در مسیر مستقیم، $\varepsilon$ تک‌آزمون به صورت $\varepsilon_{\text{sec}}/21$ محاسبه می‌شود و جمله \lr{Hoeffding}/\lr{Chernoff} $\ln(21/\varepsilon_{\text{sec}})$ آماده می‌شود.
+	\item سپس $\tau_0$ و $\tau_1$ محاسبه می‌شوند. اگر تعداد شدت‌ها بیش از 3 باشد، مسیر \lr{LP} انتخاب می‌شود؛ در غیر این صورت مسیر تحلیلی معادلات (2) تا (5).
+	\item در مسیر تحلیلی، شدت‌ها به ترتیب نزولی مرتب می‌شوند تا نقش سیگنال، \lr{decoy} و خلأ مشخص شود. سپس کران‌های هیبرید \lr{Hoeffding/Chernoff} برای هر شدت در هر دو پایه محاسبه می‌شوند. این کران‌ها به‌طور خودکار در رژیم مناسب (بزرگ، کوچک یا صفر) عمل می‌کنند.
+	\item با استفاده از این کران‌ها، $s_{X,0}^L$، $s_{X,1}^L$، $s_{Z,1}^L$ و $v_{Z,1}^U$ محاسبه می‌شوند.
+	\item سپس $\varphi_X^U$ با تابع \lr{\texttt{\_calc\_phi\_X\_upper}} محاسبه می‌شود.
+	\item در نهایت، معادله (1) ارزیابی می‌شود و طول کلید امن به دست می‌آید.
+	\item قید دفاعی فیزیکی بررسی می‌کند که طول کلید از کل \lr{sifted} ($n_X + n_Z$) بیشتر نشود. در صورت فعال شدن، هشدار ثبت و مقدار بازنویسی می‌شود.
+	\item لایه بالایی می‌تواند با \lr{\texttt{explain\_key\_decision}} (از کلاس پایه) علت نتیجه را به صورت متنی دریافت کند و با \lr{\texttt{audit\_dump}} یک گزارش کامل برای بازبینی امنیتی تولید کند.
+\end{enumerate}
+
+این جداسازی مراحل به گونه‌ای طراحی شده که هر مرحله قابل آزمایش و بازبینی مستقل باشد. به عنوان مثال، می‌توان \lr{\texttt{DecoyEstimatesLim2014}} را به صورت دستی ساخت و رفتار مرحله نهایی محاسبه کلید را در شرایط خاص بررسی کرد. این ماژول‌بندی از اصل \lr{Single Responsibility} پیروی می‌کند و قابلیت نگهداری و توسعه کد را به طور قابل توجهی افزایش می‌دهد. علاوه بر این، شفافیت کامل در \lr{diagnostics} به کاربر اجازه می‌دهد هر مرحله از محاسبه را ردیابی کرده و در صورت نیاز، فرضیات تئوریک را برای کاربرد خاص خود بازبینی کند. استراتژی هیبرید \lr{Hoeffding/Chernoff} به‌طور خاص برای شبیه‌سازی‌های بلندمسافت که در آن‌ها شمارش \lr{decoy} یا خلأ ممکن است صفر یا بسیار کم باشد، یک بهبود چشمگیر در کارایی عملی فراهم می‌کند بدون آنچه هیچ‌گونه تضعیف امنیتی به همراه داشته باشد.
