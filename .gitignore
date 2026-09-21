@@ -28,3 +28,5 @@ qkd_ui_runs/
 .idea/
 .DS_Store
 Thumbs.db
+*.csv
+*.csv
