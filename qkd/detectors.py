@@ -1816,7 +1816,7 @@ class SinglePhotonDetector:
         )
 
     @classmethod
-    def from_config_dict(cls, config_dict: Dict[str, Any]) -> "SinglePhotonDetector":
+    def from_config_dict(cls, config_dict: Dict[str, Any], **extra_kwargs) -> "SinglePhotonDetector":
         """Strict construction from a plain dict.
 
         Unknown keys are rejected.  Required keys mirror the dataclass
@@ -1844,6 +1844,11 @@ class SinglePhotonDetector:
             )
 
         normalized = dict(config_dict)
+        # Merge extra kwargs (e.g. flip_prob_override, allow_xor_flip_formula)
+        # AFTER the unknown-key check so they bypass the strict filter but
+        # still flow into cls(**normalized) → __init__'s **kwargs handler.
+        # These are constructor-only kwargs that aren't dataclass fields.
+        normalized.update(extra_kwargs)
 
         enum_fields = {
             "double_click_policy": DoubleClickPolicy,

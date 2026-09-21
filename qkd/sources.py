@@ -1271,20 +1271,58 @@ class OpticalSource:
         8th-review fix (F-12): deepcopy calls __setattr__('config', ...)
         after the copy is created, which triggers the immutability guard.
         This implementation bypasses the guard by using object.__setattr__.
+
+        MRO fix: iterate over ALL slots in the inheritance chain, not
+        just cls.__slots__ (which is () for subclasses like PoissonSource).
+
+        Non-deepcopyable fix: skip slots that can't be deepcopied (e.g.
+        _BoundedLRUCache containing a threading.Lock). These are derived
+        caches that get regenerated on demand.
         """
         import copy as _copy
         cls = self.__class__
         result = cls.__new__(cls)
         memo[id(self)] = result
-        for slot in getattr(cls, '__slots__', ()):
-            val = getattr(self, slot)
-            object.__setattr__(result, slot, _copy.deepcopy(val, memo))
+        # Iterate over ALL slots in the MRO — subclasses with __slots__ = ()
+        # inherit their slots from parent classes.
+        for klass in type(self).__mro__:
+            for slot in getattr(klass, '__slots__', ()):
+                try:
+                    val = getattr(self, slot)
+                except AttributeError:
+                    continue  # slot not set on this instance — skip
+                try:
+                    copied = _copy.deepcopy(val, memo)
+                    object.__setattr__(result, slot, copied)
+                except (TypeError, ValueError):
+                    # Skip non-deepcopyable slots (e.g. _BoundedLRUCache
+                    # with a threading.Lock inside). These caches are
+                    # derived from `config` and will be regenerated on
+                    # demand when the copy is first used.
+                    continue
         object.__setattr__(result, '_post_init_done', True)
         return result
 
     def __getstate__(self):
-        """Pickle support: return state dict from slots."""
-        return {slot: getattr(self, slot) for slot in self.__slots__}
+        """Pickle support: return state dict from ALL slots in MRO.
+        
+        Skips non-picklable slots (e.g. caches with threading.Lock).
+        """
+        state = {}
+        for klass in type(self).__mro__:
+            for slot in getattr(klass, '__slots__', ()):
+                try:
+                    val = getattr(self, slot)
+                except AttributeError:
+                    continue
+                try:
+                    # Test picklability
+                    import pickle
+                    pickle.dumps(val)
+                    state[slot] = val
+                except (TypeError, ValueError, pickle.PicklingError):
+                    continue
+        return state
 
     def __setstate__(self, state):
         """Pickle support: restore state dict to slots."""

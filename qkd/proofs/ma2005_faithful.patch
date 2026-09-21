@@ -1,0 +1,268 @@
+--- a/qkd/proofs/ma2005.py
++++ b/qkd/proofs/ma2005.py
+@@ -34,16 +34,6 @@ class Ma2005BaseProof(FiniteKeyProof):
+     """Base class for Ma 2005 proofs sharing the GLLP rate formula."""
+     
+     def __init__(self, params: QKDParams, *args, **kwargs):
+-        # Enforce CHERNOFF CI for finite-key security.
+-        # The Y1_L formula involves subtraction of exp(mu)-amplified terms,
+-        # so wide CI bounds (e.g. Gaussian) make Y1_L go negative.
+-        # Chernoff's multiplicative bounds are tight enough to keep Y1_L > 0.
+-        if params.ci_method != ConfidenceBoundMethod.CHERNOFF:
+-            logger.warning(
+-                f"Ma2005 proof requires CHERNOFF bounds for finite-key security. "
+-                f"Overriding '{params.ci_method.name}' with CHERNOFF."
+-            )
+-            object.__setattr__(params, 'ci_method', ConfidenceBoundMethod.CHERNOFF)
+-        
+         super().__init__(params, *args, **kwargs)
+         self.is_thermal = (self.p.source.statistics_type == SourceStatisticsType.THERMAL)
+ 
+@@ -139,6 +129,9 @@ class Ma2005BaseProof(FiniteKeyProof):
+         return self.p.f_error_correction
+ 
++    # ------------------------------------------------------------------
++    # Paper Eq (5): overall transmission efficiency
++    # ------------------------------------------------------------------
++    def _get_eta(self) -> float:
++        """
++        Paper Eq (5): eta = t_AB * eta_Bob, where eta_Bob = t_Bob * eta_D
++        is given directly in Table 1 as a single experimental quantity
++        (GYS: 0.045; KTH: 0.143). Prefer the explicitly-provided eta_Bob
++        over the product of sub-quantities, since the paper treats eta_Bob
++        as a primitive parameter.
++        """
++        eta_bob = getattr(self.p.detector, "eta_bob", None)
++        if eta_bob is None:
++            # Fallback: reconstruct from t_Bob and eta_D if exposed.
++            t_bob = getattr(self.p.detector, "t_bob", 1.0)
++            eta_d = getattr(self.p.detector, "det_eff_d0", 0.0)
++            eta_bob = t_bob * eta_d
++        return float(self.p.channel.transmittance * eta_bob)
++
++    # ------------------------------------------------------------------
++    # Paper Table 1 / Sec 2: Y_0 is the *total* background rate
++    # ------------------------------------------------------------------
++    def _get_y0(self, stats_map: Optional[Dict[str, "TallyCounts"]] = None) -> float:
++        """
++        Paper Table 1 treats Y_0 as a primitive experimental parameter
++        (GYS: 1.7e-6; KTH: 4e-4) — already the *total* background rate,
++        not per-detector. Do NOT multiply dark_rate by 2.
++
++        If vacuum-decoy statistics are available (V+W protocol, Eq 33),
++        use Q_vacuum = Y_0 directly. Otherwise fall back to the configured
++        Y_0; only as a last resort use dark_rate (interpreted as total).
++        """
++        if stats_map is not None:
++            vac = stats_map.get("vacuum")
++            if vac is not None and vac.sent > 0:
++                return float(vac.sifted) / float(vac.sent)
++        y0 = getattr(self.p.detector, "y0", None)
++        if y0 is not None:
++            return float(y0)
++        # Last-resort fallback: dark_rate is interpreted as TOTAL (not per-detector).
++        return float(getattr(self.p.detector, "dark_rate", 0.0))
++
++    # ------------------------------------------------------------------
++    # Paper Eq (45): basis reconciliation factor for finite data
++    # ------------------------------------------------------------------
++    def _calculate_sifting_factor_q(
++        self,
++        signal_sent: int,
++        total_sent: int,
++    ) -> float:
++        """
++        Paper Eq (45): q = N_S / (2N) for standard BB84.
++        In the asymptotic limit N_S -> N, q -> 1/2.
++        For efficient BB84 (q ~ 1) the user may set self.p.sifting_factor_q
++        explicitly to override this finite-size formula.
++        """
++        # Allow explicit override for efficient-BB84 or other protocols.
++        override = getattr(self.p, "sifting_factor_q", None)
++        if override is not None:
++            return float(override)
++        if total_sent > 0:
++            return float(signal_sent) / (2.0 * float(total_sent))
++        return 0.5
++
++    # ------------------------------------------------------------------
++    # Paper Eq (12): optimal signal intensity mu
++    # ------------------------------------------------------------------
++    @staticmethod
++    def solve_optimal_mu(
++        e_detector: float,
++        f_ec: float,
++        tol: float = 1e-12,
++        max_iter: int = 200,
++    ) -> float:
++        """
++        Solve Paper Eq (12):
++            (1 - mu) * exp(-mu) = f(e_det) * H2(e_det) / (1 - H2(e_det))
++        for mu in (0, 1] via bisection.
++
++        Sanity reference (from Section 8 of spec):
++            GYS, f=1.0:   mu ~= 0.54
++            GYS, f=1.22:  mu ~= 0.48
++        """
++        h2 = binary_entropy(e_detector)
++        if h2 >= 1.0:
++            # e_detector = 1/2 -> RHS undefined; mu degenerate.
++            return 1.0
++        rhs = f_ec * h2 / (1.0 - h2)
++
++        def g(mu: float) -> float:
++            return (1.0 - mu) * math.exp(-mu) - rhs
++
++        # g(0) = 1 - rhs > 0  for typical e_det < 0.5
++        # g(1) = -rhs        < 0
++        g_hi = g(1.0)
++        if g_hi >= 0.0:
++            return 1.0  # all positive -> pick boundary
++        lo, hi = 1e-12, 1.0
++        for _ in range(max_iter):
++            mid = 0.5 * (lo + hi)
++            g_mid = g(mid)
++            if abs(g_mid) < tol or (hi - lo) < tol:
++                return mid
++            if g_mid > 0.0:
++                lo = mid
++            else:
++                hi = mid
++        return 0.5 * (lo + hi)
++
+     def _calculate_weak_gllp_rate(
+         self, 
+         decoy_estimates: DecoyEstimates, 
+@@ -148,6 +140,9 @@ class Ma2005BaseProof(FiniteKeyProof):
+         signal_stats = stats_map.get("signal")
+         if not signal_stats or signal_stats.sent == 0:
+             return 0.0
++        total_sent = sum(s.sent for s in stats_map.values())
+ 
+         Q_mu = signal_stats.sifted / signal_stats.sent
+         E_mu = signal_stats.errors_sifted / signal_stats.sifted if signal_stats.sifted > 0 else 0.5
+@@ -165,7 +160,7 @@ class Ma2005BaseProof(FiniteKeyProof):
+         if delta >= 1.0 - 1e-9:
+             return 0.0
+             
+-        q = 0.5
++        q = self._calculate_sifting_factor_q(signal_stats.sent, total_sent)
+         f_ec = self._calculate_f_ec(E_mu)
+         term_ec = f_ec * binary_entropy(E_mu)
+         
+@@ -188,9 +183,12 @@ class Ma2005BaseProof(FiniteKeyProof):
+         signal_stats = stats_map.get("signal")
+         if not signal_stats or signal_stats.sent == 0:
+             return KeyCalculationResult(0, 0.0, 0.0, 0.5, error_codes=[ErrorCode.INSUFFICIENT_STATISTICS])
++        total_sent = sum(s.sent for s in stats_map.values())
+ 
+         mu = self.p.source.get_pulse_config_by_name("signal").mean_photon_number
+-        q_factor = 0.5 
++        # Paper Eq (45): q = N_S / (2N)
++        q_factor = self._calculate_sifting_factor_q(signal_stats.sent, total_sent)
+  
+         Q_mu = signal_stats.sifted / signal_stats.sent
+         E_mu = signal_stats.errors_sifted / signal_stats.sifted if signal_stats.sifted > 0 else 0.5
+@@ -282,19 +280,12 @@ class Ma2005VacuumWeakProof(Ma2005BaseProof):
+         mu_base = cfg_sig.mean_photon_number
+         nu_base = cfg_decoy.mean_photon_number
+         
+-        # Input Fluctuation Correction
+-        # Adjust effective intensities to account for statistical fluctuation in photon number distribution
+-        # For a finite N, the fraction of n-photon pulses is not exactly P(n|mu).
+-        # We model this as an uncertainty on mu.
+-        delta = self.p.source.intensity_jitter
+-        
+-        # Add statistical uncertainty to jitter if N is finite
+-        n_total = sum(s.sent for s in stats_map.values())
+-        if n_total > 0:
+-            # Approx relative fluctuation 1/sqrt(N)
+-            stat_fluc = 1.0 / math.sqrt(n_total)
+-            delta += stat_fluc
+-
+-        mu_min, mu_max = mu_base * (1 - delta), mu_base * (1 + delta)
+-        nu_min, nu_max = nu_base * (1 - delta), nu_base * (1 + delta)
++        # Paper-faithful implementation (Ma et al. 2005 Sec. III / IV):
++        # Spec Sec 4.1 explicitly neglects intensity fluctuations, so we
++        # use the nominal intensities directly. (Bug B1 fix.)
++        mu = mu_base
++        nu = nu_base
+ 
+         alpha = self.eps_alloc.eps_pe
+@@ -307,26 +298,26 @@ class Ma2005VacuumWeakProof(Ma2005BaseProof):
+         e0 = 0.5
+ 
+         # [Paper Eq 34] Lower Bound on Y1
+-        term_Q_nu = Q_nu_L * math.exp(nu_min)
+-        term_Q_mu = Q_mu_U * math.exp(mu_max) * (nu_max**2 / mu_min**2)
+-        term_Y0 = Y0_U * (mu_max**2 - nu_min**2) / (mu_min**2)
+-        
+-        denom = mu_max * nu_min - nu_max**2
++        term_Q_nu = Q_nu_L * math.exp(nu)
++        term_Q_mu = Q_mu_U * math.exp(mu) * (nu**2 / mu**2)
++        term_Y0 = Y0_U * (mu**2 - nu**2) / (mu**2)
++        
++        denom = mu * nu - nu**2
+         if denom <= 0:
+             prefactor = 0.0
+         else:
+-            prefactor = mu_min / denom
++            prefactor = mu / denom
+         
+         Y1_L = prefactor * (term_Q_nu - term_Q_mu - term_Y0)
+         Y1_L = max(0.0, Y1_L)
+ 
+         # [Paper Eq 37] Upper Bound on e1
+-        if Y1_L * nu_min <= 1e-20:
++        if Y1_L * nu <= 1e-20:
+             e1_U = 0.5
+         else:
+-            numerator_e1 = (E_nu_U * Q_nu_U * math.exp(nu_max)) - (e0 * Y0_L)
+-            e1_U = numerator_e1 / (Y1_L * nu_min)
++            numerator_e1 = (E_nu_U * Q_nu_U * math.exp(nu)) - (e0 * Y0_L)
++            e1_U = numerator_e1 / (Y1_L * nu)
+             e1_U = min(0.5, max(0.0, e1_U))
+ 
+         # [Paper Eq 36] Tagged Fraction Delta Upper Bound
+         if Q_nu_L > 0:
+-            term1 = (nu_max / (mu_min - nu_max))
+-            term2 = (nu_max * math.exp(-nu_min) * Q_mu_U) / (mu_min * math.exp(-mu_max) * Q_nu_L) - 1.0
+-            term3 = (nu_max * math.exp(-nu_min) * Y0_U) / (mu_min * Q_nu_L)
++            term1 = (nu / (mu - nu))
++            term2 = (nu * math.exp(-nu) * Q_mu_U) / (mu * math.exp(-mu) * Q_nu_L) - 1.0
++            term3 = (nu * math.exp(-nu) * Y0_U) / (mu * Q_nu_L)
+             delta_bound_strict = term1 * term2 + term3
+         else:
+             delta_bound_strict = 1.0
+ 
+         # Asymptotic Reference (B4 + B5 fixes: use _get_eta / _get_y0)
+-        eta = self.p.channel.transmittance * self.p.detector.det_eff_d0
+-        y0_val = 2.0 * self.p.detector.dark_rate   # Gap [B] fix: two-detector BB84
++        eta = self._get_eta()
++        y0_val = self._get_y0(stats_map)
+         e_det = self.p.detector.qber_intrinsic
+ 
+         y1_asymptotic = y0_val + eta
+@@ -370,7 +361,8 @@ class Ma2005OneDecoyProof(Ma2005BaseProof):
+             if Y1_L * mu <= 1e-20: e1_U = 0.5
+-            else: e1_U = min(0.5, max(0.0, (E_mu_U * Q_mu_U * math.exp(mu)) / (Y1_L * mu)))
++            else:
++                # NOTE (Bug B6): Spec Eq (40) requires Y_1^{L,mu,0}, which
++                # is not explicitly defined in the paper (spec Sec 12 #3).
++                # We use the Y1_L bound from Eq (39) as a conservative
++                # substitute, yielding a *larger* (more conservative) e1_U.
++                e1_U = min(0.5, max(0.0, (E_mu_U * Q_mu_U * math.exp(mu)) / (Y1_L * mu)))
+             diag_msg = "Ma2005_OneDecoy_Simple"
+@@ -412,7 +404,9 @@ class Ma2005AsymptoticProof(Ma2005BaseProof):
+-        Y0 = 2.0 * self.p.detector.dark_rate   # Gap [B] fix: two-detector BB84
++        # Paper Table 1: Y_0 is the total background rate (primitive parameter).
++        Y0 = self._get_y0(stats_map)
+         e0 = 0.5
+         e_det = self.p.detector.qber_intrinsic
+@@ -430,7 +424,8 @@ class Ma2005AsymptoticProof(Ma2005BaseProof):
+-            eta = self.p.channel.transmittance * self.p.detector.det_eff_d0
++            # Paper Eq (5): eta = t_AB * eta_Bob.
++            eta = self._get_eta()
+         else:
+             eta_effective = -math.log(arg) / mu
+             eta = max(0.0, min(1.0, eta_effective))

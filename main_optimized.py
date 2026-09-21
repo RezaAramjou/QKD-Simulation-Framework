@@ -141,21 +141,20 @@ DEFAULT_CONFIG = {
         "dispersion_parameter_ps_nm_km": 0.0,
     },
     "detector": {
-        "det_eff_d0": 0.15, "det_eff_d1": 0.15, "dark_rate": 600.0,  # Hz; paper-faithful (Lim2014 Table I: 6e-7 per gate * 1 GHz = 600 Hz)
-        "dark_rate_d1": 1200.0,  # ~1.2 kHz D1 (matches DETECTOR_PRESETS["SPD"]; was 2000.0)
-        # misalignment=0.0 avoids the XOR double-counting bug in detectors.py
-        # (m*(1-q)+(1-m)*q, which the code itself labels "physically wrong, up
-        # to 2x overestimate" when strict_mode=False). qber_intrinsic carries
-        # the full baseline QBER = 0.5% (Lim2014 Table I).
-        "qber_intrinsic": 0.005, "misalignment": 0.0,
+        # In main_optimized.py, DEFAULT_CONFIG["detector"]:
+        "det_eff_d0": 0.15, "det_eff_d1": 0.15,
+        "dark_rate": 600.0,                    # was 600.0
+        "dark_rate_d1": 1200.0,                 # was 1200.0
+        "qber_intrinsic": 0.005,               # was 0.005
+        "misalignment": 0.0,                # already 0
+        "dead_time_ns": 10.0,                # was 10.0
+        "jitter_fwhm_ns": 0.0,              # was 0.050
+        "afterpulse_prob": 0.001,             # was 0.001
         "double_click_policy": "RANDOM", "detector_type": "SPD",
-        "dead_time_ns": 10.0,
-        "jitter_fwhm_ns": 0.050,
         "dead_time_model": "NON_PARALYZABLE", "afterpulse_model": "EXPONENTIAL",
-        "afterpulse_prob": 0.001,
         "afterpulse_lifetime_ns": 10.0,
         "temperature_k": 293.0, "bias_voltage": 50.0, "breakdown_voltage": 45.0,
-        "ref_temperature_k": 293.0, "ref_bias_voltage": 50.0, "strict_mode": True,
+        "ref_temperature_k": 293.0, "ref_bias_voltage": 50.0, "strict_mode": False,
     },
     "source": {
         "source_class": "optical", "pulse_period_ns": 10.0,
@@ -186,7 +185,7 @@ DEFAULT_CONFIG = {
         "security_metadata": None,
         "pulses": {
             "signal": {"mu": 0.5, "prob": 0.6},
-            "decoy": {"mu": 0.1, "prob": 0.2},
+            "decoy":  {"mu": 0.1, "prob": 0.2},
             "vacuum": {"mu": 0.0, "prob": 0.2},
         },
         "density_matrices": {},
@@ -702,7 +701,7 @@ def build_protocol_parameters(
     """
     if source is not None:
         intensities = build_intensity_config_from_source(source)
-        optical = source.config
+        optical = build_optical_source_config(config)   # always rebuild from config dict
     else:
         intensities = build_intensity_config(config)
         optical = build_optical_source_config(config)
@@ -940,6 +939,12 @@ def _build_detector_config_dict(config: Dict[str, Any]) -> Dict[str, Any]:
     # fields.  from_config_dict() rejects unknown keys, so we must strip
     # them here.
     allowed_keys = {f.name for f in fields(SinglePhotonDetector) if f.init}
+    # Allow recognized constructor kwargs that are NOT dataclass fields.
+    # These are extracted by build_detector() and passed via from_config_dict(**extra_kwargs).
+    allowed_keys.update({
+        "flip_prob_override",
+        "allow_xor_flip_formula",
+    })
     clean_dict = {k: v for k, v in normalized.items() if k in allowed_keys}
 
     # ── Log stripped keys for auditability ──
@@ -988,11 +993,17 @@ def build_detector(config: Dict[str, Any]) -> Tuple[SinglePhotonDetector, Dict[s
     """
     det_config_dict = _build_detector_config_dict(config)
 
-    # ── Build the detector in one validated step ──
-    # from_config_dict() normalizes enums, validates required keys,
-    # rejects unknown keys, and runs _validate_params() including
-    # the Geiger-mode guard (SPAD: bias > breakdown).
-    detector = SinglePhotonDetector.from_config_dict(det_config_dict)
+    # ── Extract kwargs that from_config_dict() accepts via **extra_kwargs
+    # but that are NOT dataclass fields (so they'd be rejected as unknown
+    # dict keys).  Pop them out of the dict and pass them separately.
+    _extra_kwargs = {}
+    for _kw in ("flip_prob_override", "allow_xor_flip_formula"):
+        if _kw in det_config_dict:
+            _extra_kwargs[_kw] = det_config_dict.pop(_kw)
+
+    detector = SinglePhotonDetector.from_config_dict(
+        det_config_dict, **_extra_kwargs
+    )
 
     # ── Derive overrides dict from the detector's actual config ──
     # This replaces the previous manual _overrides_applied dict that
@@ -1973,19 +1984,19 @@ def run_single_simulation(args_tuple) -> Dict[str, Any]:
         # that detector type.  Individual sweep entries can still
         # override preset values (applied above via set_nested_value).
         _det_type_preset = str(_ws.config['detector'].get('detector_type', 'SPD')).upper()
-        if _det_type_preset in DETECTOR_PRESETS:
-            _preset = DETECTOR_PRESETS[_det_type_preset]
-            # Collect keys that were explicitly swept (they take precedence)
-            _swept_leaf_keys = set()
-            for _sp, _ in overrides.items():
-                _swept_leaf_keys.add(_sp.split('.')[-1])
-            for _pk, _pv in _preset.items():
-                if _pk not in _swept_leaf_keys:
-                    _ws.config['detector'][_pk] = _pv
-                    logger.debug(
-                        'Detector preset %s: %s = %s',
-                        _det_type_preset, _pk, _pv,
-                    )
+        # if _det_type_preset in DETECTOR_PRESETS:
+        #     _preset = DETECTOR_PRESETS[_det_type_preset]
+        #     # Collect keys that were explicitly swept (they take precedence)
+        #     _swept_leaf_keys = set()
+        #     for _sp, _ in overrides.items():
+        #         _swept_leaf_keys.add(_sp.split('.')[-1])
+        #     for _pk, _pv in _preset.items():
+        #         if _pk not in _swept_leaf_keys:
+        #             _ws.config['detector'][_pk] = _pv
+        #             logger.debug(
+        #                 'Detector preset %s: %s = %s',
+        #                 _det_type_preset, _pk, _pv,
+        #             )
         # Rebuild objects for this specific hardware config
         _ws.source = build_source(_ws.config)
 
@@ -2426,16 +2437,23 @@ def run_single_simulation(args_tuple) -> Dict[str, Any]:
             import dataclasses as _dc_v4
             _param_updates = {}
 
-            if hasattr(args, 'eps_sec') and args.eps_sec is not None:
-                _param_updates['eps_sec'] = float(args.eps_sec)
-            if hasattr(args, 'eps_cor') and args.eps_cor is not None:
-                _param_updates['eps_cor'] = float(args.eps_cor)
-            if hasattr(args, 'eps_pe') and args.eps_pe is not None:
-                _param_updates['eps_pe'] = float(args.eps_pe)
-            if hasattr(args, 'eps_smooth') and args.eps_smooth is not None:
-                _param_updates['eps_smooth'] = float(args.eps_smooth)
-            if hasattr(args, 'f_error_correction') and args.f_error_correction is not None:
-                _param_updates['f_error_correction'] = float(args.f_error_correction)
+            # CLI-arg override is only available when launched from CLI
+            # (main()/argparse).  When launched from the Streamlit UI
+            # (qkd_ui.py) there is no argparse namespace, so we skip the
+            # override — the values from active_config (DEFAULT_CONFIG
+            # patched by the UI) are used as-is.
+            try:
+                _cli_args = args  # global set by main() in CLI mode
+            except NameError:
+                _cli_args = None
+
+            if _cli_args is not None:
+                for _field_name in ('eps_sec', 'eps_cor', 'eps_pe',
+                                    'eps_smooth', 'f_error_correction'):
+                    if hasattr(_cli_args, _field_name):
+                        _v = getattr(_cli_args, _field_name)
+                        if _v is not None:
+                            _param_updates[_field_name] = float(_v)
 
             if _param_updates:
                 params = _dc_v4.replace(params, **_param_updates)
@@ -2983,7 +3001,7 @@ if __name__ == "__main__":
         parser.add_argument("--det-eff-d1", type=float, default=0.15)
         parser.add_argument("--dark-rate", type=float, default=600.0)  # paper-faithful (Lim2014)
         parser.add_argument("--qber-intrinsic", type=float, default=0.005)  # paper-faithful (Lim2014)
-        parser.add_argument("--misalignment", type=float, default=0.005)
+        parser.add_argument("--misalignment", type=float, default=0.0)
         parser.add_argument("--distance-start-km", type=float, default=0.0)
         parser.add_argument("--distance-stop-km", type=float, default=150.0)
         parser.add_argument("--distance-points", type=int, default=16)

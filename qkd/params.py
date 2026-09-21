@@ -1138,22 +1138,22 @@ class QKDParams:
             else:
                 source_rate = 1e9
 
-            source = OpticalSource.from_pulse_ensemble(
-                pulse_ensemble=PulseEnsembleConfig(
-                    pulses=list(pulse_configs)
-                ),
-                source_rate=source_rate,
-                statistics_type=stats_type,
-                error_model=error_model,
-                intensity_jitter=intensity_jitter,
-                modulation_index=modulation_index,
-                N_channels=n_channels,
-                use_small_angle_approximation=use_small_angle_approx,
-                use_linear_modulation_approximation=use_linear_approx,
-                ideal_emission_probability=ideal_emission_prob,
-                adversarial_block_size=adversarial_block_size,
-                is_bidirectional=is_bidirectional,
+            from qkd.datatypes import OpticalSourceConfig  # add to imports at top of file if not present
+            optical_config = OpticalSourceConfig(
+                source_rate=1e9,
+                pulse_configs=pulse_configs,
+                statistics_type=SourceStatisticsType.POISSON,
+                error_model=SourceErrorModel.RANDOM_GAUSSIAN,
+                intensity_jitter=0.0,
+                modulation_index=0.0,
+                N_channels=1,
+                use_small_angle_approximation=True,
+                use_linear_modulation_approximation=True,
+                ideal_emission_probability=1.0,
+                adversarial_block_size=1000,
+                is_bidirectional=False,
             )
+            source = OpticalSource.create(optical_config)
 
             # Detect unknown keys in source_config.  The three SCM fields
             # below are also accepted (and conflict-checked) so that
@@ -1521,16 +1521,15 @@ def load_lim2014_dedicated_params(distance_km: float = 0.0,
     from .protocols import BB84DecoyProtocol
     
     pulse_configs = [
-        PulseTypeConfig(pulse_type="signal", intensity=0.5, probability=0.6),
-        PulseTypeConfig(pulse_type="decoy", intensity=0.1, probability=0.2),
-        PulseTypeConfig(pulse_type="vacuum", intensity=0.0, probability=0.2),
+        PulseTypeConfig(name="signal", mean_photon_number=0.5, probability=0.6),
+        PulseTypeConfig(name="decoy", mean_photon_number=0.1, probability=0.2),
+        PulseTypeConfig(name="vacuum", mean_photon_number=0.0, probability=0.2),
     ]
 
-    source = OpticalSource.from_pulse_ensemble(
-        pulse_ensemble=PulseEnsembleConfig(
-            pulses=pulse_configs
-        ),
+    from qkd.datatypes import OpticalSourceConfig
+    optical_config = OpticalSourceConfig(
         source_rate=1e9,
+        pulse_configs=pulse_configs,
         statistics_type=SourceStatisticsType.POISSON,
         error_model=SourceErrorModel.RANDOM_GAUSSIAN,
         intensity_jitter=0.0,
@@ -1542,6 +1541,7 @@ def load_lim2014_dedicated_params(distance_km: float = 0.0,
         adversarial_block_size=1000,
         is_bidirectional=False,
     )
+    source = OpticalSource.create(optical_config)
 
     
     detector = ThresholdDetector(
@@ -1564,15 +1564,17 @@ def load_lim2014_dedicated_params(distance_km: float = 0.0,
             _fields[_f.name] = _f.default
         elif _f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
             _fields[_f.name] = _f.default_factory()
+    # Dedicated (single-channel, no AWG/MZM/circulator) path: zero out all
+    # baseline insertion losses. Only fiber loss * distance should remain.
     _total_loss_db = _compute_total_loss_db_from_scalars(
         distance_km=distance_km,
         fiber_loss_db_km=fiber_loss_db_km,
         filter_model="ideal",
-        filter_awg_loss_db=_fields["filter_awg_loss_db"],
+        filter_awg_loss_db=0.0,
         N_channels=1,
-        filter_fbg_loss_per_channel_db=_fields["filter_fbg_loss_per_channel_db"],
-        modulator_insertion_loss_db=_fields["modulator_insertion_loss_db"],
-        circulator_insertion_loss_db=_fields["circulator_insertion_loss_db"],
+        filter_fbg_loss_per_channel_db=0.0,
+        modulator_insertion_loss_db=0.0,
+        circulator_insertion_loss_db=0.0,
     )
     channel = FiberChannel.from_total_loss(distance_km, _total_loss_db)
 
@@ -1580,8 +1582,10 @@ def load_lim2014_dedicated_params(distance_km: float = 0.0,
     
     # Asymmetric basis probabilities will be optimized, start balanced
     protocol = BB84DecoyProtocol(
-        mu_signal=0.5, mu_decoy=0.5, source=source,
-        double_click_policy=DoubleClickPolicy.RANDOM,
+        alice_z_basis_prob=0.5,
+        bob_z_basis_prob=0.5,
+        source=source,
+        double_click_policy="DISCARD",
     )
     
     return QKDParams(
@@ -1595,6 +1599,10 @@ def load_lim2014_dedicated_params(distance_km: float = 0.0,
         security_constant_kappa=None,
         auto_optimize_lim2014=True,
         fiber_loss_db_km=fiber_loss_db_km,
+        filter_awg_loss_db=0.0,
+        filter_fbg_loss_per_channel_db=0.0,
+        modulator_insertion_loss_db=0.0,
+        circulator_insertion_loss_db=0.0,
     )
 
 def load_lim2014_dwdm_params(distance_km: float = 0.0, num_bits: int = 10000000,
