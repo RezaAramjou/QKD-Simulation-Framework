@@ -36,6 +36,7 @@ works in dry-run mode for tutorial / inspection purposes.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 import math
@@ -48,6 +49,7 @@ from typing import Any
 import concurrent.futures
 import numpy as np
 import pandas as pd
+import plotly.colors as pc
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -519,15 +521,50 @@ def render_findings(findings: list[tuple[str, str]]) -> bool:
 # ─────────────────────────────────────────────────────────────────────────
 # Academic Plotly theme
 # ─────────────────────────────────────────────────────────────────────────
+# Qualitative color palette for sweep groupings. ``Dark2`` has 8 distinct,
+# high-contrast colors that are also colorblind-friendly; ``Set1`` adds 5
+# more for runs with many sweep combinations.
+SWEEP_COLOR_PALETTE: list[str] = list(pc.qualitative.Dark2) + list(pc.qualitative.Set1)
+
+# Distinct marker symbols for noise ON / OFF (used in SKR vs Distance and
+# other noise-grouped plots).
+NOISE_ON_MARKER = "circle"
+NOISE_OFF_MARKER = "square-open"
+
 ACADEMIC_LAYOUT: dict[str, Any] = dict(
     template="plotly_white",
     font=dict(family="Latin Modern Roman, Computer Modern, DejaVu Serif, serif", size=14, color="#222"),
     title=dict(font=dict(size=17, family="Latin Modern Roman, serif"), x=0.5, xanchor="center"),
-    xaxis=dict(showgrid=True, gridcolor="#ddd", linecolor="#444", mirror=True, zeroline=False),
-    yaxis=dict(showgrid=True, gridcolor="#ddd", linecolor="#444", mirror=True, zeroline=False),
-    legend=dict(bordercolor="#888", borderwidth=1, bgcolor="rgba(255,255,255,0.85)"),
+    # On-screen grids are intentionally faint — they're a visual aid, not a
+    # data axis. Use very low-opacity gray so they don't compete with the
+    # data traces. (PNG/PDF export overrides these to a more visible shade
+    # via ``_PNG_GRID_OVERRIDE`` — see ``_cached_plotly_image_bytes``.)
+    xaxis=dict(showgrid=True, gridcolor="rgba(200, 200, 200, 0.25)", linecolor="#444", mirror=True, zeroline=False, gridwidth=1),
+    yaxis=dict(showgrid=True, gridcolor="rgba(200, 200, 200, 0.25)", linecolor="#444", mirror=True, zeroline=False, gridwidth=1),
+    legend=dict(
+        bordercolor="#666",
+        borderwidth=1,
+        bgcolor="rgba(255,255,255,0.97)",
+        # Explicitly set legend font colour — without this, the
+        # ``plotly_white`` template can leave legend text in a near-white
+        # shade on some Streamlit themes, making it invisible.
+        font=dict(color="#222", size=12, family="DejaVu Sans, Arial, sans-serif"),
+        # Default position: top-right inside the plot (avoids needing a
+        # large right margin).
+        orientation="v",
+    ),
     margin=dict(l=72, r=24, t=64, b=64),
     hovermode="x unified",
+)
+
+# Stronger grid colour applied to figures AT EXPORT TIME (PNG/PDF only).
+# This keeps the on-screen grids faint (for a clean dashboard look) while
+# the downloaded images still have clearly visible grid lines for print.
+_PNG_GRID_OVERRIDE: dict[str, Any] = dict(
+    gridcolor="#c8c8c8",
+    gridwidth=1,
+    linecolor="#222",
+    zeroline=False,
 )
 
 
@@ -572,6 +609,38 @@ def export_plotly_image(fig: go.Figure, fmt: str, width: int = 1200, height: int
         ) from exc
 
 
+@st.cache_data(show_spinner=False, max_entries=128, ttl=3600)
+def _cached_plotly_image_bytes(
+    fig_json: str, fmt: str, width: int = 1200, height: int = 700, scale: float = 2.0,
+) -> bytes:
+    """Cached Plotly image export — keyed on the figure's JSON + format +
+    dimensions. Kaleido (the Plotly image engine) spawns a Chromium
+    subprocess and takes 1-3 seconds per export, so caching across Streamlit
+    reruns is essential. Once a particular figure's PNG/PDF is generated,
+    subsequent reruns return the cached bytes instantly.
+
+    NOTE: the caller must pass ``fig.to_json()`` as ``fig_json`` — the JSON
+    string is what gets hashed as the cache key.
+
+    Before exporting, the on-screen grid colour (which is intentionally
+    faint for the dashboard look) is overridden with a more visible shade
+    so the downloaded PNG/PDF has clearly printable grid lines.
+    """
+    fig = go.Figure(json.loads(fig_json))
+    # Apply the print-friendly grid override
+    fig.update_xaxes(**_PNG_GRID_OVERRIDE)
+    fig.update_yaxes(**_PNG_GRID_OVERRIDE)
+    return export_plotly_image(fig, fmt=fmt, width=width, height=height, scale=scale)
+
+
+def _fig_content_hash(fig: go.Figure) -> str:
+    """Stable short hash of a Plotly figure's content. Used to invalidate
+    session-state-cached PNG/PDF bytes when the underlying figure changes
+    (e.g. user applies a different filter).
+    """
+    return hashlib.sha256(fig.to_json().encode("utf-8")).hexdigest()[:16]
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # Page setup
 # ─────────────────────────────────────────────────────────────────────────
@@ -592,6 +661,30 @@ def init_page() -> None:
         .katex { font-size: 1.05em; }
         /* Tighter Plotly captions */
         .stCaption { font-style: italic; color: #555; }
+
+        /* ── Soften Streamlit's own UI gridlines/borders ──────────────── */
+        /* The dataframe table border can be quite stark; lighten it. */
+        .stDataFrame, .stDataFrame [data-testid="stDataFrame"] {
+            border-color: rgba(180, 180, 180, 0.4) !important;
+        }
+        table.data-table tbody tr, table.data-table thead th {
+            border-color: rgba(200, 200, 200, 0.5) !important;
+        }
+        /* Expander and tab container borders — softer */
+        .streamlit-expander, [data-testid="stExpander"] {
+            border-color: rgba(180, 180, 180, 0.4) !important;
+        }
+        /* Plotly's own container — already handled via ACADEMIC_LAYOUT,
+           but make sure the surrounding Streamlit frame doesn't draw
+           a heavy border either. */
+        .stPlotlyChart, [data-testid="stPlotlyChart"] {
+            border-color: rgba(180, 180, 180, 0.25) !important;
+        }
+        /* Streamlit column-separator gridlines (the default theme draws
+           faint lines between columns) — make them almost invisible. */
+        [data-testid="stHorizontalBlock"] {
+            border-color: rgba(200, 200, 200, 0.15) !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -1912,43 +2005,103 @@ def _filter_plot_df(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _fmt_sweep_value(col: str, val: Any) -> str:
+    """Pretty-print a sweep value for use in a legend label."""
+    try:
+        f = float(val)
+        # Use %.3g for very small/large floats, %.2f for mid-range
+        if abs(f) >= 1000 or (abs(f) < 0.01 and f != 0):
+            return f"{f:.3g}"
+        return f"{f:.3f}"
+    except (ValueError, TypeError):
+        return str(val)
+
+
+def _sweep_label_part(col: str, val: Any) -> str:
+    """Build a single 'param = value' label fragment for a sweep column."""
+    pretty = col.replace("sweep_", "").replace("_", " ")
+    return f"{pretty}={_fmt_sweep_value(col, val)}"
+
+
 def fig_skr_vs_distance(df: pd.DataFrame) -> go.Figure | None:
-    """Spec §4.2.1 — Secure Key Rate vs Distance, log Y, noise series."""
+    """Spec §4.2.1 — Secure Key Rate vs Distance, log Y, noise series.
+
+    The plot now ALSO groups by every ``sweep_*`` column present in the
+    DataFrame — so when you sweep e.g. ``source.intended_proof`` over 4
+    values, you get 4 separate traces per (noise, pulses) combo rather
+    than 4 zig-zagging points collapsed onto one line.
+    """
     required = {"distance_km", "secure_key_rate"}
     if not required.issubset(df.columns):
         return None
     plot_df = _filter_plot_df(df)
     if plot_df.empty:
         return None
-    fig = go.Figure()
+
+    # Detect every axis we should split traces on.
     noise_col = "noise_applied" in plot_df.columns
     pulses_col = "total_pulses" in plot_df.columns
-    # Two lines per (combo) — noiseless (False) and noisy (True)
+    sweep_cols = [c for c in plot_df.columns if c.startswith("sweep_")]
+
+    fig = go.Figure()
+
+    # Determine grouping columns. Order matters for trace coloring —
+    # sweep columns first so each sweep value gets a stable colour, then
+    # noise (dashed/solid) and pulses within each sweep.
+    group_cols: list[str] = list(sweep_cols)
     if noise_col:
-        group_cols = ["noise_applied"]
-        if pulses_col:
-            group_cols.append("total_pulses")
-        for grp_keys, sub in plot_df.groupby(group_cols, sort=False):
+        group_cols.append("noise_applied")
+    if pulses_col:
+        group_cols.append("total_pulses")
+
+    if group_cols:
+        # Enumerate groups in a deterministic order so colour cycling is stable.
+        groups = list(plot_df.groupby(group_cols, sort=False))
+        for trace_idx, (grp_keys, sub) in enumerate(groups):
             if not isinstance(grp_keys, tuple):
                 grp_keys = (grp_keys,)
-            noise_on = bool(grp_keys[0])
-            line_style = dict(dash="solid" if noise_on else "dash")
-            parts = [f"noise={'ON' if noise_on else 'OFF'}"]
-            if pulses_col:
-                parts.append(f"N_pulses={grp_keys[1]:.0e}")
-            label = " | ".join(parts)
+            # Unpack in the same order as group_cols
+            sweep_vals = grp_keys[:len(sweep_cols)]
+            rest = grp_keys[len(sweep_cols):]
+            noise_on = bool(rest[0]) if noise_col else True
+            pulses_val = rest[1] if pulses_col and len(rest) > 1 else None
+
+            # Build the legend label
+            parts: list[str] = []
+            for col, val in zip(sweep_cols, sweep_vals):
+                parts.append(_sweep_label_part(col, val))
+            parts.append(f"noise={'ON' if noise_on else 'OFF'}")
+            if pulses_val is not None:
+                try:
+                    parts.append(f"N_pulses={float(pulses_val):.0e}")
+                except (ValueError, TypeError):
+                    parts.append(f"N_pulses={pulses_val}")
+            label = " | ".join(parts) if parts else "SKR"
+
+            line_style: dict[str, Any] = dict(
+                dash="solid" if noise_on else "dash",
+                color=SWEEP_COLOR_PALETTE[trace_idx % len(SWEEP_COLOR_PALETTE)],
+            )
+            marker = dict(
+                symbol=NOISE_ON_MARKER if noise_on else NOISE_OFF_MARKER,
+                color=line_style["color"],
+                size=7, line=dict(width=1, color="#222"),
+            )
             sub_sorted = sub.sort_values("distance_km")
             fig.add_trace(go.Scatter(
                 x=sub_sorted["distance_km"], y=sub_sorted["secure_key_rate"],
                 mode="lines+markers", name=label, line=line_style,
-                connectgaps=True,
+                marker=marker, connectgaps=True,
             ))
     else:
         sub_sorted = plot_df.sort_values("distance_km")
         fig.add_trace(go.Scatter(
             x=sub_sorted["distance_km"], y=sub_sorted["secure_key_rate"],
             mode="lines+markers", name="SKR",
+            line=dict(color=SWEEP_COLOR_PALETTE[0]),
+            marker=dict(symbol=NOISE_ON_MARKER, color=SWEEP_COLOR_PALETTE[0], size=7),
         ))
+
     # Rogers cross-check overlay (optional, spec §4.2.1)
     if "analytic_rogers_sbr" in plot_df.columns:
         rogers = plot_df.dropna(subset=["analytic_rogers_sbr"]).sort_values("distance_km")
@@ -1956,8 +2109,9 @@ def fig_skr_vs_distance(df: pd.DataFrame) -> go.Figure | None:
             fig.add_trace(go.Scatter(
                 x=rogers["distance_km"], y=rogers["analytic_rogers_sbr"],
                 mode="markers", name="Rogers (2007) Eq. 15",
-                marker=dict(symbol="x", color="black", size=8),
+                marker=dict(symbol="x", color="black", size=10, line=dict(width=2, color="black")),
             ))
+
     apply_academic_layout(
         fig, x_label="Distance L  (km)", y_label="Secure Key Rate  (bits/pulse, log10)",
         log_y=True,
@@ -2101,47 +2255,174 @@ def fig_finite_size_contour(df: pd.DataFrame) -> go.Figure | None:
     return fig
 
 
-def fig_sweep_sensitivity(df: pd.DataFrame) -> go.Figure | None:
-    """Spec §4.2.6 — Sweep sensitivity: SKR vs swept parameter at fixed (L, N)."""
+def fig_sweep_sensitivity(
+    df: pd.DataFrame,
+    x_sweep: str | None = None,
+    color_sweep: str | None = None,
+    locked_sweeps: dict[str, Any] | None = None,
+) -> go.Figure | None:
+    """Spec §4.2.6 — Sweep sensitivity: SKR vs swept parameter.
+
+    Configurable variant: lets the caller pick which sweep column goes on
+    the X-axis, which one (if any) is used as the color/group axis, and
+    which other sweep columns are *locked* to a single value to isolate
+    the X-axis effect.
+
+    Args:
+        df: Results DataFrame (already filtered by status/noise/pulses
+            by the caller — this function only applies its own locks).
+        x_sweep: Which ``sweep_*`` column to put on the X-axis. If ``None``
+            or not in the DataFrame, falls back to the first sweep column.
+        color_sweep: Which ``sweep_*`` column to use for color/grouping
+            (one trace per value). ``None`` disables grouping. If the
+            resulting X-axis is itself categorical and there's no color
+            grouping, each X-axis category is split into its own trace so
+            the legend identifies it.
+        locked_sweeps: ``{sweep_col: value}`` dict. Any sweep column
+            appearing here (and NOT used as x or color) is filtered to
+            the given value. ``distance_km`` and ``total_pulses`` are
+            always auto-locked to a representative (median / max) value
+            by this function — they're not sweep columns but they ARE
+            grid axes that need to be pinned for a clean 1-D plot.
+    """
     sweep_cols = [c for c in df.columns if c.startswith("sweep_")]
     if not sweep_cols or "secure_key_rate" not in df.columns:
         return None
-    sweep_col = sweep_cols[0]
+
+    # ── Resolve x_sweep (default: first sweep column) ────────────────────
+    if x_sweep is None or x_sweep not in sweep_cols:
+        x_sweep = sweep_cols[0]
+
+    # ── Resolve color_sweep ───────────────────────────────────────────────
+    # "auto" → pick the second available sweep column (if any)
+    if color_sweep == "auto":
+        other_sweeps = [c for c in sweep_cols if c != x_sweep]
+        color_sweep = other_sweeps[0] if other_sweeps else None
+    elif color_sweep in ("none", "None", ""):
+        color_sweep = None
+    if color_sweep is not None and color_sweep not in sweep_cols:
+        color_sweep = None
+
+    # ── Filter DataFrame ──────────────────────────────────────────────────
     plot_df = df.copy()
     if "status" in plot_df.columns:
         plot_df = plot_df[plot_df["status"] == "OK"]
     plot_df = plot_df[plot_df["secure_key_rate"] > 0]
     if plot_df.empty:
         return None
-    # Pick the largest total_pulses for a clean single line
-    if "total_pulses" in plot_df.columns:
+
+    # ── Apply explicit locks (other sweep columns the user pinned) ──────
+    if locked_sweeps:
+        for col, val in locked_sweeps.items():
+            if col in plot_df.columns and col != x_sweep and col != color_sweep:
+                plot_df = plot_df[plot_df[col] == val]
+
+    # ── Auto-pin distance_km to median and total_pulses to max ───────────
+    # These are grid axes, not sweep columns, but they still need to be
+    # pinned for a clean 1-D sensitivity plot.
+    if "total_pulses" in plot_df.columns and not plot_df.empty:
         max_pulses = plot_df["total_pulses"].max()
         plot_df = plot_df[plot_df["total_pulses"] == max_pulses]
-    # Pick the distance closest to the median for a representative cross-section
     if "distance_km" in plot_df.columns and not plot_df.empty:
         median_d = plot_df["distance_km"].median()
         closest_dist = plot_df.iloc[(plot_df["distance_km"] - median_d).abs().argsort()[:1]]["distance_km"].iloc[0]
         plot_df = plot_df[plot_df["distance_km"] == closest_dist]
-    plot_df = plot_df.sort_values(sweep_col)
+
     if plot_df.empty:
         return None
+
+    # ── Determine x-axis type ────────────────────────────────────────────
+    x_series = plot_df[x_sweep]
+    x_is_numeric = pd.api.types.is_numeric_dtype(x_series)
+    plot_df = plot_df.sort_values(x_sweep, kind="stable")
+
+    def _fmt_x(v: Any) -> str:
+        """Safe formatter for the argmax x-value (numeric or string)."""
+        if x_is_numeric:
+            try:
+                return f"{float(v):.3g}"
+            except (ValueError, TypeError):
+                return str(v)
+        return str(v)
+
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=plot_df[sweep_col], y=plot_df["secure_key_rate"],
-        mode="lines+markers", name="SKR",
-    ))
-    # Argmax marker
+
+    # ── Build traces ────────────────────────────────────────────────────
+    # Case A: color grouping requested → one trace per color value.
+    # Case B: no color grouping, but X is categorical → split each X
+    #         category into its own trace so the legend identifies it.
+    # Case C: no color grouping, X is numeric → single SKR trace.
+    def _trace_label(color_col: str, color_val: Any) -> str:
+        clean_col = color_col.replace("sweep_", "").replace("_", " ")
+        return f"{clean_col} = {color_val}"
+
+    if color_sweep is not None:
+        # Case A — grouped by color_sweep
+        for color_idx, (color_val, sub) in enumerate(plot_df.groupby(color_sweep, sort=False)):
+            sub_sorted = sub.sort_values(x_sweep, kind="stable")
+            trace_mode = "lines+markers" if x_is_numeric else "markers"
+            trace_color = SWEEP_COLOR_PALETTE[color_idx % len(SWEEP_COLOR_PALETTE)]
+            fig.add_trace(go.Scatter(
+                x=sub_sorted[x_sweep], y=sub_sorted["secure_key_rate"],
+                mode=trace_mode, name=_trace_label(color_sweep, color_val),
+                line=dict(color=trace_color, width=2),
+                marker=dict(color=trace_color, size=10, line=dict(width=1, color="#222")),
+                connectgaps=True,
+            ))
+    elif not x_is_numeric:
+        # Case B — categorical X with no color grouping → one trace per
+        # X-category so each appears separately in the legend with a
+        # distinct colour.
+        for cat_idx, (cat_val, sub) in enumerate(plot_df.groupby(x_sweep, sort=False)):
+            cat_color = SWEEP_COLOR_PALETTE[cat_idx % len(SWEEP_COLOR_PALETTE)]
+            fig.add_trace(go.Scatter(
+                x=[cat_val], y=sub["secure_key_rate"],
+                mode="markers", name=str(cat_val),
+                marker=dict(color=cat_color, size=12,
+                            line=dict(width=1.5, color="#222"),
+                            symbol=NOISE_ON_MARKER),
+            ))
+    else:
+        # Case C — numeric X, no color → single SKR trace
+        trace_color = SWEEP_COLOR_PALETTE[0]
+        fig.add_trace(go.Scatter(
+            x=plot_df[x_sweep], y=plot_df["secure_key_rate"],
+            mode="lines+markers", name="SKR",
+            line=dict(color=trace_color, width=2),
+            marker=dict(color=trace_color, size=8,
+                        line=dict(width=1, color="#222"),
+                        symbol=NOISE_ON_MARKER),
+            connectgaps=True,
+        ))
+
+    # ── Argmax marker — overall, across all traces ──────────────────────
     idx = plot_df["secure_key_rate"].idxmax()
-    x_star = plot_df.loc[idx, sweep_col]
-    fig.add_vline(x=x_star, line_dash="dash", line_color="red",
-                  annotation_text=f"argmax SKR @ {x_star:.3g}")
+    x_star = plot_df.loc[idx, x_sweep]
+    x_star_str = _fmt_x(x_star)
+    try:
+        fig.add_vline(
+            x=x_star, line_dash="dash", line_color="red",
+            annotation_text=f"argmax SKR @ {x_star_str}",
+            annotation_position="top left",
+        )
+    except Exception:
+        # Fallback for Plotly-version quirks with categorical axes —
+        # annotate the argmax point directly on the trace.
+        y_star = float(plot_df.loc[idx, "secure_key_rate"])
+        fig.add_annotation(
+            x=x_star, y=y_star,
+            text=f"argmax<br>{x_star_str}",
+            showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2,
+            font=dict(color="red"),
+        )
+
     apply_academic_layout(
         fig,
-        x_label=sweep_col.replace("sweep_", "").replace("_", " → "),
+        x_label=x_sweep.replace("sweep_", "").replace("_", " → "),
         y_label="Secure Key Rate  (bits/pulse, log10)",
         log_y=True,
     )
-    fig.update_layout(title=f"Sweep Sensitivity — SKR vs {sweep_col}")
+    fig.update_layout(title=f"Sweep Sensitivity — SKR vs {x_sweep.replace('sweep_', '')}")
     return fig
 
 
@@ -2262,6 +2543,92 @@ def render_results_panel() -> None:
         st.info("Filtered dataframe is empty — relax filters to see plots.")
         return
 
+    # ── Sweep Sensitivity plot — configurable ────────────────────────────
+    # Let the user pick which sweep column goes on X, which (if any) is the
+    # color/group axis, and which other sweep columns to lock to a single
+    # value (so multi-parameter sweeps can still produce a clean 1-D plot).
+    sweep_cols_in_df = [c for c in df.columns if c.startswith("sweep_")]
+    sens_fig: go.Figure | None = None
+    if sweep_cols_in_df and "secure_key_rate" in df.columns:
+        with st.expander("⚙️ Sweep Sensitivity Plot — X / Color / Locks", expanded=False):
+            st.caption(
+                "When you have multiple sweep parameters, use this panel to "
+                "decide **which one goes on the X-axis**, **which one to use "
+                "as the color/group axis** (one trace per value), and **which "
+                "others to lock to a single value** so the X-axis effect is "
+                "isolated. ``distance_km`` and ``total_pulses`` are always "
+                "auto-pinned (to median / max) by the plot builder."
+            )
+
+            def _pretty(c: str) -> str:
+                return c.replace("sweep_", "").replace("_", " → ")
+
+            col_x, col_c = st.columns(2)
+            with col_x:
+                x_sweep = st.selectbox(
+                    "X-axis sweep parameter",
+                    options=sweep_cols_in_df,
+                    index=0,
+                    key="sens_x_sweep",
+                    format_func=_pretty,
+                )
+            with col_c:
+                color_options = ["none", "auto"] + sweep_cols_in_df
+                color_sweep_raw = st.selectbox(
+                    "Color / group by",
+                    options=color_options,
+                    index=1,  # default to "auto"
+                    key="sens_color_sweep",
+                    format_func=lambda x: (
+                        "None (single trace)" if x == "none"
+                        else "Auto-pick (second sweep column)" if x == "auto"
+                        else _pretty(x)
+                    ),
+                )
+
+            # ── Lock other sweep columns to single values ─────────────────
+            other_sweeps = [
+                c for c in sweep_cols_in_df
+                if c != x_sweep and c != color_sweep_raw
+            ]
+            locked_sweeps: dict[str, Any] = {}
+            if other_sweeps:
+                st.markdown("**Lock other sweep parameters to a single value** (isolate the X-axis effect):")
+                filter_cols = st.columns(min(len(other_sweeps), 3))
+                for i, sweep_col in enumerate(other_sweeps):
+                    with filter_cols[i % 3]:
+                        unique_vals = sorted(df[sweep_col].unique().tolist(), key=lambda v: str(v))
+                        if not unique_vals:
+                            continue
+                        # Default to the value closest to the median (for
+                        # numeric) or the middle of the list (for categorical).
+                        default_idx = len(unique_vals) // 2
+                        try:
+                            numeric_vals = [float(v) for v in unique_vals]
+                            median_val = float(pd.Series(numeric_vals).median())
+                            default_idx = min(
+                                range(len(unique_vals)),
+                                key=lambda k: abs(float(unique_vals[k]) - median_val),
+                            )
+                        except (ValueError, TypeError):
+                            pass
+                        selected_val = st.selectbox(
+                            f"Lock {_pretty(sweep_col)}",
+                            options=unique_vals,
+                            index=default_idx,
+                            key=f"sens_lock_{sweep_col}",
+                        )
+                        locked_sweeps[sweep_col] = selected_val
+
+            color_sweep: str | None = None if color_sweep_raw == "none" else color_sweep_raw
+            sens_fig = fig_sweep_sensitivity(
+                df, x_sweep=x_sweep, color_sweep=color_sweep,
+                locked_sweeps=locked_sweeps,
+            )
+    else:
+        # No sweep columns in the DataFrame — fall back to the legacy call.
+        sens_fig = fig_sweep_sensitivity(df)
+
     # ── Build all academic plots ────────────────────────────────────────
     plots: list[tuple[str, go.Figure | None]] = [
         ("Secure Key Rate vs Distance",     fig_skr_vs_distance(df)),
@@ -2269,7 +2636,7 @@ def render_results_panel() -> None:
         ("Detection Yield vs Distance",     fig_yield_vs_distance(df)),
         ("Channel Loss Budget (DWDM)",       fig_loss_budget(df)),
         ("Finite-Size Contour",             fig_finite_size_contour(df)),
-        ("Sweep Sensitivity",               fig_sweep_sensitivity(df)),
+        ("Sweep Sensitivity",               sens_fig),
         ("Convergence Audit",               fig_convergence_audit(df)),
     ]
     plots = [(name, fig) for name, fig in plots if fig is not None]
@@ -2291,31 +2658,103 @@ def render_results_panel() -> None:
 
 
 def _render_plot_export_row(fig: go.Figure, name: str) -> None:
-    """Render a small download row for a Plotly figure: PNG + PDF."""
-    col_dl1, col_dl2, col_dl3 = st.columns([1, 1, 4])
+    """Render download buttons for PNG and PDF export — LAZY generation.
+
+    Why lazy:
+        ``kaleido`` (the engine behind ``fig.to_image()``) spawns a Chromium
+        subprocess and takes 1-3 seconds per export. With 7 plots × 2
+        formats = 14 exports per Streamlit rerun, that's 15-40+ seconds
+        of pure I/O on every widget interaction (filter change, plot
+        selection). By deferring image generation until the user explicitly
+        clicks "Generate PNG" / "Generate PDF", the default render is
+        near-instant and the cost is only paid on-demand.
+
+    Caching strategy:
+        - ``@st.cache_data`` on ``_cached_plotly_image_bytes`` persists
+          across reruns — same figure JSON → same bytes (instant return).
+        - Session-state key ``_img_state_<name>_<fmt>`` stores ``{hash,
+          bytes}`` so a generated image survives reruns even after the
+          cache TTL expires. The hash invalidates the bytes automatically
+          when the underlying figure changes (filter changes, etc.).
+    """
     base_name = name.lower().replace(" ", "_").replace("/", "_")
-    with col_dl1:
-        try:
-            png_bytes = export_plotly_image(fig, fmt="png")
+    col_png, col_pdf, col_info = st.columns([1, 1, 3])
+
+    fig_json = fig.to_json()
+    fig_hash = _fig_content_hash(fig)
+
+    # ── PNG button ─────────────────────────────────────────────────────
+    with col_png:
+        png_state_key = f"_img_state_{base_name}_png"
+        png_state = st.session_state.get(png_state_key)
+        # Invalidate cached bytes if the figure has changed since they were generated
+        if png_state is not None and png_state.get("hash") != fig_hash:
+            png_state = None
+            st.session_state.pop(png_state_key, None)
+        png_bytes = png_state.get("bytes") if png_state else None
+
+        if png_bytes is None:
+            # Not yet generated — show a Generate button (no kaleido run yet)
+            if st.button(
+                "🖼  Generate PNG",
+                key=f"gen_png_{base_name}",
+                use_container_width=True,
+                help="Render this plot to a 300-dpi PNG (uses kaleido, ~1-3 s). Click to generate — the download button will appear here once ready.",
+            ):
+                with st.spinner("Rendering PNG (kaleido, 1-3s)…"):
+                    try:
+                        png_bytes = _cached_plotly_image_bytes(fig_json, "png")
+                        st.session_state[png_state_key] = {"hash": fig_hash, "bytes": png_bytes}
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"PNG export failed: {exc}")
+        else:
+            # Bytes ready — show the download button + a regenerate option
             st.download_button(
-                "⬇️ PNG (300 dpi)",
+                "⬇  Download PNG",
                 data=png_bytes, mime="image/png",
                 file_name=f"{base_name}.png",
                 key=f"dl_png_{base_name}",
+                use_container_width=True,
             )
-        except Exception as exc:
-            st.caption(f"PNG export unavailable: {exc}")
-    with col_dl2:
-        try:
-            pdf_bytes = export_plotly_image(fig, fmt="pdf")
+
+    # ── PDF button ─────────────────────────────────────────────────────
+    with col_pdf:
+        pdf_state_key = f"_img_state_{base_name}_pdf"
+        pdf_state = st.session_state.get(pdf_state_key)
+        if pdf_state is not None and pdf_state.get("hash") != fig_hash:
+            pdf_state = None
+            st.session_state.pop(pdf_state_key, None)
+        pdf_bytes = pdf_state.get("bytes") if pdf_state else None
+
+        if pdf_bytes is None:
+            if st.button(
+                "📄  Generate PDF",
+                key=f"gen_pdf_{base_name}",
+                use_container_width=True,
+                help="Render this plot to a vector PDF (uses kaleido, ~1-3 s).",
+            ):
+                with st.spinner("Rendering PDF (kaleido, 1-3s)…"):
+                    try:
+                        pdf_bytes = _cached_plotly_image_bytes(fig_json, "pdf")
+                        st.session_state[pdf_state_key] = {"hash": fig_hash, "bytes": pdf_bytes}
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"PDF export failed: {exc}")
+        else:
             st.download_button(
-                "⬇️ PDF (vector)",
+                "⬇  Download PDF",
                 data=pdf_bytes, mime="application/pdf",
                 file_name=f"{base_name}.pdf",
                 key=f"dl_pdf_{base_name}",
+                use_container_width=True,
             )
-        except Exception as exc:
-            st.caption(f"PDF export unavailable: {exc}")
+
+    with col_info:
+        st.caption(
+            "Export buttons use **lazy generation** — click to render, then download. "
+            "Cached across reruns until the figure changes."
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────
